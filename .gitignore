@@ -1,0 +1,6 @@
+emcee
+*.exe
+.idea/
+.vscode/
+*.swp
+*.swo
