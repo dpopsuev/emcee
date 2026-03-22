@@ -1,7 +1,11 @@
 // Package domain contains the core business objects with zero external dependencies.
 package domain
 
-import "time"
+import (
+	"encoding/json"
+	"fmt"
+	"time"
+)
 
 type Priority int
 
@@ -26,6 +30,26 @@ func (p Priority) String() string {
 	default:
 		return "none"
 	}
+}
+
+// UnmarshalJSON accepts both int (0-4) and string ("urgent", "high", etc.).
+func (p *Priority) UnmarshalJSON(data []byte) error {
+	var n int
+	if err := json.Unmarshal(data, &n); err == nil {
+		*p = Priority(n)
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(data, &s); err == nil {
+		*p = ParsePriority(s)
+		return nil
+	}
+	return fmt.Errorf("priority must be int or string, got %s", string(data))
+}
+
+// MarshalJSON serializes priority as int for Linear API compatibility.
+func (p Priority) MarshalJSON() ([]byte, error) {
+	return json.Marshal(int(p))
 }
 
 func ParsePriority(s string) Priority {

@@ -557,6 +557,51 @@ var bulkCreateCmd = &cobra.Command{
 	},
 }
 
+// --- Bulk update command ---
+
+var bulkUpdateCmd = &cobra.Command{
+	Use:   "bulk-update <ref...>",
+	Short: "Update multiple issues at once",
+	Long:  "Apply the same status/priority change to multiple issues. Example: emcee bulk-update --status done linear:HEG-184 linear:HEG-185",
+	Args:  cobra.MinimumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		svc, err := newService()
+		if err != nil {
+			return err
+		}
+
+		var input domain.UpdateInput
+		if flagStatus != "" {
+			s := domain.Status(flagStatus)
+			input.Status = &s
+		}
+		if flagPriority != "" {
+			p := domain.ParsePriority(flagPriority)
+			input.Priority = &p
+		}
+
+		var errors []string
+		var updated int
+		for _, ref := range args {
+			_, err := svc.Update(context.Background(), ref, input)
+			if err != nil {
+				errors = append(errors, fmt.Sprintf("%s: %v", ref, err))
+				continue
+			}
+			updated++
+		}
+
+		fmt.Printf("Updated %d/%d issues\n", updated, len(args))
+		for _, e := range errors {
+			fmt.Fprintf(os.Stderr, "  error: %s\n", e)
+		}
+		if len(errors) > 0 {
+			return fmt.Errorf("%d issues failed", len(errors))
+		}
+		return nil
+	},
+}
+
 // --- Children command ---
 
 var childrenCmd = &cobra.Command{
@@ -694,5 +739,9 @@ func init() {
 
 	rootCmd.AddCommand(listCmd, getCmd, createCmd, updateCmd, searchCmd, serveCmd)
 	rootCmd.AddCommand(docCmd, projectCmd, initiativeCmd, labelCmd)
-	rootCmd.AddCommand(bulkCreateCmd, childrenCmd, importCmd)
+	// Bulk update
+	bulkUpdateCmd.Flags().StringVarP(&flagStatus, "status", "s", "", "New status for all issues")
+	bulkUpdateCmd.Flags().StringVar(&flagPriority, "priority", "", "New priority for all issues")
+
+	rootCmd.AddCommand(bulkCreateCmd, bulkUpdateCmd, childrenCmd, importCmd)
 }

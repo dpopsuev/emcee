@@ -116,6 +116,21 @@ func (m *mockRepo) CreateProject(_ context.Context, input domain.ProjectCreateIn
 	return &proj, nil
 }
 
+func (m *mockRepo) UpdateProject(_ context.Context, id string, input domain.ProjectUpdateInput) (*domain.Project, error) {
+	for i, p := range m.projects {
+		if p.ID == id {
+			if input.Name != nil {
+				m.projects[i].Name = *input.Name
+			}
+			if input.Description != nil {
+				m.projects[i].Description = *input.Description
+			}
+			return &m.projects[i], nil
+		}
+	}
+	return nil, fmt.Errorf("project %s not found", id)
+}
+
 func (m *mockRepo) ListInitiatives(_ context.Context, filter domain.InitiativeListFilter) ([]domain.Initiative, error) {
 	out := make([]domain.Initiative, len(m.initiatives))
 	copy(out, m.initiatives)

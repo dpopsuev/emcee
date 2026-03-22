@@ -35,6 +35,7 @@ type ProjectRepository interface {
 	Name() string
 	ListProjects(ctx context.Context, filter domain.ProjectListFilter) ([]domain.Project, error)
 	CreateProject(ctx context.Context, input domain.ProjectCreateInput) (*domain.Project, error)
+	UpdateProject(ctx context.Context, id string, input domain.ProjectUpdateInput) (*domain.Project, error)
 }
 
 // InitiativeRepository is the outbound port for initiative operations.

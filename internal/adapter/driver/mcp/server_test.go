@@ -78,6 +78,14 @@ func (m *mockService) CreateProject(_ context.Context, backend string, input dom
 	return &domain.Project{ID: "p1", Name: input.Name}, nil
 }
 
+func (m *mockService) UpdateProject(_ context.Context, backend string, id string, input domain.ProjectUpdateInput) (*domain.Project, error) {
+	name := "Project One"
+	if input.Name != nil {
+		name = *input.Name
+	}
+	return &domain.Project{ID: id, Name: name}, nil
+}
+
 func (m *mockService) ListInitiatives(_ context.Context, backend string, filter domain.InitiativeListFilter) ([]domain.Initiative, error) {
 	return []domain.Initiative{{ID: "i1", Name: "Init One"}}, nil
 }

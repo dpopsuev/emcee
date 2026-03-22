@@ -29,6 +29,7 @@ type DocumentService interface {
 type ProjectService interface {
 	ListProjects(ctx context.Context, backend string, filter domain.ProjectListFilter) ([]domain.Project, error)
 	CreateProject(ctx context.Context, backend string, input domain.ProjectCreateInput) (*domain.Project, error)
+	UpdateProject(ctx context.Context, backend string, id string, input domain.ProjectUpdateInput) (*domain.Project, error)
 }
 
 // InitiativeService is the inbound port for initiative operations.

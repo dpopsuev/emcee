@@ -593,6 +593,52 @@ func (r *Repository) CreateProject(ctx context.Context, input domain.ProjectCrea
 	return &proj, nil
 }
 
+func (r *Repository) UpdateProject(ctx context.Context, id string, input domain.ProjectUpdateInput) (*domain.Project, error) {
+	slog.Info("update project", logKeyBackend, BackendName, logKeyOperation, "update_project", "id", id)
+
+	var parts []string
+	if input.Name != nil {
+		parts = append(parts, fmt.Sprintf(`name: "%s"`, escape(*input.Name)))
+	}
+	if input.Description != nil {
+		parts = append(parts, fmt.Sprintf(`description: "%s"`, escape(*input.Description)))
+	}
+	if len(parts) == 0 {
+		// Nothing to update — just fetch and return
+		return r.getProject(ctx, id)
+	}
+
+	q := fmt.Sprintf(`mutation { projectUpdate(id: "%s", input: { %s }) { success project { %s } } }`,
+		id, strings.Join(parts, ", "), projectFields)
+
+	var result struct {
+		ProjectUpdate struct {
+			Success bool          `json:"success"`
+			Project linearProject `json:"project"`
+		} `json:"projectUpdate"`
+	}
+	if err := r.gql(ctx, q, &result); err != nil {
+		return nil, err
+	}
+	if !result.ProjectUpdate.Success {
+		return nil, fmt.Errorf("project update failed")
+	}
+	proj := result.ProjectUpdate.Project.toDomain()
+	return &proj, nil
+}
+
+func (r *Repository) getProject(ctx context.Context, id string) (*domain.Project, error) {
+	q := fmt.Sprintf(`{ node(id: "%s") { ... on Project { %s } } }`, id, projectFields)
+	var result struct {
+		Node linearProject `json:"node"`
+	}
+	if err := r.gql(ctx, q, &result); err != nil {
+		return nil, err
+	}
+	proj := result.Node.toDomain()
+	return &proj, nil
+}
+
 // --- Initiative operations ---
 
 type linearInitiative struct {

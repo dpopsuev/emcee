@@ -74,8 +74,8 @@ func emceeTool() gomcp.Tool {
 
 func manageTool() gomcp.Tool {
 	return gomcp.NewTool("emcee_manage",
-		gomcp.WithDescription("Supporting entities: doc_list, doc_create, project_list, project_create, initiative_list, initiative_create, label_list, label_create."),
-		gomcp.WithString("action", gomcp.Required(), gomcp.Description("Action: doc_list, doc_create, project_list, project_create, initiative_list, initiative_create, label_list, label_create")),
+		gomcp.WithDescription("Supporting entities: doc_list, doc_create, project_list, project_create, project_update, initiative_list, initiative_create, label_list, label_create."),
+		gomcp.WithString("action", gomcp.Required(), gomcp.Description("Action: doc_list, doc_create, project_list, project_create, project_update, initiative_list, initiative_create, label_list, label_create")),
 		gomcp.WithString("backend", gomcp.Description("Backend name (default: linear)")),
 		gomcp.WithString("title", gomcp.Description("Document title (doc_create)")),
 		gomcp.WithString("name", gomcp.Description("Entity name (project/initiative/label create)")),
@@ -272,6 +272,24 @@ func manageHandler(svc EmceeService) server.ToolHandlerFunc {
 				Description: stringArg(req, "description", ""),
 			}
 			proj, err := svc.CreateProject(ctx, backend, input)
+			if err != nil {
+				return errResult(err), nil
+			}
+			return jsonResult(proj)
+
+		case "project_update":
+			id := stringArg(req, "id", "")
+			if id == "" {
+				return errResult(errors.New("id is required")), nil
+			}
+			var input domain.ProjectUpdateInput
+			if v := stringArg(req, "name", ""); v != "" {
+				input.Name = &v
+			}
+			if v := stringArg(req, "description", ""); v != "" {
+				input.Description = &v
+			}
+			proj, err := svc.UpdateProject(ctx, backend, id, input)
 			if err != nil {
 				return errResult(err), nil
 			}

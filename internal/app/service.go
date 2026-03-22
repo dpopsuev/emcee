@@ -199,6 +199,14 @@ func (s *Service) CreateProject(ctx context.Context, backend string, input domai
 	return r.CreateProject(ctx, input)
 }
 
+func (s *Service) UpdateProject(ctx context.Context, backend string, id string, input domain.ProjectUpdateInput) (*domain.Project, error) {
+	r, ok := s.projRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "projects")
+	}
+	return r.UpdateProject(ctx, id, input)
+}
+
 // --- Initiative operations ---
 
 func (s *Service) ListInitiatives(ctx context.Context, backend string, filter domain.InitiativeListFilter) ([]domain.Initiative, error) {

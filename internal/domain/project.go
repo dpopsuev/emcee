@@ -19,6 +19,11 @@ type ProjectCreateInput struct {
 	TeamIDs     []string `json:"team_ids,omitempty"`
 }
 
+type ProjectUpdateInput struct {
+	Name        *string `json:"name,omitempty"`
+	Description *string `json:"description,omitempty"`
+}
+
 type ProjectListFilter struct {
 	Limit int `json:"limit,omitempty"`
 }
