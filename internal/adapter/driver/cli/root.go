@@ -12,13 +12,16 @@ import (
 	"github.com/DanyPops/emcee/internal/adapter/driven/linear"
 	mcpserver "github.com/DanyPops/emcee/internal/adapter/driver/mcp"
 	"github.com/DanyPops/emcee/internal/app"
+	"github.com/DanyPops/emcee/internal/config"
 	"github.com/DanyPops/emcee/internal/domain"
+	"github.com/DanyPops/emcee/internal/port/driven"
 	"github.com/DanyPops/emcee/internal/port/driver"
 	"github.com/spf13/cobra"
 )
 
 var (
 	flagBackend  string
+	flagConfig   string
 	flagProject  string
 	flagStatus   string
 	flagPriority string
@@ -28,9 +31,49 @@ var (
 )
 
 func newService() (driver.IssueService, error) {
+	if config.Exists(flagConfig) {
+		return newServiceFromConfig()
+	}
+	return newServiceFromEnv()
+}
+
+func newServiceFromConfig() (driver.IssueService, error) {
+	cfg, err := config.Load(flagConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	var repos []driven.IssueRepository
+	for name, backend := range cfg.Backends {
+		switch name {
+		case "linear":
+			key := backend.ResolveKey()
+			if key == "" {
+				return nil, fmt.Errorf("linear: %s is not set", backend.APIKeyEnv)
+			}
+			team := backend.Team
+			if team == "" {
+				team = "HEG"
+			}
+			repo, err := linear.New(key, team)
+			if err != nil {
+				return nil, fmt.Errorf("linear: %w", err)
+			}
+			repos = append(repos, repo)
+		default:
+			return nil, fmt.Errorf("unsupported backend: %s", name)
+		}
+	}
+	if len(repos) == 0 {
+		return nil, fmt.Errorf("no backends configured in config file")
+	}
+	return app.NewService(repos...), nil
+}
+
+func newServiceFromEnv() (driver.IssueService, error) {
 	key := os.Getenv("LINEAR_API_KEY")
 	if key == "" {
-		return nil, fmt.Errorf("no backends configured (set LINEAR_API_KEY)")
+		return nil, fmt.Errorf("no backends configured (set LINEAR_API_KEY or create config file)")
 	}
 
 	team := os.Getenv("LINEAR_TEAM")
@@ -206,6 +249,7 @@ func printIssue(issue *domain.Issue) error {
 
 func init() {
 	rootCmd.PersistentFlags().StringVarP(&flagBackend, "backend", "b", "linear", "Backend to use")
+	rootCmd.PersistentFlags().StringVar(&flagConfig, "config", "", "Config file path (default ~/.config/emcee/config.yaml)")
 	rootCmd.PersistentFlags().BoolVar(&flagJSON, "json", false, "Output as JSON")
 
 	listCmd.Flags().StringVarP(&flagProject, "project", "p", "", "Project filter")

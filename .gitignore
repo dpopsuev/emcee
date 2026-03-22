@@ -1,4 +1,4 @@
-emcee
+bin/
 *.exe
 .idea/
 .vscode/
