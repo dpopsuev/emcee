@@ -1,9 +1,17 @@
-.PHONY: build test test-integration lint clean smoke
+.PHONY: build install test test-integration lint clean smoke
 
 BIN := bin/emcee
+GOBIN := $(shell go env GOBIN)
+ifeq ($(GOBIN),)
+GOBIN := $(shell go env GOPATH)/bin
+endif
 
 build:
 	go build -o $(BIN) .
+
+install: build
+	cp $(BIN) $(GOBIN)/emcee
+	@echo "installed to $(GOBIN)/emcee"
 
 test:
 	go test ./...
