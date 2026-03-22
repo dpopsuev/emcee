@@ -20,4 +20,45 @@ type IssueRepository interface {
 	Create(ctx context.Context, input domain.CreateInput) (*domain.Issue, error)
 	Update(ctx context.Context, key string, input domain.UpdateInput) (*domain.Issue, error)
 	Search(ctx context.Context, query string, limit int) ([]domain.Issue, error)
+	ListChildren(ctx context.Context, key string) ([]domain.Issue, error)
+}
+
+// DocumentRepository is the outbound port for document operations.
+type DocumentRepository interface {
+	Name() string
+	ListDocuments(ctx context.Context, filter domain.DocumentListFilter) ([]domain.Document, error)
+	CreateDocument(ctx context.Context, input domain.DocumentCreateInput) (*domain.Document, error)
+}
+
+// ProjectRepository is the outbound port for project operations.
+type ProjectRepository interface {
+	Name() string
+	ListProjects(ctx context.Context, filter domain.ProjectListFilter) ([]domain.Project, error)
+	CreateProject(ctx context.Context, input domain.ProjectCreateInput) (*domain.Project, error)
+}
+
+// InitiativeRepository is the outbound port for initiative operations.
+type InitiativeRepository interface {
+	Name() string
+	ListInitiatives(ctx context.Context, filter domain.InitiativeListFilter) ([]domain.Initiative, error)
+	CreateInitiative(ctx context.Context, input domain.InitiativeCreateInput) (*domain.Initiative, error)
+}
+
+// LabelRepository is the outbound port for label operations.
+type LabelRepository interface {
+	Name() string
+	ListLabels(ctx context.Context) ([]domain.Label, error)
+	CreateLabel(ctx context.Context, input domain.LabelCreateInput) (*domain.Label, error)
+}
+
+// BulkIssueRepository is the outbound port for batch issue creation.
+// Implementations handle at most 50 issues per call.
+type BulkIssueRepository interface {
+	Name() string
+	BulkCreateIssues(ctx context.Context, inputs []domain.CreateInput) ([]domain.Issue, error)
+}
+
+// UserResolver resolves human-readable names to backend-specific IDs.
+type UserResolver interface {
+	ResolveUser(ctx context.Context, name string) (string, error)
 }

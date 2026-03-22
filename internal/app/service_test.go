@@ -10,13 +10,22 @@ import (
 	"github.com/DanyPops/emcee/internal/port/driven"
 )
 
-// mockRepo implements driven.IssueRepository for testing.
+// mockRepo implements all driven repository interfaces for testing.
 type mockRepo struct {
-	name   string
-	issues []domain.Issue
+	name       string
+	issues     []domain.Issue
+	docs       []domain.Document
+	projects   []domain.Project
+	initiatives []domain.Initiative
+	labels     []domain.Label
 }
 
 var _ driven.IssueRepository = (*mockRepo)(nil)
+var _ driven.DocumentRepository = (*mockRepo)(nil)
+var _ driven.ProjectRepository = (*mockRepo)(nil)
+var _ driven.InitiativeRepository = (*mockRepo)(nil)
+var _ driven.LabelRepository = (*mockRepo)(nil)
+var _ driven.BulkIssueRepository = (*mockRepo)(nil)
 
 func (m *mockRepo) Name() string { return m.name }
 
@@ -73,12 +82,91 @@ func (m *mockRepo) Search(_ context.Context, query string, limit int) ([]domain.
 	return m.issues, nil
 }
 
+func (m *mockRepo) ListChildren(_ context.Context, key string) ([]domain.Issue, error) {
+	return nil, nil
+}
+
+func (m *mockRepo) ListDocuments(_ context.Context, filter domain.DocumentListFilter) ([]domain.Document, error) {
+	out := make([]domain.Document, len(m.docs))
+	copy(out, m.docs)
+	if filter.Limit > 0 && len(out) > filter.Limit {
+		out = out[:filter.Limit]
+	}
+	return out, nil
+}
+
+func (m *mockRepo) CreateDocument(_ context.Context, input domain.DocumentCreateInput) (*domain.Document, error) {
+	doc := domain.Document{ID: "doc-1", Title: input.Title, Content: input.Content}
+	m.docs = append(m.docs, doc)
+	return &doc, nil
+}
+
+func (m *mockRepo) ListProjects(_ context.Context, filter domain.ProjectListFilter) ([]domain.Project, error) {
+	out := make([]domain.Project, len(m.projects))
+	copy(out, m.projects)
+	if filter.Limit > 0 && len(out) > filter.Limit {
+		out = out[:filter.Limit]
+	}
+	return out, nil
+}
+
+func (m *mockRepo) CreateProject(_ context.Context, input domain.ProjectCreateInput) (*domain.Project, error) {
+	proj := domain.Project{ID: "proj-1", Name: input.Name, Description: input.Description}
+	m.projects = append(m.projects, proj)
+	return &proj, nil
+}
+
+func (m *mockRepo) ListInitiatives(_ context.Context, filter domain.InitiativeListFilter) ([]domain.Initiative, error) {
+	out := make([]domain.Initiative, len(m.initiatives))
+	copy(out, m.initiatives)
+	if filter.Limit > 0 && len(out) > filter.Limit {
+		out = out[:filter.Limit]
+	}
+	return out, nil
+}
+
+func (m *mockRepo) CreateInitiative(_ context.Context, input domain.InitiativeCreateInput) (*domain.Initiative, error) {
+	init := domain.Initiative{ID: "init-1", Name: input.Name, Description: input.Description}
+	m.initiatives = append(m.initiatives, init)
+	return &init, nil
+}
+
+func (m *mockRepo) ListLabels(_ context.Context) ([]domain.Label, error) {
+	return m.labels, nil
+}
+
+func (m *mockRepo) CreateLabel(_ context.Context, input domain.LabelCreateInput) (*domain.Label, error) {
+	label := domain.Label{ID: "label-1", Name: input.Name}
+	m.labels = append(m.labels, label)
+	return &label, nil
+}
+
+func (m *mockRepo) BulkCreateIssues(_ context.Context, inputs []domain.CreateInput) ([]domain.Issue, error) {
+	var created []domain.Issue
+	for i, input := range inputs {
+		issue := domain.Issue{
+			Ref:   fmt.Sprintf("%s:BULK-%d", m.name, i+1),
+			ID:    fmt.Sprintf("bulk-id-%d", i+1),
+			Key:   fmt.Sprintf("BULK-%d", i+1),
+			Title: input.Title,
+		}
+		created = append(created, issue)
+	}
+	return created, nil
+}
+
 func newTestService() *app.Service {
 	return app.NewService(&mockRepo{
 		name: "test",
 		issues: []domain.Issue{
 			{Ref: "test:T-1", Key: "T-1", Title: "First", Status: domain.StatusTodo},
 			{Ref: "test:T-2", Key: "T-2", Title: "Second", Status: domain.StatusDone},
+		},
+		docs: []domain.Document{
+			{ID: "d1", Title: "Doc One"},
+		},
+		projects: []domain.Project{
+			{ID: "p1", Name: "Project One"},
 		},
 	})
 }
@@ -120,7 +208,6 @@ func TestParseRef(t *testing.T) {
 
 func TestServiceGet(t *testing.T) {
 	svc := newTestService()
-
 	issue, err := svc.Get(context.Background(), "test:T-1")
 	if err != nil {
 		t.Fatalf("Get: %v", err)
@@ -132,7 +219,6 @@ func TestServiceGet(t *testing.T) {
 
 func TestServiceGetUnknownBackend(t *testing.T) {
 	svc := newTestService()
-
 	_, err := svc.Get(context.Background(), "unknown:X-1")
 	if err == nil {
 		t.Fatal("expected error for unknown backend")
@@ -141,7 +227,6 @@ func TestServiceGetUnknownBackend(t *testing.T) {
 
 func TestServiceGetNotFound(t *testing.T) {
 	svc := newTestService()
-
 	_, err := svc.Get(context.Background(), "test:NOPE-999")
 	if err == nil {
 		t.Fatal("expected error for missing issue")
@@ -150,7 +235,6 @@ func TestServiceGetNotFound(t *testing.T) {
 
 func TestServiceList(t *testing.T) {
 	svc := newTestService()
-
 	issues, err := svc.List(context.Background(), "test", domain.ListFilter{})
 	if err != nil {
 		t.Fatalf("List: %v", err)
@@ -162,7 +246,6 @@ func TestServiceList(t *testing.T) {
 
 func TestServiceListWithStatusFilter(t *testing.T) {
 	svc := newTestService()
-
 	issues, err := svc.List(context.Background(), "test", domain.ListFilter{Status: domain.StatusDone})
 	if err != nil {
 		t.Fatalf("List: %v", err)
@@ -177,7 +260,6 @@ func TestServiceListWithStatusFilter(t *testing.T) {
 
 func TestServiceCreate(t *testing.T) {
 	svc := newTestService()
-
 	issue, err := svc.Create(context.Background(), "test", domain.CreateInput{Title: "New issue"})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
@@ -193,7 +275,6 @@ func TestServiceCreate(t *testing.T) {
 func TestServiceUpdate(t *testing.T) {
 	svc := newTestService()
 	newTitle := "Updated"
-
 	issue, err := svc.Update(context.Background(), "test:T-1", domain.UpdateInput{Title: &newTitle})
 	if err != nil {
 		t.Fatalf("Update: %v", err)
@@ -208,5 +289,78 @@ func TestServiceBackends(t *testing.T) {
 	backends := svc.Backends()
 	if len(backends) != 1 || backends[0] != "test" {
 		t.Errorf("backends = %v, want [test]", backends)
+	}
+}
+
+func TestServiceCreateDocument(t *testing.T) {
+	svc := newTestService()
+	doc, err := svc.CreateDocument(context.Background(), "test", domain.DocumentCreateInput{Title: "New doc", Content: "body"})
+	if err != nil {
+		t.Fatalf("CreateDocument: %v", err)
+	}
+	if doc.Title != "New doc" {
+		t.Errorf("title = %q, want %q", doc.Title, "New doc")
+	}
+}
+
+func TestServiceListDocuments(t *testing.T) {
+	svc := newTestService()
+	docs, err := svc.ListDocuments(context.Background(), "test", domain.DocumentListFilter{})
+	if err != nil {
+		t.Fatalf("ListDocuments: %v", err)
+	}
+	if len(docs) != 1 {
+		t.Errorf("len = %d, want 1", len(docs))
+	}
+}
+
+func TestServiceCreateProject(t *testing.T) {
+	svc := newTestService()
+	proj, err := svc.CreateProject(context.Background(), "test", domain.ProjectCreateInput{Name: "New proj"})
+	if err != nil {
+		t.Fatalf("CreateProject: %v", err)
+	}
+	if proj.Name != "New proj" {
+		t.Errorf("name = %q, want %q", proj.Name, "New proj")
+	}
+}
+
+func TestServiceListProjects(t *testing.T) {
+	svc := newTestService()
+	projs, err := svc.ListProjects(context.Background(), "test", domain.ProjectListFilter{})
+	if err != nil {
+		t.Fatalf("ListProjects: %v", err)
+	}
+	if len(projs) != 1 {
+		t.Errorf("len = %d, want 1", len(projs))
+	}
+}
+
+func TestServiceBulkCreateIssues(t *testing.T) {
+	svc := newTestService()
+	inputs := make([]domain.CreateInput, 120)
+	for i := range inputs {
+		inputs[i] = domain.CreateInput{Title: fmt.Sprintf("Issue %d", i+1)}
+	}
+	result, err := svc.BulkCreateIssues(context.Background(), "test", inputs)
+	if err != nil {
+		t.Fatalf("BulkCreateIssues: %v", err)
+	}
+	if result.Total != 120 {
+		t.Errorf("total = %d, want 120", result.Total)
+	}
+	if result.Batches != 3 {
+		t.Errorf("batches = %d, want 3", result.Batches)
+	}
+	if len(result.Created) != 120 {
+		t.Errorf("created = %d, want 120", len(result.Created))
+	}
+}
+
+func TestServiceDocumentsUnsupportedBackend(t *testing.T) {
+	svc := newTestService()
+	_, err := svc.ListDocuments(context.Background(), "unknown", domain.DocumentListFilter{})
+	if err == nil {
+		t.Fatal("expected error for unsupported backend")
 	}
 }

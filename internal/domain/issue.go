@@ -80,6 +80,8 @@ type CreateInput struct {
 	Labels      []string `json:"labels,omitempty"`
 	Assignee    string   `json:"assignee,omitempty"`
 	Project     string   `json:"project,omitempty"`
+	ParentID    string   `json:"parent_id,omitempty"`
+	ProjectID   string   `json:"project_id,omitempty"`
 }
 
 type UpdateInput struct {

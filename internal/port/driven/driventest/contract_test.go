@@ -60,6 +60,10 @@ func (m *mockRepo) Search(_ context.Context, query string, limit int) ([]domain.
 	return m.issues, nil
 }
 
+func (m *mockRepo) ListChildren(_ context.Context, key string) ([]domain.Issue, error) {
+	return nil, nil
+}
+
 func TestMockRepoContract(t *testing.T) {
 	RunContractTests(t, func(t *testing.T) (driven.IssueRepository, string) {
 		return &mockRepo{
