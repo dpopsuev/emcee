@@ -47,4 +47,5 @@ type LabelService interface {
 // The service handles chunking into backend-appropriate batch sizes.
 type BulkService interface {
 	BulkCreateIssues(ctx context.Context, backend string, inputs []domain.CreateInput) (*domain.BulkCreateResult, error)
+	BulkUpdateIssues(ctx context.Context, backend string, inputs []domain.BulkUpdateInput) (*domain.BulkUpdateResult, error)
 }

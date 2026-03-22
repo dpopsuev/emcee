@@ -261,3 +261,32 @@ func (s *Service) BulkCreateIssues(ctx context.Context, backend string, inputs [
 	}
 	return result, nil
 }
+
+func (s *Service) BulkUpdateIssues(ctx context.Context, backend string, inputs []domain.BulkUpdateInput) (*domain.BulkUpdateResult, error) {
+	r, err := s.repo(backend)
+	if err != nil {
+		return nil, err
+	}
+
+	result := &domain.BulkUpdateResult{Total: len(inputs)}
+	for _, input := range inputs {
+		_, key, refErr := ParseRef(input.Ref)
+		if refErr != nil {
+			result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", input.Ref, refErr))
+			continue
+		}
+		updateInput := domain.UpdateInput{
+			Title:       input.Title,
+			Description: input.Description,
+			Status:      input.Status,
+			Priority:    input.Priority,
+		}
+		issue, updateErr := r.Update(ctx, key, updateInput)
+		if updateErr != nil {
+			result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", input.Ref, updateErr))
+			continue
+		}
+		result.Updated = append(result.Updated, *issue)
+	}
+	return result, nil
+}

@@ -15,49 +15,11 @@ import (
 
 const (
 	serverName    = "emcee"
-	serverVersion = "0.2.0"
-
-	toolList   = "emcee_list"
-	toolGet    = "emcee_get"
-	toolCreate = "emcee_create"
-	toolUpdate = "emcee_update"
-	toolSearch = "emcee_search"
-
-	toolDocList       = "emcee_doc_list"
-	toolDocCreate     = "emcee_doc_create"
-	toolProjectList   = "emcee_project_list"
-	toolProjectCreate = "emcee_project_create"
-	toolInitList      = "emcee_initiative_list"
-	toolInitCreate    = "emcee_initiative_create"
-	toolLabelList     = "emcee_label_list"
-	toolLabelCreate   = "emcee_label_create"
-	toolBulkCreate    = "emcee_bulk_create"
-
-	argBackend     = "backend"
-	argRef         = "ref"
-	argTitle       = "title"
-	argName        = "name"
-	argDescription = "description"
-	argContent     = "content"
-	argProjectID   = "project_id"
-	argStatus      = "status"
-	argPriority    = "priority"
-	argAssignee    = "assignee"
-	argQuery       = "query"
-	argLimit       = "limit"
-	argIssues      = "issues"
-	argColor       = "color"
+	serverVersion = "0.3.0"
 
 	defaultBackend   = "linear"
 	defaultListMax   = 50
 	defaultSearchMax = 20
-)
-
-var (
-	ErrRefRequired             = errors.New("ref is required")
-	ErrBackendAndTitleRequired = errors.New("backend and title are required")
-	ErrBackendAndQueryRequired = errors.New("backend and query are required")
-	ErrBackendAndNameRequired  = errors.New("backend and name are required")
 )
 
 // EmceeService combines all driver port interfaces.
@@ -70,7 +32,7 @@ type EmceeService interface {
 	driver.BulkService
 }
 
-const serverInstructions = `Emcee is a unified issue tracker across Linear, GitHub, and Jira. Ref format: "backend:key" (e.g. "linear:HEG-17"). Backend defaults to "linear" for list ops, required for create/update. Entities: Issues (work), Documents (rich text, no status), Projects (group issues), Initiatives (group projects), Labels (tags). Status: backlog, todo, in_progress, in_review, done, canceled. Priority: urgent, high, medium, low. Use bulk_create for batch ops (auto-batches to 50).`
+const serverInstructions = `Emcee is a unified issue tracker across Linear, GitHub, and Jira. Two tools: emcee (issue CRUD: list, get, create, update, search, children, bulk_create, bulk_update) and emcee_manage (supporting entities: doc_list, doc_create, project_list, project_create, initiative_list, initiative_create, label_list, label_create). Ref format: "backend:key" (e.g. "linear:HEG-17"). Backend defaults to "linear". Status: backlog, todo, in_progress, in_review, done, canceled. Priority: urgent, high, medium, low. Bulk ops accept JSON array in issues param, auto-batch to 50.`
 
 // Serve starts the MCP server over stdio, exposing issue management tools.
 func Serve(svc EmceeService) error {
@@ -85,406 +47,284 @@ func Serve(svc EmceeService) error {
 var RegisterToolsForTesting = registerTools
 
 func registerTools(s *server.MCPServer, svc EmceeService) {
-	s.AddTool(listTool(), listHandler(svc))
-	s.AddTool(getTool(), getHandler(svc))
-	s.AddTool(createTool(), createHandler(svc))
-	s.AddTool(updateTool(), updateHandler(svc))
-	s.AddTool(searchTool(), searchHandler(svc))
-	s.AddTool(docListTool(), docListHandler(svc))
-	s.AddTool(docCreateTool(), docCreateHandler(svc))
-	s.AddTool(projectListTool(), projectListHandler(svc))
-	s.AddTool(projectCreateTool(), projectCreateHandler(svc))
-	s.AddTool(initListTool(), initListHandler(svc))
-	s.AddTool(initCreateTool(), initCreateHandler(svc))
-	s.AddTool(labelListTool(), labelListHandler(svc))
-	s.AddTool(labelCreateTool(), labelCreateHandler(svc))
-	s.AddTool(bulkCreateTool(), bulkCreateHandler(svc))
+	s.AddTool(emceeTool(), emceeHandler(svc))
+	s.AddTool(manageTool(), manageHandler(svc))
 }
 
 // --- Tool definitions ---
 
-func listTool() gomcp.Tool {
-	return gomcp.NewTool(toolList,
-		gomcp.WithDescription("List issues. Filter by status and assignee."),
-		gomcp.WithString(argBackend, gomcp.Description("Backend name: linear, github, jira"), gomcp.DefaultString(defaultBackend)),
-		gomcp.WithString(argStatus, gomcp.Description("Filter by status: backlog, todo, in_progress, in_review, done, canceled")),
-		gomcp.WithString(argAssignee, gomcp.Description("Filter by assignee name")),
-		gomcp.WithNumber(argLimit, gomcp.Description("Max results to return")),
+func emceeTool() gomcp.Tool {
+	return gomcp.NewTool("emcee",
+		gomcp.WithDescription("Issue CRUD: list, get, create, update, search, children, bulk_create, bulk_update."),
+		gomcp.WithString("action", gomcp.Required(), gomcp.Description("Action: list, get, create, update, search, children, bulk_create, bulk_update")),
+		gomcp.WithString("backend", gomcp.Description("Backend name (default: linear)")),
+		gomcp.WithString("ref", gomcp.Description("Issue ref for get/update/children (e.g. linear:HEG-17)")),
+		gomcp.WithString("title", gomcp.Description("Issue title (create)")),
+		gomcp.WithString("description", gomcp.Description("Issue description (create/update)")),
+		gomcp.WithString("status", gomcp.Description("Status: backlog, todo, in_progress, in_review, done, canceled")),
+		gomcp.WithString("priority", gomcp.Description("Priority: urgent, high, medium, low")),
+		gomcp.WithString("assignee", gomcp.Description("Assignee name (create/list filter)")),
+		gomcp.WithString("parent_id", gomcp.Description("Parent issue ID for sub-issues (create)")),
+		gomcp.WithString("project_id", gomcp.Description("Project ID (create)")),
+		gomcp.WithString("query", gomcp.Description("Search query text (search)")),
+		gomcp.WithNumber("limit", gomcp.Description("Max results (list/search)")),
+		gomcp.WithString("issues", gomcp.Description("JSON array for bulk_create/bulk_update")),
 	)
 }
 
-func getTool() gomcp.Tool {
-	return gomcp.NewTool(toolGet,
-		gomcp.WithDescription("Get issue details by ref (e.g. linear:HEG-17)."),
-		gomcp.WithString(argRef, gomcp.Required(), gomcp.Description("Canonical issue reference (backend:key)")),
+func manageTool() gomcp.Tool {
+	return gomcp.NewTool("emcee_manage",
+		gomcp.WithDescription("Supporting entities: doc_list, doc_create, project_list, project_create, initiative_list, initiative_create, label_list, label_create."),
+		gomcp.WithString("action", gomcp.Required(), gomcp.Description("Action: doc_list, doc_create, project_list, project_create, initiative_list, initiative_create, label_list, label_create")),
+		gomcp.WithString("backend", gomcp.Description("Backend name (default: linear)")),
+		gomcp.WithString("title", gomcp.Description("Document title (doc_create)")),
+		gomcp.WithString("name", gomcp.Description("Entity name (project/initiative/label create)")),
+		gomcp.WithString("description", gomcp.Description("Description (doc/project/initiative create)")),
+		gomcp.WithString("content", gomcp.Description("Markdown content (doc_create)")),
+		gomcp.WithString("project_id", gomcp.Description("Link document to project (doc_create)")),
+		gomcp.WithString("color", gomcp.Description("Label color hex (label_create)")),
+		gomcp.WithNumber("limit", gomcp.Description("Max results (list actions)")),
 	)
 }
 
-func createTool() gomcp.Tool {
-	return gomcp.NewTool(toolCreate,
-		gomcp.WithDescription("Create an issue. Supports parent_id (sub-issues), project_id, and assignee (name, auto-resolved)."),
-		gomcp.WithString(argBackend, gomcp.Required(), gomcp.Description("Backend name: linear, github, jira")),
-		gomcp.WithString(argTitle, gomcp.Required(), gomcp.Description("Issue title")),
-		gomcp.WithString(argDescription, gomcp.Description("Issue description")),
-		gomcp.WithString(argPriority, gomcp.Description("Priority: urgent, high, medium, low")),
-		gomcp.WithString(argStatus, gomcp.Description("Initial status")),
-	)
-}
+// --- Dispatchers ---
 
-func updateTool() gomcp.Tool {
-	return gomcp.NewTool(toolUpdate,
-		gomcp.WithDescription("Update an issue by ref. Only provided fields are changed."),
-		gomcp.WithString(argRef, gomcp.Required(), gomcp.Description("Canonical issue reference (backend:key)")),
-		gomcp.WithString(argTitle, gomcp.Description("New title")),
-		gomcp.WithString(argDescription, gomcp.Description("New description")),
-		gomcp.WithString(argStatus, gomcp.Description("New status")),
-		gomcp.WithString(argPriority, gomcp.Description("New priority")),
-	)
-}
-
-func searchTool() gomcp.Tool {
-	return gomcp.NewTool(toolSearch,
-		gomcp.WithDescription("Full-text search across issues."),
-		gomcp.WithString(argBackend, gomcp.Required(), gomcp.Description("Backend name: linear, github, jira")),
-		gomcp.WithString(argQuery, gomcp.Required(), gomcp.Description("Search query text")),
-		gomcp.WithNumber(argLimit, gomcp.Description("Max results to return")),
-	)
-}
-
-// --- Handlers ---
-
-func listHandler(svc driver.IssueService) server.ToolHandlerFunc {
+func emceeHandler(svc EmceeService) server.ToolHandlerFunc {
 	return func(ctx context.Context, req gomcp.CallToolRequest) (*gomcp.CallToolResult, error) {
-		backend := stringArg(req, argBackend, defaultBackend)
-		filter := domain.ListFilter{
-			Status:   domain.Status(stringArg(req, argStatus, "")),
-			Assignee: stringArg(req, argAssignee, ""),
-			Limit:    intArg(req, argLimit, defaultListMax),
-		}
+		action := stringArg(req, "action", "")
+		backend := stringArg(req, "backend", defaultBackend)
 
-		issues, err := svc.List(ctx, backend, filter)
-		if err != nil {
-			return errResult(err), nil
+		switch action {
+		case "list":
+			filter := domain.ListFilter{
+				Status:   domain.Status(stringArg(req, "status", "")),
+				Assignee: stringArg(req, "assignee", ""),
+				Limit:    intArg(req, "limit", defaultListMax),
+			}
+			issues, err := svc.List(ctx, backend, filter)
+			if err != nil {
+				return errResult(err), nil
+			}
+			return jsonResult(issues)
+
+		case "get":
+			ref := stringArg(req, "ref", "")
+			if ref == "" {
+				return errResult(errors.New("ref is required")), nil
+			}
+			issue, err := svc.Get(ctx, ref)
+			if err != nil {
+				return errResult(err), nil
+			}
+			return jsonResult(issue)
+
+		case "create":
+			title := stringArg(req, "title", "")
+			if title == "" {
+				return errResult(errors.New("title is required")), nil
+			}
+			input := domain.CreateInput{
+				Title:       title,
+				Description: stringArg(req, "description", ""),
+				Priority:    domain.ParsePriority(stringArg(req, "priority", "")),
+				Assignee:    stringArg(req, "assignee", ""),
+				ParentID:    stringArg(req, "parent_id", ""),
+				ProjectID:   stringArg(req, "project_id", ""),
+			}
+			if s := stringArg(req, "status", ""); s != "" {
+				input.Status = domain.Status(s)
+			}
+			issue, err := svc.Create(ctx, backend, input)
+			if err != nil {
+				return errResult(err), nil
+			}
+			return jsonResult(issue)
+
+		case "update":
+			ref := stringArg(req, "ref", "")
+			if ref == "" {
+				return errResult(errors.New("ref is required")), nil
+			}
+			var input domain.UpdateInput
+			if v := stringArg(req, "title", ""); v != "" {
+				input.Title = &v
+			}
+			if v := stringArg(req, "description", ""); v != "" {
+				input.Description = &v
+			}
+			if v := stringArg(req, "status", ""); v != "" {
+				s := domain.Status(v)
+				input.Status = &s
+			}
+			if v := stringArg(req, "priority", ""); v != "" {
+				p := domain.ParsePriority(v)
+				input.Priority = &p
+			}
+			issue, err := svc.Update(ctx, ref, input)
+			if err != nil {
+				return errResult(err), nil
+			}
+			return jsonResult(issue)
+
+		case "search":
+			query := stringArg(req, "query", "")
+			if query == "" {
+				return errResult(errors.New("query is required")), nil
+			}
+			issues, err := svc.Search(ctx, backend, query, intArg(req, "limit", defaultSearchMax))
+			if err != nil {
+				return errResult(err), nil
+			}
+			return jsonResult(issues)
+
+		case "children":
+			ref := stringArg(req, "ref", "")
+			if ref == "" {
+				return errResult(errors.New("ref is required")), nil
+			}
+			issues, err := svc.ListChildren(ctx, ref)
+			if err != nil {
+				return errResult(err), nil
+			}
+			return jsonResult(issues)
+
+		case "bulk_create":
+			issuesJSON := stringArg(req, "issues", "")
+			if issuesJSON == "" {
+				return errResult(errors.New("issues is required")), nil
+			}
+			var inputs []domain.CreateInput
+			if err := json.Unmarshal([]byte(issuesJSON), &inputs); err != nil {
+				return errResult(fmt.Errorf("invalid issues JSON: %w", err)), nil
+			}
+			result, err := svc.BulkCreateIssues(ctx, backend, inputs)
+			if err != nil {
+				return errResult(err), nil
+			}
+			return jsonResult(result)
+
+		case "bulk_update":
+			issuesJSON := stringArg(req, "issues", "")
+			if issuesJSON == "" {
+				return errResult(errors.New("issues is required")), nil
+			}
+			var inputs []domain.BulkUpdateInput
+			if err := json.Unmarshal([]byte(issuesJSON), &inputs); err != nil {
+				return errResult(fmt.Errorf("invalid issues JSON: %w", err)), nil
+			}
+			result, err := svc.BulkUpdateIssues(ctx, backend, inputs)
+			if err != nil {
+				return errResult(err), nil
+			}
+			return jsonResult(result)
+
+		default:
+			return errResult(fmt.Errorf("unknown action %q (valid: list, get, create, update, search, children, bulk_create, bulk_update)", action)), nil
 		}
-		return jsonResult(issues)
 	}
 }
 
-func getHandler(svc driver.IssueService) server.ToolHandlerFunc {
+func manageHandler(svc EmceeService) server.ToolHandlerFunc {
 	return func(ctx context.Context, req gomcp.CallToolRequest) (*gomcp.CallToolResult, error) {
-		ref := stringArg(req, argRef, "")
-		if ref == "" {
-			return errResult(ErrRefRequired), nil
+		action := stringArg(req, "action", "")
+		backend := stringArg(req, "backend", defaultBackend)
+
+		switch action {
+		case "doc_list":
+			filter := domain.DocumentListFilter{Limit: intArg(req, "limit", defaultListMax)}
+			docs, err := svc.ListDocuments(ctx, backend, filter)
+			if err != nil {
+				return errResult(err), nil
+			}
+			return jsonResult(docs)
+
+		case "doc_create":
+			title := stringArg(req, "title", "")
+			if title == "" {
+				return errResult(errors.New("title is required")), nil
+			}
+			input := domain.DocumentCreateInput{
+				Title:     title,
+				Content:   stringArg(req, "content", ""),
+				ProjectID: stringArg(req, "project_id", ""),
+			}
+			doc, err := svc.CreateDocument(ctx, backend, input)
+			if err != nil {
+				return errResult(err), nil
+			}
+			return jsonResult(doc)
+
+		case "project_list":
+			filter := domain.ProjectListFilter{Limit: intArg(req, "limit", defaultListMax)}
+			projects, err := svc.ListProjects(ctx, backend, filter)
+			if err != nil {
+				return errResult(err), nil
+			}
+			return jsonResult(projects)
+
+		case "project_create":
+			name := stringArg(req, "name", "")
+			if name == "" {
+				return errResult(errors.New("name is required")), nil
+			}
+			input := domain.ProjectCreateInput{
+				Name:        name,
+				Description: stringArg(req, "description", ""),
+			}
+			proj, err := svc.CreateProject(ctx, backend, input)
+			if err != nil {
+				return errResult(err), nil
+			}
+			return jsonResult(proj)
+
+		case "initiative_list":
+			filter := domain.InitiativeListFilter{Limit: intArg(req, "limit", defaultListMax)}
+			inits, err := svc.ListInitiatives(ctx, backend, filter)
+			if err != nil {
+				return errResult(err), nil
+			}
+			return jsonResult(inits)
+
+		case "initiative_create":
+			name := stringArg(req, "name", "")
+			if name == "" {
+				return errResult(errors.New("name is required")), nil
+			}
+			input := domain.InitiativeCreateInput{
+				Name:        name,
+				Description: stringArg(req, "description", ""),
+			}
+			init, err := svc.CreateInitiative(ctx, backend, input)
+			if err != nil {
+				return errResult(err), nil
+			}
+			return jsonResult(init)
+
+		case "label_list":
+			labels, err := svc.ListLabels(ctx, backend)
+			if err != nil {
+				return errResult(err), nil
+			}
+			return jsonResult(labels)
+
+		case "label_create":
+			name := stringArg(req, "name", "")
+			if name == "" {
+				return errResult(errors.New("name is required")), nil
+			}
+			input := domain.LabelCreateInput{
+				Name:  name,
+				Color: stringArg(req, "color", ""),
+			}
+			label, err := svc.CreateLabel(ctx, backend, input)
+			if err != nil {
+				return errResult(err), nil
+			}
+			return jsonResult(label)
+
+		default:
+			return errResult(fmt.Errorf("unknown action %q (valid: doc_list, doc_create, project_list, project_create, initiative_list, initiative_create, label_list, label_create)", action)), nil
 		}
-
-		issue, err := svc.Get(ctx, ref)
-		if err != nil {
-			return errResult(err), nil
-		}
-		return jsonResult(issue)
-	}
-}
-
-func createHandler(svc driver.IssueService) server.ToolHandlerFunc {
-	return func(ctx context.Context, req gomcp.CallToolRequest) (*gomcp.CallToolResult, error) {
-		backend := stringArg(req, argBackend, "")
-		title := stringArg(req, argTitle, "")
-		if backend == "" || title == "" {
-			return errResult(ErrBackendAndTitleRequired), nil
-		}
-
-		input := domain.CreateInput{
-			Title:       title,
-			Description: stringArg(req, argDescription, ""),
-			Priority:    domain.ParsePriority(stringArg(req, argPriority, "")),
-		}
-		if s := stringArg(req, argStatus, ""); s != "" {
-			input.Status = domain.Status(s)
-		}
-
-		issue, err := svc.Create(ctx, backend, input)
-		if err != nil {
-			return errResult(err), nil
-		}
-		return jsonResult(issue)
-	}
-}
-
-func updateHandler(svc driver.IssueService) server.ToolHandlerFunc {
-	return func(ctx context.Context, req gomcp.CallToolRequest) (*gomcp.CallToolResult, error) {
-		ref := stringArg(req, argRef, "")
-		if ref == "" {
-			return errResult(ErrRefRequired), nil
-		}
-
-		var input domain.UpdateInput
-		if v := stringArg(req, argTitle, ""); v != "" {
-			input.Title = &v
-		}
-		if v := stringArg(req, argDescription, ""); v != "" {
-			input.Description = &v
-		}
-		if v := stringArg(req, argStatus, ""); v != "" {
-			s := domain.Status(v)
-			input.Status = &s
-		}
-		if v := stringArg(req, argPriority, ""); v != "" {
-			p := domain.ParsePriority(v)
-			input.Priority = &p
-		}
-
-		issue, err := svc.Update(ctx, ref, input)
-		if err != nil {
-			return errResult(err), nil
-		}
-		return jsonResult(issue)
-	}
-}
-
-func searchHandler(svc driver.IssueService) server.ToolHandlerFunc {
-	return func(ctx context.Context, req gomcp.CallToolRequest) (*gomcp.CallToolResult, error) {
-		backend := stringArg(req, argBackend, "")
-		query := stringArg(req, argQuery, "")
-		if backend == "" || query == "" {
-			return errResult(ErrBackendAndQueryRequired), nil
-		}
-
-		issues, err := svc.Search(ctx, backend, query, intArg(req, argLimit, defaultSearchMax))
-		if err != nil {
-			return errResult(err), nil
-		}
-		return jsonResult(issues)
-	}
-}
-
-// --- Document tools ---
-
-func docListTool() gomcp.Tool {
-	return gomcp.NewTool(toolDocList,
-		gomcp.WithDescription("List documents (rich text, no status/priority)."),
-		gomcp.WithString(argBackend, gomcp.Description("Backend name"), gomcp.DefaultString(defaultBackend)),
-		gomcp.WithNumber(argLimit, gomcp.Description("Max results to return")),
-	)
-}
-
-func docListHandler(svc EmceeService) server.ToolHandlerFunc {
-	return func(ctx context.Context, req gomcp.CallToolRequest) (*gomcp.CallToolResult, error) {
-		backend := stringArg(req, argBackend, defaultBackend)
-		filter := domain.DocumentListFilter{Limit: intArg(req, argLimit, defaultListMax)}
-		docs, err := svc.ListDocuments(ctx, backend, filter)
-		if err != nil {
-			return errResult(err), nil
-		}
-		return jsonResult(docs)
-	}
-}
-
-func docCreateTool() gomcp.Tool {
-	return gomcp.NewTool(toolDocCreate,
-		gomcp.WithDescription("Create a document. Content is markdown. Optionally link to a project via project_id."),
-		gomcp.WithString(argBackend, gomcp.Required(), gomcp.Description("Backend name")),
-		gomcp.WithString(argTitle, gomcp.Required(), gomcp.Description("Document title")),
-		gomcp.WithString(argContent, gomcp.Description("Document content (markdown)")),
-		gomcp.WithString(argProjectID, gomcp.Description("Project ID to link the document to")),
-	)
-}
-
-func docCreateHandler(svc EmceeService) server.ToolHandlerFunc {
-	return func(ctx context.Context, req gomcp.CallToolRequest) (*gomcp.CallToolResult, error) {
-		backend := stringArg(req, argBackend, "")
-		title := stringArg(req, argTitle, "")
-		if backend == "" || title == "" {
-			return errResult(ErrBackendAndTitleRequired), nil
-		}
-		input := domain.DocumentCreateInput{
-			Title:     title,
-			Content:   stringArg(req, argContent, ""),
-			ProjectID: stringArg(req, argProjectID, ""),
-		}
-		doc, err := svc.CreateDocument(ctx, backend, input)
-		if err != nil {
-			return errResult(err), nil
-		}
-		return jsonResult(doc)
-	}
-}
-
-// --- Project tools ---
-
-func projectListTool() gomcp.Tool {
-	return gomcp.NewTool(toolProjectList,
-		gomcp.WithDescription("List projects (group issues and documents)."),
-		gomcp.WithString(argBackend, gomcp.Description("Backend name"), gomcp.DefaultString(defaultBackend)),
-		gomcp.WithNumber(argLimit, gomcp.Description("Max results to return")),
-	)
-}
-
-func projectListHandler(svc EmceeService) server.ToolHandlerFunc {
-	return func(ctx context.Context, req gomcp.CallToolRequest) (*gomcp.CallToolResult, error) {
-		backend := stringArg(req, argBackend, defaultBackend)
-		filter := domain.ProjectListFilter{Limit: intArg(req, argLimit, defaultListMax)}
-		projects, err := svc.ListProjects(ctx, backend, filter)
-		if err != nil {
-			return errResult(err), nil
-		}
-		return jsonResult(projects)
-	}
-}
-
-func projectCreateTool() gomcp.Tool {
-	return gomcp.NewTool(toolProjectCreate,
-		gomcp.WithDescription("Create a project. Use returned ID as project_id in issues/documents."),
-		gomcp.WithString(argBackend, gomcp.Required(), gomcp.Description("Backend name")),
-		gomcp.WithString(argName, gomcp.Required(), gomcp.Description("Project name")),
-		gomcp.WithString(argDescription, gomcp.Description("Project description")),
-	)
-}
-
-func projectCreateHandler(svc EmceeService) server.ToolHandlerFunc {
-	return func(ctx context.Context, req gomcp.CallToolRequest) (*gomcp.CallToolResult, error) {
-		backend := stringArg(req, argBackend, "")
-		name := stringArg(req, argName, "")
-		if backend == "" || name == "" {
-			return errResult(ErrBackendAndNameRequired), nil
-		}
-		input := domain.ProjectCreateInput{
-			Name:        name,
-			Description: stringArg(req, argDescription, ""),
-		}
-		proj, err := svc.CreateProject(ctx, backend, input)
-		if err != nil {
-			return errResult(err), nil
-		}
-		return jsonResult(proj)
-	}
-}
-
-// --- Initiative tools ---
-
-func initListTool() gomcp.Tool {
-	return gomcp.NewTool(toolInitList,
-		gomcp.WithDescription("List initiatives (strategic objectives, group projects)."),
-		gomcp.WithString(argBackend, gomcp.Description("Backend name"), gomcp.DefaultString(defaultBackend)),
-		gomcp.WithNumber(argLimit, gomcp.Description("Max results to return")),
-	)
-}
-
-func initListHandler(svc EmceeService) server.ToolHandlerFunc {
-	return func(ctx context.Context, req gomcp.CallToolRequest) (*gomcp.CallToolResult, error) {
-		backend := stringArg(req, argBackend, defaultBackend)
-		filter := domain.InitiativeListFilter{Limit: intArg(req, argLimit, defaultListMax)}
-		inits, err := svc.ListInitiatives(ctx, backend, filter)
-		if err != nil {
-			return errResult(err), nil
-		}
-		return jsonResult(inits)
-	}
-}
-
-func initCreateTool() gomcp.Tool {
-	return gomcp.NewTool(toolInitCreate,
-		gomcp.WithDescription("Create an initiative (strategic objective grouping projects)."),
-		gomcp.WithString(argBackend, gomcp.Required(), gomcp.Description("Backend name")),
-		gomcp.WithString(argName, gomcp.Required(), gomcp.Description("Initiative name")),
-		gomcp.WithString(argDescription, gomcp.Description("Initiative description")),
-	)
-}
-
-func initCreateHandler(svc EmceeService) server.ToolHandlerFunc {
-	return func(ctx context.Context, req gomcp.CallToolRequest) (*gomcp.CallToolResult, error) {
-		backend := stringArg(req, argBackend, "")
-		name := stringArg(req, argName, "")
-		if backend == "" || name == "" {
-			return errResult(ErrBackendAndNameRequired), nil
-		}
-		input := domain.InitiativeCreateInput{
-			Name:        name,
-			Description: stringArg(req, argDescription, ""),
-		}
-		init, err := svc.CreateInitiative(ctx, backend, input)
-		if err != nil {
-			return errResult(err), nil
-		}
-		return jsonResult(init)
-	}
-}
-
-// --- Label tools ---
-
-func labelListTool() gomcp.Tool {
-	return gomcp.NewTool(toolLabelList,
-		gomcp.WithDescription("List labels (team-scoped issue tags)."),
-		gomcp.WithString(argBackend, gomcp.Description("Backend name"), gomcp.DefaultString(defaultBackend)),
-	)
-}
-
-func labelListHandler(svc EmceeService) server.ToolHandlerFunc {
-	return func(ctx context.Context, req gomcp.CallToolRequest) (*gomcp.CallToolResult, error) {
-		backend := stringArg(req, argBackend, defaultBackend)
-		labels, err := svc.ListLabels(ctx, backend)
-		if err != nil {
-			return errResult(err), nil
-		}
-		return jsonResult(labels)
-	}
-}
-
-func labelCreateTool() gomcp.Tool {
-	return gomcp.NewTool(toolLabelCreate,
-		gomcp.WithDescription("Create a label (team-scoped issue tag)."),
-		gomcp.WithString(argBackend, gomcp.Required(), gomcp.Description("Backend name")),
-		gomcp.WithString(argName, gomcp.Required(), gomcp.Description("Label name")),
-		gomcp.WithString(argColor, gomcp.Description("Label color (hex)")),
-	)
-}
-
-func labelCreateHandler(svc EmceeService) server.ToolHandlerFunc {
-	return func(ctx context.Context, req gomcp.CallToolRequest) (*gomcp.CallToolResult, error) {
-		backend := stringArg(req, argBackend, "")
-		name := stringArg(req, argName, "")
-		if backend == "" || name == "" {
-			return errResult(ErrBackendAndNameRequired), nil
-		}
-		input := domain.LabelCreateInput{
-			Name:  name,
-			Color: stringArg(req, argColor, ""),
-		}
-		label, err := svc.CreateLabel(ctx, backend, input)
-		if err != nil {
-			return errResult(err), nil
-		}
-		return jsonResult(label)
-	}
-}
-
-// --- Bulk tools ---
-
-func bulkCreateTool() gomcp.Tool {
-	return gomcp.NewTool(toolBulkCreate,
-		gomcp.WithDescription("Bulk-create issues from JSON array. Auto-batches to 50 per call. Fields: title (required), description, priority, parent_id, project_id."),
-		gomcp.WithString(argBackend, gomcp.Required(), gomcp.Description("Backend name")),
-		gomcp.WithString(argIssues, gomcp.Required(), gomcp.Description("JSON array of issue objects with title, description, priority, parent_id, project_id fields")),
-	)
-}
-
-func bulkCreateHandler(svc EmceeService) server.ToolHandlerFunc {
-	return func(ctx context.Context, req gomcp.CallToolRequest) (*gomcp.CallToolResult, error) {
-		backend := stringArg(req, argBackend, "")
-		issuesJSON := stringArg(req, argIssues, "")
-		if backend == "" || issuesJSON == "" {
-			return errResult(errors.New("backend and issues are required")), nil
-		}
-
-		var inputs []domain.CreateInput
-		if err := json.Unmarshal([]byte(issuesJSON), &inputs); err != nil {
-			return errResult(fmt.Errorf("invalid issues JSON: %w", err)), nil
-		}
-
-		result, err := svc.BulkCreateIssues(ctx, backend, inputs)
-		if err != nil {
-			return errResult(err), nil
-		}
-		return jsonResult(result)
 	}
 }
 

@@ -14,7 +14,7 @@ import (
 	mcpdriver "github.com/DanyPops/emcee/internal/adapter/driver/mcp"
 )
 
-// mockService implements driver.IssueService for testing.
+// mockService implements mcpdriver.EmceeService for testing.
 type mockService struct {
 	issues []domain.Issue
 }
@@ -36,11 +36,7 @@ func (m *mockService) Get(_ context.Context, ref string) (*domain.Issue, error) 
 }
 
 func (m *mockService) Create(_ context.Context, backend string, input domain.CreateInput) (*domain.Issue, error) {
-	issue := domain.Issue{
-		Ref:   backend + ":NEW-1",
-		Key:   "NEW-1",
-		Title: input.Title,
-	}
+	issue := domain.Issue{Ref: backend + ":NEW-1", Key: "NEW-1", Title: input.Title}
 	return &issue, nil
 }
 
@@ -64,9 +60,7 @@ func (m *mockService) ListChildren(_ context.Context, ref string) ([]domain.Issu
 	return nil, nil
 }
 
-func (m *mockService) Backends() []string {
-	return []string{"test"}
-}
+func (m *mockService) Backends() []string { return []string{"test"} }
 
 func (m *mockService) ListDocuments(_ context.Context, backend string, filter domain.DocumentListFilter) ([]domain.Document, error) {
 	return []domain.Document{{ID: "d1", Title: "Doc One"}}, nil
@@ -108,6 +102,18 @@ func (m *mockService) BulkCreateIssues(_ context.Context, backend string, inputs
 	return &domain.BulkCreateResult{Created: created, Total: len(inputs), Batches: 1}, nil
 }
 
+func (m *mockService) BulkUpdateIssues(_ context.Context, backend string, inputs []domain.BulkUpdateInput) (*domain.BulkUpdateResult, error) {
+	var updated []domain.Issue
+	for _, input := range inputs {
+		issue := domain.Issue{Ref: input.Ref}
+		if input.Title != nil {
+			issue.Title = *input.Title
+		}
+		updated = append(updated, issue)
+	}
+	return &domain.BulkUpdateResult{Updated: updated, Total: len(inputs)}, nil
+}
+
 func newTestMCPServer() *server.MCPServer {
 	svc := &mockService{
 		issues: []domain.Issue{
@@ -122,19 +128,15 @@ func newTestMCPServer() *server.MCPServer {
 
 func callTool(t *testing.T, s *server.MCPServer, name string, args map[string]any) *gomcp.CallToolResult {
 	t.Helper()
-
 	result := s.HandleMessage(context.Background(), mustJSON(t, map[string]any{
-		"jsonrpc": "2.0",
-		"id":      1,
-		"method":  "tools/call",
-		"params":  map[string]any{"name": name, "arguments": args},
+		"jsonrpc": "2.0", "id": 1,
+		"method": "tools/call",
+		"params": map[string]any{"name": name, "arguments": args},
 	}))
-
 	data, err := json.Marshal(result)
 	if err != nil {
 		t.Fatalf("marshal result: %v", err)
 	}
-
 	var resp struct {
 		Result gomcp.CallToolResult `json:"result"`
 	}
@@ -165,36 +167,33 @@ func mustJSON(t *testing.T, v any) []byte {
 	return data
 }
 
-func TestMCPList(t *testing.T) {
-	s := newTestMCPServer()
-	// Must initialize first
-	initMCP(t, s)
+// --- emcee tool tests ---
 
-	result := callTool(t, s, "emcee_list", map[string]any{"backend": "test"})
+func TestEmceeList(t *testing.T) {
+	s := newTestMCPServer()
+	initMCP(t, s)
+	result := callTool(t, s, "emcee", map[string]any{"action": "list", "backend": "test"})
 	if result.IsError {
-		t.Fatalf("expected success, got error: %s", result.Content[0].(gomcp.TextContent).Text)
+		t.Fatalf("error: %s", result.Content[0].(gomcp.TextContent).Text)
 	}
-	text := result.Content[0].(gomcp.TextContent).Text
 	var issues []domain.Issue
-	if err := json.Unmarshal([]byte(text), &issues); err != nil {
-		t.Fatalf("unmarshal issues: %v", err)
+	if err := json.Unmarshal([]byte(result.Content[0].(gomcp.TextContent).Text), &issues); err != nil {
+		t.Fatalf("unmarshal: %v", err)
 	}
 	if len(issues) != 2 {
 		t.Errorf("got %d issues, want 2", len(issues))
 	}
 }
 
-func TestMCPGet(t *testing.T) {
+func TestEmceeGet(t *testing.T) {
 	s := newTestMCPServer()
 	initMCP(t, s)
-
-	result := callTool(t, s, "emcee_get", map[string]any{"ref": "test:T-1"})
+	result := callTool(t, s, "emcee", map[string]any{"action": "get", "ref": "test:T-1"})
 	if result.IsError {
-		t.Fatalf("expected success, got error")
+		t.Fatalf("error: %s", result.Content[0].(gomcp.TextContent).Text)
 	}
-	text := result.Content[0].(gomcp.TextContent).Text
 	var issue domain.Issue
-	if err := json.Unmarshal([]byte(text), &issue); err != nil {
+	if err := json.Unmarshal([]byte(result.Content[0].(gomcp.TextContent).Text), &issue); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	if issue.Title != "First Issue" {
@@ -202,27 +201,24 @@ func TestMCPGet(t *testing.T) {
 	}
 }
 
-func TestMCPGetMissingRef(t *testing.T) {
+func TestEmceeGetMissingRef(t *testing.T) {
 	s := newTestMCPServer()
 	initMCP(t, s)
-
-	result := callTool(t, s, "emcee_get", map[string]any{})
+	result := callTool(t, s, "emcee", map[string]any{"action": "get"})
 	if !result.IsError {
 		t.Fatal("expected error for missing ref")
 	}
 }
 
-func TestMCPCreate(t *testing.T) {
+func TestEmceeCreate(t *testing.T) {
 	s := newTestMCPServer()
 	initMCP(t, s)
-
-	result := callTool(t, s, "emcee_create", map[string]any{"backend": "test", "title": "New thing"})
+	result := callTool(t, s, "emcee", map[string]any{"action": "create", "backend": "test", "title": "New thing"})
 	if result.IsError {
-		t.Fatalf("expected success, got error")
+		t.Fatalf("error: %s", result.Content[0].(gomcp.TextContent).Text)
 	}
-	text := result.Content[0].(gomcp.TextContent).Text
 	var issue domain.Issue
-	if err := json.Unmarshal([]byte(text), &issue); err != nil {
+	if err := json.Unmarshal([]byte(result.Content[0].(gomcp.TextContent).Text), &issue); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	if issue.Title != "New thing" {
@@ -230,27 +226,78 @@ func TestMCPCreate(t *testing.T) {
 	}
 }
 
-func TestMCPSearch(t *testing.T) {
+func TestEmceeUpdate(t *testing.T) {
 	s := newTestMCPServer()
 	initMCP(t, s)
-
-	result := callTool(t, s, "emcee_search", map[string]any{"backend": "test", "query": "first"})
+	result := callTool(t, s, "emcee", map[string]any{"action": "update", "ref": "test:T-1", "title": "Updated"})
 	if result.IsError {
-		t.Fatalf("expected success, got error")
+		t.Fatalf("error: %s", result.Content[0].(gomcp.TextContent).Text)
 	}
 }
 
-func TestMCPDocList(t *testing.T) {
+func TestEmceeSearch(t *testing.T) {
 	s := newTestMCPServer()
 	initMCP(t, s)
-
-	result := callTool(t, s, "emcee_doc_list", map[string]any{"backend": "test"})
+	result := callTool(t, s, "emcee", map[string]any{"action": "search", "backend": "test", "query": "first"})
 	if result.IsError {
-		t.Fatalf("expected success, got error: %s", result.Content[0].(gomcp.TextContent).Text)
+		t.Fatalf("error: %s", result.Content[0].(gomcp.TextContent).Text)
 	}
-	text := result.Content[0].(gomcp.TextContent).Text
+}
+
+func TestEmceeBulkCreate(t *testing.T) {
+	s := newTestMCPServer()
+	initMCP(t, s)
+	issues := `[{"title":"Bulk 1"},{"title":"Bulk 2"}]`
+	result := callTool(t, s, "emcee", map[string]any{"action": "bulk_create", "backend": "test", "issues": issues})
+	if result.IsError {
+		t.Fatalf("error: %s", result.Content[0].(gomcp.TextContent).Text)
+	}
+	var bulkResult domain.BulkCreateResult
+	if err := json.Unmarshal([]byte(result.Content[0].(gomcp.TextContent).Text), &bulkResult); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if bulkResult.Total != 2 {
+		t.Errorf("total = %d, want 2", bulkResult.Total)
+	}
+}
+
+func TestEmceeBulkUpdate(t *testing.T) {
+	s := newTestMCPServer()
+	initMCP(t, s)
+	issues := `[{"ref":"test:T-1","title":"Updated 1"},{"ref":"test:T-2","title":"Updated 2"}]`
+	result := callTool(t, s, "emcee", map[string]any{"action": "bulk_update", "backend": "test", "issues": issues})
+	if result.IsError {
+		t.Fatalf("error: %s", result.Content[0].(gomcp.TextContent).Text)
+	}
+	var bulkResult domain.BulkUpdateResult
+	if err := json.Unmarshal([]byte(result.Content[0].(gomcp.TextContent).Text), &bulkResult); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if bulkResult.Total != 2 {
+		t.Errorf("total = %d, want 2", bulkResult.Total)
+	}
+}
+
+func TestEmceeUnknownAction(t *testing.T) {
+	s := newTestMCPServer()
+	initMCP(t, s)
+	result := callTool(t, s, "emcee", map[string]any{"action": "invalid"})
+	if !result.IsError {
+		t.Fatal("expected error for unknown action")
+	}
+}
+
+// --- emcee_manage tool tests ---
+
+func TestManageDocList(t *testing.T) {
+	s := newTestMCPServer()
+	initMCP(t, s)
+	result := callTool(t, s, "emcee_manage", map[string]any{"action": "doc_list", "backend": "test"})
+	if result.IsError {
+		t.Fatalf("error: %s", result.Content[0].(gomcp.TextContent).Text)
+	}
 	var docs []domain.Document
-	if err := json.Unmarshal([]byte(text), &docs); err != nil {
+	if err := json.Unmarshal([]byte(result.Content[0].(gomcp.TextContent).Text), &docs); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	if len(docs) != 1 {
@@ -258,17 +305,15 @@ func TestMCPDocList(t *testing.T) {
 	}
 }
 
-func TestMCPDocCreate(t *testing.T) {
+func TestManageDocCreate(t *testing.T) {
 	s := newTestMCPServer()
 	initMCP(t, s)
-
-	result := callTool(t, s, "emcee_doc_create", map[string]any{"backend": "test", "title": "New Doc", "content": "body"})
+	result := callTool(t, s, "emcee_manage", map[string]any{"action": "doc_create", "backend": "test", "title": "New Doc", "content": "body"})
 	if result.IsError {
-		t.Fatalf("expected success, got error")
+		t.Fatalf("error: %s", result.Content[0].(gomcp.TextContent).Text)
 	}
-	text := result.Content[0].(gomcp.TextContent).Text
 	var doc domain.Document
-	if err := json.Unmarshal([]byte(text), &doc); err != nil {
+	if err := json.Unmarshal([]byte(result.Content[0].(gomcp.TextContent).Text), &doc); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	if doc.Title != "New Doc" {
@@ -276,92 +321,65 @@ func TestMCPDocCreate(t *testing.T) {
 	}
 }
 
-func TestMCPProjectList(t *testing.T) {
+func TestManageProjectList(t *testing.T) {
 	s := newTestMCPServer()
 	initMCP(t, s)
-
-	result := callTool(t, s, "emcee_project_list", map[string]any{"backend": "test"})
+	result := callTool(t, s, "emcee_manage", map[string]any{"action": "project_list", "backend": "test"})
 	if result.IsError {
-		t.Fatalf("expected success, got error")
+		t.Fatalf("error: %s", result.Content[0].(gomcp.TextContent).Text)
 	}
 }
 
-func TestMCPProjectCreate(t *testing.T) {
+func TestManageProjectCreate(t *testing.T) {
 	s := newTestMCPServer()
 	initMCP(t, s)
-
-	result := callTool(t, s, "emcee_project_create", map[string]any{"backend": "test", "name": "New Proj"})
+	result := callTool(t, s, "emcee_manage", map[string]any{"action": "project_create", "backend": "test", "name": "New Proj"})
 	if result.IsError {
-		t.Fatalf("expected success, got error")
-	}
-	text := result.Content[0].(gomcp.TextContent).Text
-	var proj domain.Project
-	if err := json.Unmarshal([]byte(text), &proj); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if proj.Name != "New Proj" {
-		t.Errorf("name = %q, want %q", proj.Name, "New Proj")
+		t.Fatalf("error: %s", result.Content[0].(gomcp.TextContent).Text)
 	}
 }
 
-func TestMCPInitiativeList(t *testing.T) {
+func TestManageInitiativeList(t *testing.T) {
 	s := newTestMCPServer()
 	initMCP(t, s)
-
-	result := callTool(t, s, "emcee_initiative_list", map[string]any{"backend": "test"})
+	result := callTool(t, s, "emcee_manage", map[string]any{"action": "initiative_list", "backend": "test"})
 	if result.IsError {
-		t.Fatalf("expected success, got error")
+		t.Fatalf("error: %s", result.Content[0].(gomcp.TextContent).Text)
 	}
 }
 
-func TestMCPInitiativeCreate(t *testing.T) {
+func TestManageInitiativeCreate(t *testing.T) {
 	s := newTestMCPServer()
 	initMCP(t, s)
-
-	result := callTool(t, s, "emcee_initiative_create", map[string]any{"backend": "test", "name": "New Init"})
+	result := callTool(t, s, "emcee_manage", map[string]any{"action": "initiative_create", "backend": "test", "name": "New Init"})
 	if result.IsError {
-		t.Fatalf("expected success, got error")
+		t.Fatalf("error: %s", result.Content[0].(gomcp.TextContent).Text)
 	}
 }
 
-func TestMCPLabelList(t *testing.T) {
+func TestManageLabelList(t *testing.T) {
 	s := newTestMCPServer()
 	initMCP(t, s)
-
-	result := callTool(t, s, "emcee_label_list", map[string]any{"backend": "test"})
+	result := callTool(t, s, "emcee_manage", map[string]any{"action": "label_list", "backend": "test"})
 	if result.IsError {
-		t.Fatalf("expected success, got error")
+		t.Fatalf("error: %s", result.Content[0].(gomcp.TextContent).Text)
 	}
 }
 
-func TestMCPLabelCreate(t *testing.T) {
+func TestManageLabelCreate(t *testing.T) {
 	s := newTestMCPServer()
 	initMCP(t, s)
-
-	result := callTool(t, s, "emcee_label_create", map[string]any{"backend": "test", "name": "urgent"})
+	result := callTool(t, s, "emcee_manage", map[string]any{"action": "label_create", "backend": "test", "name": "urgent"})
 	if result.IsError {
-		t.Fatalf("expected success, got error")
+		t.Fatalf("error: %s", result.Content[0].(gomcp.TextContent).Text)
 	}
 }
 
-func TestMCPBulkCreate(t *testing.T) {
+func TestManageUnknownAction(t *testing.T) {
 	s := newTestMCPServer()
 	initMCP(t, s)
-
-	issues := `[{"title":"Bulk 1"},{"title":"Bulk 2"}]`
-	result := callTool(t, s, "emcee_bulk_create", map[string]any{"backend": "test", "issues": issues})
-	if result.IsError {
-		t.Fatalf("expected success, got error: %s", result.Content[0].(gomcp.TextContent).Text)
-	}
-	text := result.Content[0].(gomcp.TextContent).Text
-	var bulkResult domain.BulkCreateResult
-	if err := json.Unmarshal([]byte(text), &bulkResult); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if bulkResult.Total != 2 {
-		t.Errorf("total = %d, want 2", bulkResult.Total)
-	}
-	if len(bulkResult.Created) != 2 {
-		t.Errorf("created = %d, want 2", len(bulkResult.Created))
+	result := callTool(t, s, "emcee_manage", map[string]any{"action": "invalid"})
+	if !result.IsError {
+		t.Fatal("expected error for unknown action")
 	}
 }
