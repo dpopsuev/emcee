@@ -43,7 +43,6 @@ const (
 	argStatus      = "status"
 	argPriority    = "priority"
 	argAssignee    = "assignee"
-	argParent      = "parent"
 	argQuery       = "query"
 	argLimit       = "limit"
 	argIssues      = "issues"
@@ -71,9 +70,13 @@ type EmceeService interface {
 	driver.BulkService
 }
 
+const serverInstructions = `Emcee is a unified issue tracker across Linear, GitHub, and Jira. Ref format: "backend:key" (e.g. "linear:HEG-17"). Backend defaults to "linear" for list ops, required for create/update. Entities: Issues (work), Documents (rich text, no status), Projects (group issues), Initiatives (group projects), Labels (tags). Status: backlog, todo, in_progress, in_review, done, canceled. Priority: urgent, high, medium, low. Use bulk_create for batch ops (auto-batches to 50).`
+
 // Serve starts the MCP server over stdio, exposing issue management tools.
 func Serve(svc EmceeService) error {
-	s := server.NewMCPServer(serverName, serverVersion)
+	s := server.NewMCPServer(serverName, serverVersion,
+		server.WithInstructions(serverInstructions),
+	)
 	registerTools(s, svc)
 	return server.ServeStdio(s)
 }
@@ -102,7 +105,7 @@ func registerTools(s *server.MCPServer, svc EmceeService) {
 
 func listTool() gomcp.Tool {
 	return gomcp.NewTool(toolList,
-		gomcp.WithDescription("List issues from a backend. Returns issues matching the given filters."),
+		gomcp.WithDescription("List issues. Filter by status and assignee."),
 		gomcp.WithString(argBackend, gomcp.Description("Backend name: linear, github, jira"), gomcp.DefaultString(defaultBackend)),
 		gomcp.WithString(argStatus, gomcp.Description("Filter by status: backlog, todo, in_progress, in_review, done, canceled")),
 		gomcp.WithString(argAssignee, gomcp.Description("Filter by assignee name")),
@@ -112,14 +115,14 @@ func listTool() gomcp.Tool {
 
 func getTool() gomcp.Tool {
 	return gomcp.NewTool(toolGet,
-		gomcp.WithDescription("Get a single issue by canonical ref (e.g. linear:HEG-17, github:owner/repo#42)."),
+		gomcp.WithDescription("Get issue details by ref (e.g. linear:HEG-17)."),
 		gomcp.WithString(argRef, gomcp.Required(), gomcp.Description("Canonical issue reference (backend:key)")),
 	)
 }
 
 func createTool() gomcp.Tool {
 	return gomcp.NewTool(toolCreate,
-		gomcp.WithDescription("Create a new issue on a backend."),
+		gomcp.WithDescription("Create an issue. Supports parent_id (sub-issues), project_id, and assignee (name, auto-resolved)."),
 		gomcp.WithString(argBackend, gomcp.Required(), gomcp.Description("Backend name: linear, github, jira")),
 		gomcp.WithString(argTitle, gomcp.Required(), gomcp.Description("Issue title")),
 		gomcp.WithString(argDescription, gomcp.Description("Issue description")),
@@ -130,7 +133,7 @@ func createTool() gomcp.Tool {
 
 func updateTool() gomcp.Tool {
 	return gomcp.NewTool(toolUpdate,
-		gomcp.WithDescription("Update an existing issue by canonical ref."),
+		gomcp.WithDescription("Update an issue by ref. Only provided fields are changed."),
 		gomcp.WithString(argRef, gomcp.Required(), gomcp.Description("Canonical issue reference (backend:key)")),
 		gomcp.WithString(argTitle, gomcp.Description("New title")),
 		gomcp.WithString(argDescription, gomcp.Description("New description")),
@@ -141,7 +144,7 @@ func updateTool() gomcp.Tool {
 
 func searchTool() gomcp.Tool {
 	return gomcp.NewTool(toolSearch,
-		gomcp.WithDescription("Search issues by text query across a backend."),
+		gomcp.WithDescription("Full-text search across issues."),
 		gomcp.WithString(argBackend, gomcp.Required(), gomcp.Description("Backend name: linear, github, jira")),
 		gomcp.WithString(argQuery, gomcp.Required(), gomcp.Description("Search query text")),
 		gomcp.WithNumber(argLimit, gomcp.Description("Max results to return")),
@@ -258,7 +261,7 @@ func searchHandler(svc driver.IssueService) server.ToolHandlerFunc {
 
 func docListTool() gomcp.Tool {
 	return gomcp.NewTool(toolDocList,
-		gomcp.WithDescription("List documents from a backend."),
+		gomcp.WithDescription("List documents (rich text, no status/priority)."),
 		gomcp.WithString(argBackend, gomcp.Description("Backend name"), gomcp.DefaultString(defaultBackend)),
 		gomcp.WithNumber(argLimit, gomcp.Description("Max results to return")),
 	)
@@ -278,7 +281,7 @@ func docListHandler(svc EmceeService) server.ToolHandlerFunc {
 
 func docCreateTool() gomcp.Tool {
 	return gomcp.NewTool(toolDocCreate,
-		gomcp.WithDescription("Create a new document on a backend."),
+		gomcp.WithDescription("Create a document. Content is markdown. Optionally link to a project via project_id."),
 		gomcp.WithString(argBackend, gomcp.Required(), gomcp.Description("Backend name")),
 		gomcp.WithString(argTitle, gomcp.Required(), gomcp.Description("Document title")),
 		gomcp.WithString(argContent, gomcp.Description("Document content (markdown)")),
@@ -310,7 +313,7 @@ func docCreateHandler(svc EmceeService) server.ToolHandlerFunc {
 
 func projectListTool() gomcp.Tool {
 	return gomcp.NewTool(toolProjectList,
-		gomcp.WithDescription("List projects from a backend."),
+		gomcp.WithDescription("List projects (group issues and documents)."),
 		gomcp.WithString(argBackend, gomcp.Description("Backend name"), gomcp.DefaultString(defaultBackend)),
 		gomcp.WithNumber(argLimit, gomcp.Description("Max results to return")),
 	)
@@ -330,7 +333,7 @@ func projectListHandler(svc EmceeService) server.ToolHandlerFunc {
 
 func projectCreateTool() gomcp.Tool {
 	return gomcp.NewTool(toolProjectCreate,
-		gomcp.WithDescription("Create a new project on a backend."),
+		gomcp.WithDescription("Create a project. Use returned ID as project_id in issues/documents."),
 		gomcp.WithString(argBackend, gomcp.Required(), gomcp.Description("Backend name")),
 		gomcp.WithString(argName, gomcp.Required(), gomcp.Description("Project name")),
 		gomcp.WithString(argDescription, gomcp.Description("Project description")),
@@ -360,7 +363,7 @@ func projectCreateHandler(svc EmceeService) server.ToolHandlerFunc {
 
 func initListTool() gomcp.Tool {
 	return gomcp.NewTool(toolInitList,
-		gomcp.WithDescription("List initiatives from a backend."),
+		gomcp.WithDescription("List initiatives (strategic objectives, group projects)."),
 		gomcp.WithString(argBackend, gomcp.Description("Backend name"), gomcp.DefaultString(defaultBackend)),
 		gomcp.WithNumber(argLimit, gomcp.Description("Max results to return")),
 	)
@@ -380,7 +383,7 @@ func initListHandler(svc EmceeService) server.ToolHandlerFunc {
 
 func initCreateTool() gomcp.Tool {
 	return gomcp.NewTool(toolInitCreate,
-		gomcp.WithDescription("Create a new initiative on a backend."),
+		gomcp.WithDescription("Create an initiative (strategic objective grouping projects)."),
 		gomcp.WithString(argBackend, gomcp.Required(), gomcp.Description("Backend name")),
 		gomcp.WithString(argName, gomcp.Required(), gomcp.Description("Initiative name")),
 		gomcp.WithString(argDescription, gomcp.Description("Initiative description")),
@@ -410,7 +413,7 @@ func initCreateHandler(svc EmceeService) server.ToolHandlerFunc {
 
 func labelListTool() gomcp.Tool {
 	return gomcp.NewTool(toolLabelList,
-		gomcp.WithDescription("List labels from a backend."),
+		gomcp.WithDescription("List labels (team-scoped issue tags)."),
 		gomcp.WithString(argBackend, gomcp.Description("Backend name"), gomcp.DefaultString(defaultBackend)),
 	)
 }
@@ -428,7 +431,7 @@ func labelListHandler(svc EmceeService) server.ToolHandlerFunc {
 
 func labelCreateTool() gomcp.Tool {
 	return gomcp.NewTool(toolLabelCreate,
-		gomcp.WithDescription("Create a new label on a backend."),
+		gomcp.WithDescription("Create a label (team-scoped issue tag)."),
 		gomcp.WithString(argBackend, gomcp.Required(), gomcp.Description("Backend name")),
 		gomcp.WithString(argName, gomcp.Required(), gomcp.Description("Label name")),
 		gomcp.WithString(argColor, gomcp.Description("Label color (hex)")),
@@ -458,7 +461,7 @@ func labelCreateHandler(svc EmceeService) server.ToolHandlerFunc {
 
 func bulkCreateTool() gomcp.Tool {
 	return gomcp.NewTool(toolBulkCreate,
-		gomcp.WithDescription("Create issues in bulk from a JSON array."),
+		gomcp.WithDescription("Bulk-create issues from JSON array. Auto-batches to 50 per call. Fields: title (required), description, priority, parent_id, project_id."),
 		gomcp.WithString(argBackend, gomcp.Required(), gomcp.Description("Backend name")),
 		gomcp.WithString(argIssues, gomcp.Required(), gomcp.Description("JSON array of issue objects with title, description, priority, parent_id, project_id fields")),
 	)
