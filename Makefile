@@ -1,4 +1,4 @@
-.PHONY: build install test test-integration lint clean smoke
+.PHONY: build install test test-integration lint lint-new fmt vet preflight install-hooks clean smoke
 
 BIN := bin/emcee
 GOBIN := $(shell go env GOBIN)
@@ -19,8 +19,25 @@ test:
 test-integration:
 	go test -tags=integration ./...
 
-lint:
+fmt:
+	go fmt ./...
+
+vet:
 	go vet ./...
+
+lint:
+	golangci-lint run ./...
+
+lint-new:
+	golangci-lint run --new-from-rev=HEAD ./...
+
+preflight: fmt vet lint test
+
+install-hooks:
+	@echo '#!/bin/sh' > .git/hooks/pre-commit
+	@echo 'make lint-new' >> .git/hooks/pre-commit
+	@chmod +x .git/hooks/pre-commit
+	@echo "pre-commit hook installed (runs make lint-new)"
 
 clean:
 	rm -rf bin/
