@@ -30,6 +30,7 @@ type Service struct {
 	labelRepos   map[string]driven.LabelRepository
 	bulkRepos    map[string]driven.BulkIssueRepository
 	commentRepos map[string]driven.CommentRepository
+	launchRepos  map[string]driven.LaunchRepository
 	stage        *StageStore
 }
 
@@ -45,6 +46,7 @@ func NewService(repos ...driven.IssueRepository) *Service {
 		labelRepos:   make(map[string]driven.LabelRepository),
 		bulkRepos:    make(map[string]driven.BulkIssueRepository),
 		commentRepos: make(map[string]driven.CommentRepository),
+		launchRepos:  make(map[string]driven.LaunchRepository),
 		stage:        NewStageStore(),
 	}
 	for _, r := range repos {
@@ -67,6 +69,9 @@ func NewService(repos ...driven.IssueRepository) *Service {
 		}
 		if cr, ok := r.(driven.CommentRepository); ok {
 			s.commentRepos[name] = cr
+		}
+		if lr, ok := r.(driven.LaunchRepository); ok {
+			s.launchRepos[name] = lr
 		}
 	}
 	return s
@@ -333,6 +338,48 @@ func (s *Service) AddComment(ctx context.Context, ref string, input domain.Comme
 		return nil, s.notSupportedErr(backend, "comments")
 	}
 	return r.AddComment(ctx, key, input)
+}
+
+// --- Launch operations (Report Portal) ---
+
+func (s *Service) ListLaunches(ctx context.Context, backend string, filter domain.LaunchFilter) ([]domain.Launch, error) {
+	r, ok := s.launchRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "launches")
+	}
+	return r.ListLaunches(ctx, filter)
+}
+
+func (s *Service) GetLaunch(ctx context.Context, backend, id string) (*domain.Launch, error) {
+	r, ok := s.launchRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "launches")
+	}
+	return r.GetLaunch(ctx, id)
+}
+
+func (s *Service) ListTestItems(ctx context.Context, backend, launchID string, filter domain.TestItemFilter) ([]domain.TestItem, error) {
+	r, ok := s.launchRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "launches")
+	}
+	return r.ListTestItems(ctx, launchID, filter)
+}
+
+func (s *Service) GetTestItem(ctx context.Context, backend, id string) (*domain.TestItem, error) {
+	r, ok := s.launchRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "launches")
+	}
+	return r.GetTestItem(ctx, id)
+}
+
+func (s *Service) UpdateDefects(ctx context.Context, backend string, updates []domain.DefectUpdate) error {
+	r, ok := s.launchRepos[backend]
+	if !ok {
+		return s.notSupportedErr(backend, "launches")
+	}
+	return r.UpdateDefects(ctx, updates)
 }
 
 // --- Stage operations ---

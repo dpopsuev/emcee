@@ -18,4 +18,5 @@ type StubEmceeService struct {
 	StubHealthService
 	StubCommentService
 	StubStageService
+	StubLaunchService
 }

@@ -1,0 +1,36 @@
+package reportportal
+
+import (
+	"os"
+
+	adapterdriven "github.com/DanyPops/emcee/internal/adapter/driven"
+	"github.com/DanyPops/emcee/internal/config"
+	"github.com/DanyPops/emcee/internal/port/driven"
+)
+
+func init() {
+	adapterdriven.Register("reportportal", 0, func(name string, backend config.Backend) (driven.IssueRepository, error) {
+		token := backend.ResolveKey()
+		if token == "" {
+			token = os.Getenv("RP_API_KEY")
+		}
+		if token == "" {
+			return nil, nil
+		}
+		url := backend.URL
+		if url == "" {
+			url = os.Getenv("RP_URL")
+		}
+		if url == "" {
+			return nil, nil
+		}
+		project := backend.Team
+		if project == "" {
+			project = os.Getenv("RP_PROJECT")
+		}
+		if project == "" {
+			return nil, nil
+		}
+		return New(url, project, token)
+	})
+}

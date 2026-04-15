@@ -51,6 +51,15 @@ type BulkService interface {
 	BulkUpdateIssues(ctx context.Context, backend string, inputs []domain.BulkUpdateInput) (*domain.BulkUpdateResult, error)
 }
 
+// LaunchService is the inbound port for test launch operations (Report Portal).
+type LaunchService interface {
+	ListLaunches(ctx context.Context, backend string, filter domain.LaunchFilter) ([]domain.Launch, error)
+	GetLaunch(ctx context.Context, backend, id string) (*domain.Launch, error)
+	ListTestItems(ctx context.Context, backend, launchID string, filter domain.TestItemFilter) ([]domain.TestItem, error)
+	GetTestItem(ctx context.Context, backend, id string) (*domain.TestItem, error)
+	UpdateDefects(ctx context.Context, backend string, updates []domain.DefectUpdate) error
+}
+
 // CommentService is the inbound port for comment operations.
 type CommentService interface {
 	ListComments(ctx context.Context, ref string) ([]domain.Comment, error)

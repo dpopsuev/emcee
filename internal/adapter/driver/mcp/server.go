@@ -46,6 +46,7 @@ type EmceeService interface {
 	driver.HealthService
 	driver.CommentService
 	driver.StageService
+	driver.LaunchService
 }
 
 const serverInstructions = `Emcee is a unified issue tracker across Linear, GitHub, GitLab, and Jira. Three tools: emcee (issue CRUD + comments + staging), emcee_manage (supporting entities), emcee_health (health check). Ref format: "backend:key" (e.g. "linear:HEG-17"). Backend defaults to "linear". Status: backlog, todo, in_progress, in_review, done, canceled. Priority: urgent, high, medium, low. Bulk ops accept JSON array in issues param, auto-batch to 50. Stage operations queue issues locally before pushing to any backend; push_all submits to mixed backends in one call. Create auto-stages on failure for retry. Comments: use "comments" to list, "comment_add" to add (does not overwrite description). Read cache: responses cached with TTL, use --refresh to bypass.`
@@ -428,8 +429,69 @@ func emceeHandler(svc EmceeService) server.Handler {
 			}
 			return server.JSONResult(map[string]any{"pushed": len(pushed), "issues": pushed, "errors": pushErrs})
 
+		// --- Launch/RP actions ---
+
+		case "launches":
+			filter := domain.LaunchFilter{
+				Name:   args.Query,
+				Status: args.Status,
+				Limit:  int(args.Limit),
+			}
+			launches, err := svc.ListLaunches(ctx, args.Backend, filter)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(launches)
+
+		case "launch_get":
+			if args.Ref == "" {
+				return "", errRefRequired
+			}
+			launch, err := svc.GetLaunch(ctx, args.Backend, args.Ref)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(launch)
+
+		case "test_items":
+			if args.Ref == "" {
+				return "", errRefRequired
+			}
+			filter := domain.TestItemFilter{
+				Status: args.Status,
+				Limit:  int(args.Limit),
+			}
+			items, err := svc.ListTestItems(ctx, args.Backend, args.Ref, filter)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(items)
+
+		case "test_item_get":
+			if args.Ref == "" {
+				return "", errRefRequired
+			}
+			item, err := svc.GetTestItem(ctx, args.Backend, args.Ref)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(item)
+
+		case "defect_update":
+			if args.Issues == "" {
+				return "", errIssuesRequired
+			}
+			var updates []domain.DefectUpdate
+			if err := json.Unmarshal([]byte(args.Issues), &updates); err != nil {
+				return "", fmt.Errorf("invalid defect updates JSON: %w", err)
+			}
+			if err := svc.UpdateDefects(ctx, args.Backend, updates); err != nil {
+				return "", err
+			}
+			return server.JSONResult(map[string]any{"updated": len(updates)})
+
 		default:
-			return "", fmt.Errorf("%w %q (valid: list, get, create, update, search, children, bulk_create, bulk_update, comments, comment_add, stage, stage_list, stage_show, stage_patch, stage_drop, push, push_all)", errUnknownAction, args.Action)
+			return "", fmt.Errorf("%w %q", errUnknownAction, args.Action)
 		}
 	}
 }

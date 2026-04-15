@@ -16,6 +16,7 @@ import (
 	_ "github.com/DanyPops/emcee/internal/adapter/driven/gitlab"
 	_ "github.com/DanyPops/emcee/internal/adapter/driven/jira"
 	_ "github.com/DanyPops/emcee/internal/adapter/driven/linear"
+	_ "github.com/DanyPops/emcee/internal/adapter/driven/reportportal"
 
 	adapterdriven "github.com/DanyPops/emcee/internal/adapter/driven"
 	mcpserver "github.com/DanyPops/emcee/internal/adapter/driver/mcp"
