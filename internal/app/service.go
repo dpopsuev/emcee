@@ -10,24 +10,27 @@ import (
 
 	"github.com/DanyPops/emcee/internal/domain"
 	"github.com/DanyPops/emcee/internal/port/driven"
+	"github.com/DanyPops/emcee/internal/port/driver"
 )
 
 const batchSize = 50
 
 var (
-	ErrUnknownBackend  = errors.New("unknown backend")
-	ErrInvalidRef      = errors.New("invalid ref")
-	ErrNotSupported    = errors.New("operation not supported by backend")
+	ErrUnknownBackend = errors.New("unknown backend")
+	ErrInvalidRef     = errors.New("invalid ref")
+	ErrNotSupported   = errors.New("operation not supported by backend")
 )
 
 // Service implements all driver port interfaces by routing to the appropriate repository.
 type Service struct {
-	repos      map[string]driven.IssueRepository
-	docRepos   map[string]driven.DocumentRepository
-	projRepos  map[string]driven.ProjectRepository
-	initRepos  map[string]driven.InitiativeRepository
-	labelRepos map[string]driven.LabelRepository
-	bulkRepos  map[string]driven.BulkIssueRepository
+	repos        map[string]driven.IssueRepository
+	docRepos     map[string]driven.DocumentRepository
+	projRepos    map[string]driven.ProjectRepository
+	initRepos    map[string]driven.InitiativeRepository
+	labelRepos   map[string]driven.LabelRepository
+	bulkRepos    map[string]driven.BulkIssueRepository
+	commentRepos map[string]driven.CommentRepository
+	stage        *StageStore
 }
 
 // NewService creates the application service with the given repositories.
@@ -35,12 +38,14 @@ type Service struct {
 // are automatically registered for those capabilities.
 func NewService(repos ...driven.IssueRepository) *Service {
 	s := &Service{
-		repos:      make(map[string]driven.IssueRepository, len(repos)),
-		docRepos:   make(map[string]driven.DocumentRepository),
-		projRepos:  make(map[string]driven.ProjectRepository),
-		initRepos:  make(map[string]driven.InitiativeRepository),
-		labelRepos: make(map[string]driven.LabelRepository),
-		bulkRepos:  make(map[string]driven.BulkIssueRepository),
+		repos:        make(map[string]driven.IssueRepository, len(repos)),
+		docRepos:     make(map[string]driven.DocumentRepository),
+		projRepos:    make(map[string]driven.ProjectRepository),
+		initRepos:    make(map[string]driven.InitiativeRepository),
+		labelRepos:   make(map[string]driven.LabelRepository),
+		bulkRepos:    make(map[string]driven.BulkIssueRepository),
+		commentRepos: make(map[string]driven.CommentRepository),
+		stage:        NewStageStore(),
 	}
 	for _, r := range repos {
 		name := r.Name()
@@ -59,6 +64,9 @@ func NewService(repos ...driven.IssueRepository) *Service {
 		}
 		if br, ok := r.(driven.BulkIssueRepository); ok {
 			s.bulkRepos[name] = br
+		}
+		if cr, ok := r.(driven.CommentRepository); ok {
+			s.commentRepos[name] = cr
 		}
 	}
 	return s
@@ -86,6 +94,12 @@ func (s *Service) unknownBackendErr(name string) error {
 	for k := range s.repos {
 		available = append(available, k)
 	}
+
+	if len(available) == 0 {
+		return fmt.Errorf("%w: %q - no backends configured\n\nTo fix:\n  1. Set environment variable for %s:\n     - LINEAR_API_KEY for Linear\n     - JIRA_API_TOKEN, JIRA_URL, JIRA_EMAIL for Jira\n     - GITHUB_TOKEN, GITHUB_OWNER, GITHUB_REPO for GitHub\n     - GITLAB_TOKEN, GITLAB_PROJECT for GitLab\n  2. Or create ~/.config/emcee/config.yaml with backend configuration\n\nGet API keys at:\n  - Linear: https://linear.app/settings/api\n  - GitHub: https://github.com/settings/tokens\n  - Jira: https://id.atlassian.com/manage-profile/security/api-tokens\n  - GitLab: https://gitlab.com/-/user_settings/personal_access_tokens",
+			ErrUnknownBackend, name, name)
+	}
+
 	return fmt.Errorf("%w: %q (available: %s)", ErrUnknownBackend, name, strings.Join(available, ", "))
 }
 
@@ -135,7 +149,7 @@ func (s *Service) Update(ctx context.Context, ref string, input domain.UpdateInp
 	return r.Update(ctx, key, input)
 }
 
-func (s *Service) Search(ctx context.Context, backend string, query string, limit int) ([]domain.Issue, error) {
+func (s *Service) Search(ctx context.Context, backend, query string, limit int) ([]domain.Issue, error) {
 	r, err := s.repo(backend)
 	if err != nil {
 		return nil, err
@@ -161,6 +175,31 @@ func (s *Service) Backends() []string {
 		names = append(names, k)
 	}
 	return names
+}
+
+// Health returns the current health status of all backends.
+func (s *Service) Health() *driver.HealthStatus {
+	status := &driver.HealthStatus{
+		Status:   "healthy",
+		Backends: make([]driver.BackendHealth, 0),
+	}
+
+	// Check configured backends
+	for name := range s.repos {
+		status.Backends = append(status.Backends, driver.BackendHealth{
+			Name:       name,
+			Configured: true,
+			Status:     "healthy",
+		})
+	}
+
+	// If no backends configured, set to degraded
+	if len(s.repos) == 0 {
+		status.Status = "degraded"
+		status.Warnings = append(status.Warnings, "No backends configured. Set LINEAR_API_KEY, JIRA_API_TOKEN, GITHUB_TOKEN, or GITLAB_TOKEN environment variables, or create ~/.config/emcee/config.yaml")
+	}
+
+	return status
 }
 
 // --- Document operations ---
@@ -199,7 +238,7 @@ func (s *Service) CreateProject(ctx context.Context, backend string, input domai
 	return r.CreateProject(ctx, input)
 }
 
-func (s *Service) UpdateProject(ctx context.Context, backend string, id string, input domain.ProjectUpdateInput) (*domain.Project, error) {
+func (s *Service) UpdateProject(ctx context.Context, backend, id string, input domain.ProjectUpdateInput) (*domain.Project, error) {
 	r, ok := s.projRepos[backend]
 	if !ok {
 		return nil, s.notSupportedErr(backend, "projects")
@@ -268,6 +307,62 @@ func (s *Service) BulkCreateIssues(ctx context.Context, backend string, inputs [
 		result.Created = append(result.Created, created...)
 	}
 	return result, nil
+}
+
+// --- Comment operations ---
+
+func (s *Service) ListComments(ctx context.Context, ref string) ([]domain.Comment, error) {
+	backend, key, err := ParseRef(ref)
+	if err != nil {
+		return nil, err
+	}
+	r, ok := s.commentRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "comments")
+	}
+	return r.ListComments(ctx, key)
+}
+
+func (s *Service) AddComment(ctx context.Context, ref string, input domain.CommentCreateInput) (*domain.Comment, error) {
+	backend, key, err := ParseRef(ref)
+	if err != nil {
+		return nil, err
+	}
+	r, ok := s.commentRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "comments")
+	}
+	return r.AddComment(ctx, key, input)
+}
+
+// --- Stage operations ---
+
+func (s *Service) StageItem(backend string, input domain.CreateInput, reason string) string {
+	return s.stage.StageItem(backend, input, reason)
+}
+
+func (s *Service) StageList() []domain.StagedItem {
+	return s.stage.StageList()
+}
+
+func (s *Service) StageGet(id string) (*domain.StagedItem, error) {
+	return s.stage.StageGet(id)
+}
+
+func (s *Service) StagePatch(id string, input domain.UpdateInput) (*domain.StagedItem, error) {
+	return s.stage.StagePatch(id, input)
+}
+
+func (s *Service) StageDrop(id string) error {
+	return s.stage.StageDrop(id)
+}
+
+func (s *Service) StagePop(id string) (*domain.StagedItem, error) {
+	return s.stage.StagePop(id)
+}
+
+func (s *Service) StagePopAll() []domain.StagedItem {
+	return s.stage.StagePopAll()
 }
 
 func (s *Service) BulkUpdateIssues(ctx context.Context, backend string, inputs []domain.BulkUpdateInput) (*domain.BulkUpdateResult, error) {

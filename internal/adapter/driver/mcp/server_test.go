@@ -3,189 +3,111 @@ package mcp_test
 import (
 	"context"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"testing"
+	"time"
 
 	"github.com/DanyPops/emcee/internal/domain"
-	gomcp "github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	"github.com/DanyPops/emcee/internal/port/driver"
+	"github.com/DanyPops/emcee/internal/port/driver/drivertest"
+	"github.com/dpopsuev/battery/mcpserver"
+	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	mcpdriver "github.com/DanyPops/emcee/internal/adapter/driver/mcp"
 )
 
-// mockService implements mcpdriver.EmceeService for testing.
-type mockService struct {
-	issues []domain.Issue
-}
-
-func (m *mockService) List(_ context.Context, backend string, filter domain.ListFilter) ([]domain.Issue, error) {
-	if backend == "fail" {
-		return nil, errors.New("backend not found")
-	}
-	return m.issues, nil
-}
-
-func (m *mockService) Get(_ context.Context, ref string) (*domain.Issue, error) {
-	for _, i := range m.issues {
-		if i.Ref == ref {
-			return &i, nil
-		}
-	}
-	return nil, errors.New("not found: " + ref)
-}
-
-func (m *mockService) Create(_ context.Context, backend string, input domain.CreateInput) (*domain.Issue, error) {
-	issue := domain.Issue{Ref: backend + ":NEW-1", Key: "NEW-1", Title: input.Title}
-	return &issue, nil
-}
-
-func (m *mockService) Update(_ context.Context, ref string, input domain.UpdateInput) (*domain.Issue, error) {
-	for _, i := range m.issues {
-		if i.Ref == ref {
-			if input.Title != nil {
-				i.Title = *input.Title
-			}
-			return &i, nil
-		}
-	}
-	return nil, errors.New("not found: " + ref)
-}
-
-func (m *mockService) Search(_ context.Context, backend string, query string, limit int) ([]domain.Issue, error) {
-	return m.issues, nil
-}
-
-func (m *mockService) ListChildren(_ context.Context, ref string) ([]domain.Issue, error) {
-	return nil, nil
-}
-
-func (m *mockService) Backends() []string { return []string{"test"} }
-
-func (m *mockService) ListDocuments(_ context.Context, backend string, filter domain.DocumentListFilter) ([]domain.Document, error) {
-	return []domain.Document{{ID: "d1", Title: "Doc One"}}, nil
-}
-
-func (m *mockService) CreateDocument(_ context.Context, backend string, input domain.DocumentCreateInput) (*domain.Document, error) {
-	return &domain.Document{ID: "d1", Title: input.Title, Content: input.Content}, nil
-}
-
-func (m *mockService) ListProjects(_ context.Context, backend string, filter domain.ProjectListFilter) ([]domain.Project, error) {
-	return []domain.Project{{ID: "p1", Name: "Project One"}}, nil
-}
-
-func (m *mockService) CreateProject(_ context.Context, backend string, input domain.ProjectCreateInput) (*domain.Project, error) {
-	return &domain.Project{ID: "p1", Name: input.Name}, nil
-}
-
-func (m *mockService) UpdateProject(_ context.Context, backend string, id string, input domain.ProjectUpdateInput) (*domain.Project, error) {
-	name := "Project One"
-	if input.Name != nil {
-		name = *input.Name
-	}
-	return &domain.Project{ID: id, Name: name}, nil
-}
-
-func (m *mockService) ListInitiatives(_ context.Context, backend string, filter domain.InitiativeListFilter) ([]domain.Initiative, error) {
-	return []domain.Initiative{{ID: "i1", Name: "Init One"}}, nil
-}
-
-func (m *mockService) CreateInitiative(_ context.Context, backend string, input domain.InitiativeCreateInput) (*domain.Initiative, error) {
-	return &domain.Initiative{ID: "i1", Name: input.Name}, nil
-}
-
-func (m *mockService) ListLabels(_ context.Context, backend string) ([]domain.Label, error) {
-	return []domain.Label{{ID: "l1", Name: "bug"}}, nil
-}
-
-func (m *mockService) CreateLabel(_ context.Context, backend string, input domain.LabelCreateInput) (*domain.Label, error) {
-	return &domain.Label{ID: "l1", Name: input.Name}, nil
-}
-
-func (m *mockService) BulkCreateIssues(_ context.Context, backend string, inputs []domain.CreateInput) (*domain.BulkCreateResult, error) {
-	var created []domain.Issue
-	for i, input := range inputs {
-		created = append(created, domain.Issue{Ref: fmt.Sprintf("%s:BULK-%d", backend, i+1), Title: input.Title})
-	}
-	return &domain.BulkCreateResult{Created: created, Total: len(inputs), Batches: 1}, nil
-}
-
-func (m *mockService) BulkUpdateIssues(_ context.Context, backend string, inputs []domain.BulkUpdateInput) (*domain.BulkUpdateResult, error) {
-	var updated []domain.Issue
-	for _, input := range inputs {
-		issue := domain.Issue{Ref: input.Ref}
-		if input.Title != nil {
-			issue.Title = *input.Title
-		}
-		updated = append(updated, issue)
-	}
-	return &domain.BulkUpdateResult{Updated: updated, Total: len(inputs)}, nil
-}
-
-func newTestMCPServer() *server.MCPServer {
-	svc := &mockService{
-		issues: []domain.Issue{
-			{Ref: "test:T-1", Key: "T-1", Title: "First Issue", Status: domain.StatusTodo, Priority: domain.PriorityHigh},
-			{Ref: "test:T-2", Key: "T-2", Title: "Second Issue", Status: domain.StatusDone, Priority: domain.PriorityLow},
-		},
-	}
-	s := server.NewMCPServer("emcee-test", "0.0.1")
-	mcpdriver.RegisterToolsForTesting(s, svc)
-	return s
-}
-
-func callTool(t *testing.T, s *server.MCPServer, name string, args map[string]any) *gomcp.CallToolResult {
+func connectClient(t *testing.T, srv *mcpserver.Server) *sdkmcp.ClientSession {
 	t.Helper()
-	result := s.HandleMessage(context.Background(), mustJSON(t, map[string]any{
-		"jsonrpc": "2.0", "id": 1,
-		"method": "tools/call",
-		"params": map[string]any{"name": name, "arguments": args},
-	}))
-	data, err := json.Marshal(result)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	t.Cleanup(cancel)
+
+	serverTransport, clientTransport := sdkmcp.NewInMemoryTransports()
+	go func() { _ = srv.Serve(ctx, serverTransport) }()
+
+	client := sdkmcp.NewClient(
+		&sdkmcp.Implementation{Name: "test-client", Version: "v0.0.1"},
+		nil,
+	)
+	session, err := client.Connect(ctx, clientTransport, nil)
 	if err != nil {
-		t.Fatalf("marshal result: %v", err)
+		t.Fatalf("client connect: %v", err)
 	}
-	var resp struct {
-		Result gomcp.CallToolResult `json:"result"`
-	}
-	if err := json.Unmarshal(data, &resp); err != nil {
-		t.Fatalf("unmarshal response: %v\nraw: %s", err, data)
-	}
-	return &resp.Result
+	t.Cleanup(func() { session.Close() })
+	return session
 }
 
-func initMCP(t *testing.T, s *server.MCPServer) {
+func newTestServer(t *testing.T) (*sdkmcp.ClientSession, *drivertest.StubEmceeService) {
 	t.Helper()
-	s.HandleMessage(context.Background(), mustJSON(t, map[string]any{
-		"jsonrpc": "2.0", "id": 0, "method": "initialize",
-		"params": map[string]any{
-			"protocolVersion": "2024-11-05",
-			"capabilities":    map[string]any{},
-			"clientInfo":      map[string]any{"name": "test", "version": "1.0"},
-		},
-	}))
+	svc := &drivertest.StubEmceeService{}
+	svc.StubIssueService.Issues = []domain.Issue{
+		{Ref: "test:T-1", Key: "T-1", Title: "First Issue", Status: domain.StatusTodo, Priority: domain.PriorityHigh},
+		{Ref: "test:T-2", Key: "T-2", Title: "Second Issue", Status: domain.StatusDone, Priority: domain.PriorityLow},
+	}
+	svc.StubIssueService.Issue = &domain.Issue{Ref: "test:T-1", Key: "T-1", Title: "First Issue"}
+	svc.StubIssueService.BackendList = []string{"test"}
+	svc.StubDocumentService.Documents = []domain.Document{{ID: "d1", Title: "Doc One"}}
+	svc.StubDocumentService.Document = &domain.Document{ID: "d1", Title: "New Doc"}
+	svc.StubProjectService.Projects = []domain.Project{{ID: "p1", Name: "Project One"}}
+	svc.StubProjectService.Project = &domain.Project{ID: "p1", Name: "New Proj"}
+	svc.StubInitiativeService.Initiatives = []domain.Initiative{{ID: "i1", Name: "Init One"}}
+	svc.StubInitiativeService.Initiative = &domain.Initiative{ID: "i1", Name: "New Init"}
+	svc.StubLabelService.Labels = []domain.Label{{ID: "l1", Name: "bug"}}
+	svc.StubLabelService.Label = &domain.Label{ID: "l1", Name: "urgent"}
+	svc.StubBulkService.CreateResult = &domain.BulkCreateResult{
+		Created: []domain.Issue{{Ref: "test:BULK-1", Title: "Bulk 1"}, {Ref: "test:BULK-2", Title: "Bulk 2"}},
+		Total:   2,
+		Batches: 1,
+	}
+	svc.StubBulkService.UpdateResult = &domain.BulkUpdateResult{
+		Updated: []domain.Issue{{Ref: "test:T-1", Title: "Updated 1"}, {Ref: "test:T-2", Title: "Updated 2"}},
+		Total:   2,
+	}
+	svc.StubHealthService.Status = &driver.HealthStatus{
+		Status:   "healthy",
+		Backends: []driver.BackendHealth{{Name: "test", Configured: true, Status: "healthy"}},
+	}
+
+	srv := mcpserver.NewServer("emcee-test", "0.0.1").
+		WithInitTimeout(0)
+	mcpdriver.RegisterTools(srv, svc)
+
+	session := connectClient(t, srv)
+	return session, svc
 }
 
-func mustJSON(t *testing.T, v any) []byte {
+func callTool(t *testing.T, session *sdkmcp.ClientSession, name string, args map[string]any) *sdkmcp.CallToolResult {
 	t.Helper()
-	data, err := json.Marshal(v)
+	result, err := session.CallTool(context.Background(), &sdkmcp.CallToolParams{
+		Name:      name,
+		Arguments: args,
+	})
 	if err != nil {
-		t.Fatalf("json marshal: %v", err)
+		t.Fatalf("CallTool(%s): %v", name, err)
 	}
-	return data
+	return result
+}
+
+func resultText(t *testing.T, result *sdkmcp.CallToolResult) string {
+	t.Helper()
+	if len(result.Content) == 0 {
+		t.Fatal("empty result content")
+	}
+	tc, ok := result.Content[0].(*sdkmcp.TextContent)
+	if !ok {
+		t.Fatalf("expected TextContent, got %T", result.Content[0])
+	}
+	return tc.Text
 }
 
 // --- emcee tool tests ---
 
 func TestEmceeList(t *testing.T) {
-	s := newTestMCPServer()
-	initMCP(t, s)
-	result := callTool(t, s, "emcee", map[string]any{"action": "list", "backend": "test"})
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "list", "backend": "test"})
 	if result.IsError {
-		t.Fatalf("error: %s", result.Content[0].(gomcp.TextContent).Text)
+		t.Fatalf("error: %s", resultText(t, result))
 	}
 	var issues []domain.Issue
-	if err := json.Unmarshal([]byte(result.Content[0].(gomcp.TextContent).Text), &issues); err != nil {
+	if err := json.Unmarshal([]byte(resultText(t, result)), &issues); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	if len(issues) != 2 {
@@ -194,14 +116,13 @@ func TestEmceeList(t *testing.T) {
 }
 
 func TestEmceeGet(t *testing.T) {
-	s := newTestMCPServer()
-	initMCP(t, s)
-	result := callTool(t, s, "emcee", map[string]any{"action": "get", "ref": "test:T-1"})
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "get", "ref": "test:T-1"})
 	if result.IsError {
-		t.Fatalf("error: %s", result.Content[0].(gomcp.TextContent).Text)
+		t.Fatalf("error: %s", resultText(t, result))
 	}
 	var issue domain.Issue
-	if err := json.Unmarshal([]byte(result.Content[0].(gomcp.TextContent).Text), &issue); err != nil {
+	if err := json.Unmarshal([]byte(resultText(t, result)), &issue); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	if issue.Title != "First Issue" {
@@ -210,23 +131,22 @@ func TestEmceeGet(t *testing.T) {
 }
 
 func TestEmceeGetMissingRef(t *testing.T) {
-	s := newTestMCPServer()
-	initMCP(t, s)
-	result := callTool(t, s, "emcee", map[string]any{"action": "get"})
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "get"})
 	if !result.IsError {
 		t.Fatal("expected error for missing ref")
 	}
 }
 
 func TestEmceeCreate(t *testing.T) {
-	s := newTestMCPServer()
-	initMCP(t, s)
-	result := callTool(t, s, "emcee", map[string]any{"action": "create", "backend": "test", "title": "New thing"})
+	session, svc := newTestServer(t)
+	svc.StubIssueService.Issue = &domain.Issue{Ref: "test:NEW-1", Key: "NEW-1", Title: "New thing"}
+	result := callTool(t, session, "emcee", map[string]any{"action": "create", "backend": "test", "title": "New thing"})
 	if result.IsError {
-		t.Fatalf("error: %s", result.Content[0].(gomcp.TextContent).Text)
+		t.Fatalf("error: %s", resultText(t, result))
 	}
 	var issue domain.Issue
-	if err := json.Unmarshal([]byte(result.Content[0].(gomcp.TextContent).Text), &issue); err != nil {
+	if err := json.Unmarshal([]byte(resultText(t, result)), &issue); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	if issue.Title != "New thing" {
@@ -235,33 +155,31 @@ func TestEmceeCreate(t *testing.T) {
 }
 
 func TestEmceeUpdate(t *testing.T) {
-	s := newTestMCPServer()
-	initMCP(t, s)
-	result := callTool(t, s, "emcee", map[string]any{"action": "update", "ref": "test:T-1", "title": "Updated"})
+	session, svc := newTestServer(t)
+	svc.StubIssueService.Issue = &domain.Issue{Ref: "test:T-1", Key: "T-1", Title: "Updated"}
+	result := callTool(t, session, "emcee", map[string]any{"action": "update", "ref": "test:T-1", "title": "Updated"})
 	if result.IsError {
-		t.Fatalf("error: %s", result.Content[0].(gomcp.TextContent).Text)
+		t.Fatalf("error: %s", resultText(t, result))
 	}
 }
 
 func TestEmceeSearch(t *testing.T) {
-	s := newTestMCPServer()
-	initMCP(t, s)
-	result := callTool(t, s, "emcee", map[string]any{"action": "search", "backend": "test", "query": "first"})
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "search", "backend": "test", "query": "first"})
 	if result.IsError {
-		t.Fatalf("error: %s", result.Content[0].(gomcp.TextContent).Text)
+		t.Fatalf("error: %s", resultText(t, result))
 	}
 }
 
 func TestEmceeBulkCreate(t *testing.T) {
-	s := newTestMCPServer()
-	initMCP(t, s)
+	session, _ := newTestServer(t)
 	issues := `[{"title":"Bulk 1"},{"title":"Bulk 2"}]`
-	result := callTool(t, s, "emcee", map[string]any{"action": "bulk_create", "backend": "test", "issues": issues})
+	result := callTool(t, session, "emcee", map[string]any{"action": "bulk_create", "backend": "test", "issues": issues})
 	if result.IsError {
-		t.Fatalf("error: %s", result.Content[0].(gomcp.TextContent).Text)
+		t.Fatalf("error: %s", resultText(t, result))
 	}
 	var bulkResult domain.BulkCreateResult
-	if err := json.Unmarshal([]byte(result.Content[0].(gomcp.TextContent).Text), &bulkResult); err != nil {
+	if err := json.Unmarshal([]byte(resultText(t, result)), &bulkResult); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	if bulkResult.Total != 2 {
@@ -270,15 +188,14 @@ func TestEmceeBulkCreate(t *testing.T) {
 }
 
 func TestEmceeBulkUpdate(t *testing.T) {
-	s := newTestMCPServer()
-	initMCP(t, s)
+	session, _ := newTestServer(t)
 	issues := `[{"ref":"test:T-1","title":"Updated 1"},{"ref":"test:T-2","title":"Updated 2"}]`
-	result := callTool(t, s, "emcee", map[string]any{"action": "bulk_update", "backend": "test", "issues": issues})
+	result := callTool(t, session, "emcee", map[string]any{"action": "bulk_update", "backend": "test", "issues": issues})
 	if result.IsError {
-		t.Fatalf("error: %s", result.Content[0].(gomcp.TextContent).Text)
+		t.Fatalf("error: %s", resultText(t, result))
 	}
 	var bulkResult domain.BulkUpdateResult
-	if err := json.Unmarshal([]byte(result.Content[0].(gomcp.TextContent).Text), &bulkResult); err != nil {
+	if err := json.Unmarshal([]byte(resultText(t, result)), &bulkResult); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	if bulkResult.Total != 2 {
@@ -287,9 +204,8 @@ func TestEmceeBulkUpdate(t *testing.T) {
 }
 
 func TestEmceeUnknownAction(t *testing.T) {
-	s := newTestMCPServer()
-	initMCP(t, s)
-	result := callTool(t, s, "emcee", map[string]any{"action": "invalid"})
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "invalid"})
 	if !result.IsError {
 		t.Fatal("expected error for unknown action")
 	}
@@ -298,14 +214,13 @@ func TestEmceeUnknownAction(t *testing.T) {
 // --- emcee_manage tool tests ---
 
 func TestManageDocList(t *testing.T) {
-	s := newTestMCPServer()
-	initMCP(t, s)
-	result := callTool(t, s, "emcee_manage", map[string]any{"action": "doc_list", "backend": "test"})
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee_manage", map[string]any{"action": "doc_list", "backend": "test"})
 	if result.IsError {
-		t.Fatalf("error: %s", result.Content[0].(gomcp.TextContent).Text)
+		t.Fatalf("error: %s", resultText(t, result))
 	}
 	var docs []domain.Document
-	if err := json.Unmarshal([]byte(result.Content[0].(gomcp.TextContent).Text), &docs); err != nil {
+	if err := json.Unmarshal([]byte(resultText(t, result)), &docs); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	if len(docs) != 1 {
@@ -314,14 +229,13 @@ func TestManageDocList(t *testing.T) {
 }
 
 func TestManageDocCreate(t *testing.T) {
-	s := newTestMCPServer()
-	initMCP(t, s)
-	result := callTool(t, s, "emcee_manage", map[string]any{"action": "doc_create", "backend": "test", "title": "New Doc", "content": "body"})
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee_manage", map[string]any{"action": "doc_create", "backend": "test", "title": "New Doc", "content": "body"})
 	if result.IsError {
-		t.Fatalf("error: %s", result.Content[0].(gomcp.TextContent).Text)
+		t.Fatalf("error: %s", resultText(t, result))
 	}
 	var doc domain.Document
-	if err := json.Unmarshal([]byte(result.Content[0].(gomcp.TextContent).Text), &doc); err != nil {
+	if err := json.Unmarshal([]byte(resultText(t, result)), &doc); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	if doc.Title != "New Doc" {
@@ -330,64 +244,152 @@ func TestManageDocCreate(t *testing.T) {
 }
 
 func TestManageProjectList(t *testing.T) {
-	s := newTestMCPServer()
-	initMCP(t, s)
-	result := callTool(t, s, "emcee_manage", map[string]any{"action": "project_list", "backend": "test"})
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee_manage", map[string]any{"action": "project_list", "backend": "test"})
 	if result.IsError {
-		t.Fatalf("error: %s", result.Content[0].(gomcp.TextContent).Text)
+		t.Fatalf("error: %s", resultText(t, result))
 	}
 }
 
 func TestManageProjectCreate(t *testing.T) {
-	s := newTestMCPServer()
-	initMCP(t, s)
-	result := callTool(t, s, "emcee_manage", map[string]any{"action": "project_create", "backend": "test", "name": "New Proj"})
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee_manage", map[string]any{"action": "project_create", "backend": "test", "name": "New Proj"})
 	if result.IsError {
-		t.Fatalf("error: %s", result.Content[0].(gomcp.TextContent).Text)
+		t.Fatalf("error: %s", resultText(t, result))
 	}
 }
 
 func TestManageInitiativeList(t *testing.T) {
-	s := newTestMCPServer()
-	initMCP(t, s)
-	result := callTool(t, s, "emcee_manage", map[string]any{"action": "initiative_list", "backend": "test"})
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee_manage", map[string]any{"action": "initiative_list", "backend": "test"})
 	if result.IsError {
-		t.Fatalf("error: %s", result.Content[0].(gomcp.TextContent).Text)
+		t.Fatalf("error: %s", resultText(t, result))
 	}
 }
 
 func TestManageInitiativeCreate(t *testing.T) {
-	s := newTestMCPServer()
-	initMCP(t, s)
-	result := callTool(t, s, "emcee_manage", map[string]any{"action": "initiative_create", "backend": "test", "name": "New Init"})
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee_manage", map[string]any{"action": "initiative_create", "backend": "test", "name": "New Init"})
 	if result.IsError {
-		t.Fatalf("error: %s", result.Content[0].(gomcp.TextContent).Text)
+		t.Fatalf("error: %s", resultText(t, result))
 	}
 }
 
 func TestManageLabelList(t *testing.T) {
-	s := newTestMCPServer()
-	initMCP(t, s)
-	result := callTool(t, s, "emcee_manage", map[string]any{"action": "label_list", "backend": "test"})
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee_manage", map[string]any{"action": "label_list", "backend": "test"})
 	if result.IsError {
-		t.Fatalf("error: %s", result.Content[0].(gomcp.TextContent).Text)
+		t.Fatalf("error: %s", resultText(t, result))
 	}
 }
 
 func TestManageLabelCreate(t *testing.T) {
-	s := newTestMCPServer()
-	initMCP(t, s)
-	result := callTool(t, s, "emcee_manage", map[string]any{"action": "label_create", "backend": "test", "name": "urgent"})
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee_manage", map[string]any{"action": "label_create", "backend": "test", "name": "urgent"})
 	if result.IsError {
-		t.Fatalf("error: %s", result.Content[0].(gomcp.TextContent).Text)
+		t.Fatalf("error: %s", resultText(t, result))
 	}
 }
 
 func TestManageUnknownAction(t *testing.T) {
-	s := newTestMCPServer()
-	initMCP(t, s)
-	result := callTool(t, s, "emcee_manage", map[string]any{"action": "invalid"})
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee_manage", map[string]any{"action": "invalid"})
 	if !result.IsError {
 		t.Fatal("expected error for unknown action")
 	}
+}
+
+// --- emcee_health tool tests ---
+
+func TestHealthTool(t *testing.T) {
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee_health", map[string]any{})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var health driver.HealthStatus
+	if err := json.Unmarshal([]byte(resultText(t, result)), &health); err != nil {
+		t.Fatalf("failed to parse health response: %v", err)
+	}
+	if health.Status != "healthy" {
+		t.Errorf("expected status=healthy, got %s", health.Status)
+	}
+	if len(health.Backends) != 1 {
+		t.Errorf("expected 1 backend, got %d", len(health.Backends))
+	}
+}
+
+func TestHealthToolDegraded(t *testing.T) {
+	session, svc := newTestServer(t)
+	svc.StubHealthService.Status = &driver.HealthStatus{
+		Status:   "degraded",
+		Backends: []driver.BackendHealth{},
+		Warnings: []string{"No backends configured"},
+	}
+	result := callTool(t, session, "emcee_health", map[string]any{})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var health driver.HealthStatus
+	if err := json.Unmarshal([]byte(resultText(t, result)), &health); err != nil {
+		t.Fatalf("failed to parse health response: %v", err)
+	}
+	if health.Status != "degraded" {
+		t.Errorf("expected status=degraded, got %s", health.Status)
+	}
+	if len(health.Warnings) == 0 {
+		t.Error("expected warnings about no backends")
+	}
+}
+
+// --- spy assertion test ---
+
+func TestEmceeListSpyRecording(t *testing.T) {
+	session, svc := newTestServer(t)
+	_ = callTool(t, session, "emcee", map[string]any{"action": "list", "backend": "test", "status": "done", "limit": float64(10)})
+	if len(svc.StubIssueService.ListCalls) != 1 {
+		t.Fatalf("ListCalls = %d, want 1", len(svc.StubIssueService.ListCalls))
+	}
+	got := svc.StubIssueService.ListCalls[0]
+	if got.Backend != "test" {
+		t.Errorf("backend = %q, want %q", got.Backend, "test")
+	}
+	if got.Filter.Status != domain.StatusDone {
+		t.Errorf("filter.Status = %q, want %q", got.Filter.Status, domain.StatusDone)
+	}
+	if got.Filter.Limit != 10 {
+		t.Errorf("filter.Limit = %d, want 10", got.Filter.Limit)
+	}
+}
+
+// --- tools/list test ---
+
+func TestToolsList(t *testing.T) {
+	session, _ := newTestServer(t)
+	tools, err := session.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("ListTools: %v", err)
+	}
+	names := make(map[string]bool)
+	for _, tool := range tools.Tools {
+		names[tool.Name] = true
+	}
+	for _, want := range []string{"emcee", "emcee_manage", "emcee_health"} {
+		if !names[want] {
+			t.Errorf("missing tool %q in tools/list (got %v)", want, names)
+		}
+	}
+	if len(tools.Tools) != 3 {
+		t.Errorf("got %d tools, want 3", len(tools.Tools))
+	}
+	// Verify schemas have required field
+	for _, tool := range tools.Tools {
+		if tool.Name == "emcee" || tool.Name == "emcee_manage" {
+			schema, _ := json.Marshal(tool.InputSchema)
+			if len(schema) < 10 {
+				t.Errorf("tool %s has empty schema", tool.Name)
+			}
+		}
+	}
+	_ = "" // satisfy import
 }

@@ -77,6 +77,8 @@ linters-settings:
       - style
       - performance
       - opinionated
+    disabled-checks:
+      - sprintfQuotedString  # false positives on GraphQL query building with backtick strings
     settings:
       hugeParam:
         sizeThreshold: 256

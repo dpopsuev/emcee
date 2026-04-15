@@ -25,9 +25,9 @@ func (m *mockRepo) List(_ context.Context, filter domain.ListFilter) ([]domain.I
 }
 
 func (m *mockRepo) Get(_ context.Context, key string) (*domain.Issue, error) {
-	for _, i := range m.issues {
-		if i.Key == key {
-			return &i, nil
+	for i := range m.issues {
+		if m.issues[i].Key == key {
+			return &m.issues[i], nil
 		}
 	}
 	return nil, fmt.Errorf("not found: %s", key)
@@ -45,8 +45,8 @@ func (m *mockRepo) Create(_ context.Context, input domain.CreateInput) (*domain.
 }
 
 func (m *mockRepo) Update(_ context.Context, key string, input domain.UpdateInput) (*domain.Issue, error) {
-	for i, issue := range m.issues {
-		if issue.Key == key {
+	for i := range m.issues {
+		if m.issues[i].Key == key {
 			if input.Title != nil {
 				m.issues[i].Title = *input.Title
 			}
@@ -66,6 +66,7 @@ func (m *mockRepo) ListChildren(_ context.Context, key string) ([]domain.Issue, 
 
 func TestMockRepoContract(t *testing.T) {
 	RunContractTests(t, func(t *testing.T) (driven.IssueRepository, string) {
+		t.Helper()
 		return &mockRepo{
 			issues: []domain.Issue{
 				{Ref: "mock:M-1", ID: "id-1", Key: "M-1", Title: "First", Status: domain.StatusTodo},

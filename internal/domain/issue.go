@@ -3,9 +3,13 @@ package domain
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 )
+
+// ErrInvalidPriority indicates an unparseable priority value.
+var ErrInvalidPriority = errors.New("priority must be int or string")
 
 type Priority int
 
@@ -44,7 +48,7 @@ func (p *Priority) UnmarshalJSON(data []byte) error {
 		*p = ParsePriority(s)
 		return nil
 	}
-	return fmt.Errorf("priority must be int or string, got %s", string(data))
+	return fmt.Errorf("%w, got %s", ErrInvalidPriority, string(data))
 }
 
 // MarshalJSON serializes priority as int for Linear API compatibility.

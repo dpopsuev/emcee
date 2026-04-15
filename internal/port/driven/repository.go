@@ -59,6 +59,13 @@ type BulkIssueRepository interface {
 	BulkCreateIssues(ctx context.Context, inputs []domain.CreateInput) ([]domain.Issue, error)
 }
 
+// CommentRepository is the outbound port for issue comment operations.
+type CommentRepository interface {
+	Name() string
+	ListComments(ctx context.Context, key string) ([]domain.Comment, error)
+	AddComment(ctx context.Context, key string, input domain.CommentCreateInput) (*domain.Comment, error)
+}
+
 // UserResolver resolves human-readable names to backend-specific IDs.
 type UserResolver interface {
 	ResolveUser(ctx context.Context, name string) (string, error)

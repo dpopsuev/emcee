@@ -37,7 +37,10 @@ install-hooks:
 	@echo '#!/bin/sh' > .git/hooks/pre-commit
 	@echo 'make lint-new' >> .git/hooks/pre-commit
 	@chmod +x .git/hooks/pre-commit
-	@echo "pre-commit hook installed (runs make lint-new)"
+	@echo '#!/bin/sh' > .git/hooks/pre-push
+	@echo 'make lint-new && make test' >> .git/hooks/pre-push
+	@chmod +x .git/hooks/pre-push
+	@echo "hooks installed: pre-commit (lint-new), pre-push (lint-new + test)"
 
 clean:
 	rm -rf bin/

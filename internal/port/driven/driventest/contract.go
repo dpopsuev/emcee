@@ -32,8 +32,8 @@ func RunContractTests(t *testing.T, setup func(t *testing.T) (driven.IssueReposi
 		if len(issues) == 0 {
 			t.Error("List returned no issues, expected at least one")
 		}
-		for _, issue := range issues {
-			assertIssueFields(t, issue)
+		for i := range issues {
+			assertIssueFields(t, issues[i])
 		}
 	})
 

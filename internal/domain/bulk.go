@@ -10,10 +10,10 @@ type BulkCreateResult struct {
 
 // BulkUpdateInput pairs a ref with the fields to update.
 type BulkUpdateInput struct {
-	Ref         string   `json:"ref"`
-	Title       *string  `json:"title,omitempty"`
-	Description *string  `json:"description,omitempty"`
-	Status      *Status  `json:"status,omitempty"`
+	Ref         string    `json:"ref"`
+	Title       *string   `json:"title,omitempty"`
+	Description *string   `json:"description,omitempty"`
+	Status      *Status   `json:"status,omitempty"`
 	Priority    *Priority `json:"priority,omitempty"`
 }
 

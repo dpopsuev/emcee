@@ -26,7 +26,8 @@ type Backend struct {
 	TokenEnv  string `yaml:"token_env"`   // alternative env var name (GitHub, Jira)
 	URL       string `yaml:"url,omitempty"`
 	Email     string `yaml:"email,omitempty"`
-	Team      string `yaml:"team,omitempty"` // Linear team key
+	Team      string `yaml:"team,omitempty"`  // Linear team key or GitHub repo name
+	Owner     string `yaml:"owner,omitempty"` // GitHub owner (org or user)
 }
 
 // ResolveKey reads the API key from the environment variable named in api_key_env or token_env.

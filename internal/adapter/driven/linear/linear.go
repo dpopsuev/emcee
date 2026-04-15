@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	adapterdriven "github.com/DanyPops/emcee/internal/adapter/driven"
 	"github.com/DanyPops/emcee/internal/domain"
 	"github.com/DanyPops/emcee/internal/port/driven"
 )
@@ -35,6 +36,15 @@ const (
 	logKeyTeam      = "team"
 	logKeyOperation = "op"
 	logKeyIssueKey  = "key"
+	logKeyTitle     = "title"
+	logKeyName      = "name"
+	logKeyQuery     = "query"
+	logKeyID        = "id"
+	logKeyCount     = "count"
+
+	// Rate limit detection strings (GraphQL errors).
+	errMsgRateLimit       = "rate limit"
+	errMsgTooManyRequests = "too many requests"
 
 	defaultTimeout = 30 * time.Second
 	defaultLimit   = 50
@@ -42,9 +52,19 @@ const (
 
 // Sentinel errors.
 var (
-	ErrIssueNotFound = errors.New("issue not found")
-	ErrCreateFailed  = errors.New("issue creation failed")
-	ErrTeamNotFound  = errors.New("team not found")
+	ErrIssueNotFound       = errors.New("issue not found")
+	ErrCreateFailed        = errors.New("issue creation failed")
+	ErrTeamNotFound        = errors.New("team not found")
+	ErrGraphQL             = errors.New("graphql error")
+	ErrNoStateMatch        = errors.New("no state matching")
+	ErrDocumentCreate      = errors.New("document creation failed")
+	ErrProjectCreate       = errors.New("project creation failed")
+	ErrProjectUpdate       = errors.New("project update failed")
+	ErrInitiativeCreate    = errors.New("initiative creation failed")
+	ErrLabelCreate         = errors.New("label creation failed")
+	ErrBulkCreate          = errors.New("bulk issue creation failed")
+	ErrUserNotFound        = errors.New("user not found")
+	ErrCommentCreateFailed = errors.New("failed to create comment")
 )
 
 // Compile-time interface compliance checks.
@@ -56,6 +76,7 @@ var (
 	_ driven.LabelRepository      = (*Repository)(nil)
 	_ driven.BulkIssueRepository  = (*Repository)(nil)
 	_ driven.UserResolver         = (*Repository)(nil)
+	_ driven.CommentRepository    = (*Repository)(nil)
 )
 
 // Repository implements driven.IssueRepository for Linear.
@@ -63,14 +84,21 @@ type Repository struct {
 	apiKey string
 	teamID string
 	team   string
+	url    string
 	client *http.Client
 }
 
 // New creates a Linear repository. It resolves the team key to an ID on init.
 func New(apiKey, teamKey string) (*Repository, error) {
+	return NewWithURL(apiKey, teamKey, apiURL)
+}
+
+// NewWithURL creates a Linear repository with a custom API URL (for testing).
+func NewWithURL(apiKey, teamKey, url string) (*Repository, error) {
 	r := &Repository{
 		apiKey: apiKey,
 		team:   teamKey,
+		url:    url,
 		client: &http.Client{Timeout: defaultTimeout},
 	}
 	teamID, err := r.resolveTeam(context.Background(), teamKey)
@@ -85,7 +113,7 @@ func (r *Repository) Name() string { return BackendName }
 
 func (r *Repository) gql(ctx context.Context, query string, result any) error {
 	body, _ := json.Marshal(map[string]string{"query": query})
-	req, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, "POST", r.url, bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
@@ -97,6 +125,18 @@ func (r *Repository) gql(ctx context.Context, query string, result any) error {
 		return err
 	}
 	defer resp.Body.Close()
+
+	// Check for HTTP 429 before reading body
+	if resp.StatusCode == http.StatusTooManyRequests {
+		limit, remaining, reset := adapterdriven.ParseRateLimitHeaders(resp.Header)
+		return &adapterdriven.RateLimitError{
+			Backend:    BackendName,
+			RetryAfter: adapterdriven.ParseRetryAfter(resp.Header.Get("Retry-After")),
+			Limit:      limit,
+			Remaining:  remaining,
+			Reset:      reset,
+		}
+	}
 
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -113,7 +153,18 @@ func (r *Repository) gql(ctx context.Context, query string, result any) error {
 		return fmt.Errorf("unmarshal: %w", err)
 	}
 	if len(gqlResp.Errors) > 0 {
-		return fmt.Errorf("graphql: %s", gqlResp.Errors[0].Message)
+		errMsg := gqlResp.Errors[0].Message
+		// Check if GraphQL error indicates rate limiting
+		errMsgLower := strings.ToLower(errMsg)
+		if strings.Contains(errMsgLower, errMsgRateLimit) ||
+			strings.Contains(errMsgLower, errMsgTooManyRequests) {
+			return &adapterdriven.RateLimitError{
+				Backend: BackendName,
+				Message: errMsg,
+			}
+		}
+		sanitized := adapterdriven.SanitizeError(errMsg)
+		return fmt.Errorf("%w: %s", ErrGraphQL, sanitized)
 	}
 	if result != nil {
 		return json.Unmarshal(gqlResp.Data, result)
@@ -190,7 +241,7 @@ func (li *linearIssue) toDomain() domain.Issue {
 }
 
 func (r *Repository) List(ctx context.Context, filter domain.ListFilter) ([]domain.Issue, error) {
-	slog.Debug("list issues", logKeyBackend, BackendName, logKeyTeam, r.team, logKeyOperation, "list")
+	slog.DebugContext(ctx, "list issues", logKeyBackend, BackendName, logKeyTeam, r.team, logKeyOperation, "list")
 	limit := filter.Limit
 	if limit == 0 {
 		limit = defaultLimit
@@ -215,14 +266,14 @@ func (r *Repository) List(ctx context.Context, filter domain.ListFilter) ([]doma
 		return nil, err
 	}
 	out := make([]domain.Issue, len(result.Issues.Nodes))
-	for i, li := range result.Issues.Nodes {
-		out[i] = li.toDomain()
+	for i := range result.Issues.Nodes {
+		out[i] = result.Issues.Nodes[i].toDomain()
 	}
 	return out, nil
 }
 
 func (r *Repository) Get(ctx context.Context, key string) (*domain.Issue, error) {
-	slog.Debug("get issue", logKeyBackend, BackendName, logKeyIssueKey, key, logKeyOperation, "get")
+	slog.DebugContext(ctx, "get issue", logKeyBackend, BackendName, logKeyIssueKey, key, logKeyOperation, "get")
 	num := extractNumber(key)
 	q := fmt.Sprintf(`{ issues(filter: { team: { key: { eq: "%s" } }, number: { eq: %s } }) { nodes { %s } } }`,
 		r.team, num, issueFields)
@@ -243,7 +294,7 @@ func (r *Repository) Get(ctx context.Context, key string) (*domain.Issue, error)
 }
 
 func (r *Repository) Create(ctx context.Context, input domain.CreateInput) (*domain.Issue, error) {
-	slog.Info("create issue", logKeyBackend, BackendName, logKeyTeam, r.team, logKeyOperation, "create", "title", input.Title)
+	slog.InfoContext(ctx, "create issue", logKeyBackend, BackendName, logKeyTeam, r.team, logKeyOperation, "create", logKeyTitle, input.Title)
 	parts := []string{fmt.Sprintf(`teamId: "%s"`, r.teamID)}
 	parts = append(parts, fmt.Sprintf(`title: "%s"`, escape(input.Title)))
 	if input.Description != "" {
@@ -284,7 +335,7 @@ func (r *Repository) Create(ctx context.Context, input domain.CreateInput) (*dom
 }
 
 func (r *Repository) Update(ctx context.Context, key string, input domain.UpdateInput) (*domain.Issue, error) {
-	slog.Info("update issue", logKeyBackend, BackendName, logKeyIssueKey, key, logKeyOperation, "update")
+	slog.InfoContext(ctx, "update issue", logKeyBackend, BackendName, logKeyIssueKey, key, logKeyOperation, "update")
 	existing, err := r.Get(ctx, key)
 	if err != nil {
 		return nil, err
@@ -328,7 +379,7 @@ func (r *Repository) Update(ctx context.Context, key string, input domain.Update
 }
 
 func (r *Repository) Search(ctx context.Context, query string, limit int) ([]domain.Issue, error) {
-	slog.Debug("search issues", logKeyBackend, BackendName, logKeyOperation, "search", "query", query)
+	slog.DebugContext(ctx, "search issues", logKeyBackend, BackendName, logKeyOperation, "search", logKeyQuery, query)
 	if limit == 0 {
 		limit = 20
 	}
@@ -344,8 +395,8 @@ func (r *Repository) Search(ctx context.Context, query string, limit int) ([]dom
 		return nil, err
 	}
 	out := make([]domain.Issue, len(result.SearchIssues.Nodes))
-	for i, li := range result.SearchIssues.Nodes {
-		out[i] = li.toDomain()
+	for i := range result.SearchIssues.Nodes {
+		out[i] = result.SearchIssues.Nodes[i].toDomain()
 	}
 	return out, nil
 }
@@ -371,7 +422,7 @@ func (r *Repository) resolveState(ctx context.Context, status domain.Status) (st
 			return s.ID, nil
 		}
 	}
-	return "", fmt.Errorf("no state matching %q", status)
+	return "", fmt.Errorf("%w %q", ErrNoStateMatch, status)
 }
 
 func mapStatus(t string) domain.Status {
@@ -453,8 +504,9 @@ func (ld *linearDocument) toDomain() domain.Document {
 	return doc
 }
 
+//nolint:dupl // list methods share patterns by design
 func (r *Repository) ListDocuments(ctx context.Context, filter domain.DocumentListFilter) ([]domain.Document, error) {
-	slog.Debug("list documents", logKeyBackend, BackendName, logKeyOperation, "list_documents")
+	slog.DebugContext(ctx, "list documents", logKeyBackend, BackendName, logKeyOperation, "list_documents")
 	limit := filter.Limit
 	if limit == 0 {
 		limit = defaultLimit
@@ -477,7 +529,7 @@ func (r *Repository) ListDocuments(ctx context.Context, filter domain.DocumentLi
 }
 
 func (r *Repository) CreateDocument(ctx context.Context, input domain.DocumentCreateInput) (*domain.Document, error) {
-	slog.Info("create document", logKeyBackend, BackendName, logKeyOperation, "create_document", "title", input.Title)
+	slog.InfoContext(ctx, "create document", logKeyBackend, BackendName, logKeyOperation, "create_document", logKeyTitle, input.Title)
 	parts := []string{fmt.Sprintf(`title: "%s"`, escape(input.Title))}
 	if input.Content != "" {
 		parts = append(parts, fmt.Sprintf(`content: "%s"`, escape(input.Content)))
@@ -499,7 +551,7 @@ func (r *Repository) CreateDocument(ctx context.Context, input domain.DocumentCr
 		return nil, err
 	}
 	if !result.DocumentCreate.Success {
-		return nil, fmt.Errorf("document creation failed")
+		return nil, ErrDocumentCreate
 	}
 	doc := result.DocumentCreate.Document.toDomain()
 	return &doc, nil
@@ -532,8 +584,9 @@ func (lp *linearProject) toDomain() domain.Project {
 	return proj
 }
 
+//nolint:dupl // list methods share patterns by design
 func (r *Repository) ListProjects(ctx context.Context, filter domain.ProjectListFilter) ([]domain.Project, error) {
-	slog.Debug("list projects", logKeyBackend, BackendName, logKeyOperation, "list_projects")
+	slog.DebugContext(ctx, "list projects", logKeyBackend, BackendName, logKeyOperation, "list_projects")
 	limit := filter.Limit
 	if limit == 0 {
 		limit = defaultLimit
@@ -556,7 +609,7 @@ func (r *Repository) ListProjects(ctx context.Context, filter domain.ProjectList
 }
 
 func (r *Repository) CreateProject(ctx context.Context, input domain.ProjectCreateInput) (*domain.Project, error) {
-	slog.Info("create project", logKeyBackend, BackendName, logKeyOperation, "create_project", "name", input.Name)
+	slog.InfoContext(ctx, "create project", logKeyBackend, BackendName, logKeyOperation, "create_project", logKeyName, input.Name)
 	teamIDs := input.TeamIDs
 	if len(teamIDs) == 0 {
 		teamIDs = []string{r.teamID}
@@ -587,14 +640,14 @@ func (r *Repository) CreateProject(ctx context.Context, input domain.ProjectCrea
 		return nil, err
 	}
 	if !result.ProjectCreate.Success {
-		return nil, fmt.Errorf("project creation failed")
+		return nil, ErrProjectCreate
 	}
 	proj := result.ProjectCreate.Project.toDomain()
 	return &proj, nil
 }
 
 func (r *Repository) UpdateProject(ctx context.Context, id string, input domain.ProjectUpdateInput) (*domain.Project, error) {
-	slog.Info("update project", logKeyBackend, BackendName, logKeyOperation, "update_project", "id", id)
+	slog.InfoContext(ctx, "update project", logKeyBackend, BackendName, logKeyOperation, "update_project", logKeyID, id)
 
 	var parts []string
 	if input.Name != nil {
@@ -621,7 +674,7 @@ func (r *Repository) UpdateProject(ctx context.Context, id string, input domain.
 		return nil, err
 	}
 	if !result.ProjectUpdate.Success {
-		return nil, fmt.Errorf("project update failed")
+		return nil, ErrProjectUpdate
 	}
 	proj := result.ProjectUpdate.Project.toDomain()
 	return &proj, nil
@@ -660,8 +713,9 @@ func (li *linearInitiative) toDomain() domain.Initiative {
 	}
 }
 
+//nolint:dupl // list methods share patterns by design
 func (r *Repository) ListInitiatives(ctx context.Context, filter domain.InitiativeListFilter) ([]domain.Initiative, error) {
-	slog.Debug("list initiatives", logKeyBackend, BackendName, logKeyOperation, "list_initiatives")
+	slog.DebugContext(ctx, "list initiatives", logKeyBackend, BackendName, logKeyOperation, "list_initiatives")
 	limit := filter.Limit
 	if limit == 0 {
 		limit = defaultLimit
@@ -684,7 +738,7 @@ func (r *Repository) ListInitiatives(ctx context.Context, filter domain.Initiati
 }
 
 func (r *Repository) CreateInitiative(ctx context.Context, input domain.InitiativeCreateInput) (*domain.Initiative, error) {
-	slog.Info("create initiative", logKeyBackend, BackendName, logKeyOperation, "create_initiative", "name", input.Name)
+	slog.InfoContext(ctx, "create initiative", logKeyBackend, BackendName, logKeyOperation, "create_initiative", logKeyName, input.Name)
 	parts := []string{fmt.Sprintf(`name: "%s"`, escape(input.Name))}
 	if input.Description != "" {
 		parts = append(parts, fmt.Sprintf(`description: "%s"`, escape(input.Description)))
@@ -703,7 +757,7 @@ func (r *Repository) CreateInitiative(ctx context.Context, input domain.Initiati
 		return nil, err
 	}
 	if !result.InitiativeCreate.Success {
-		return nil, fmt.Errorf("initiative creation failed")
+		return nil, ErrInitiativeCreate
 	}
 	init := result.InitiativeCreate.Initiative.toDomain()
 	return &init, nil
@@ -712,7 +766,7 @@ func (r *Repository) CreateInitiative(ctx context.Context, input domain.Initiati
 // --- Label operations ---
 
 func (r *Repository) ListLabels(ctx context.Context) ([]domain.Label, error) {
-	slog.Debug("list labels", logKeyBackend, BackendName, logKeyTeam, r.team, logKeyOperation, "list_labels")
+	slog.DebugContext(ctx, "list labels", logKeyBackend, BackendName, logKeyTeam, r.team, logKeyOperation, "list_labels")
 	q := fmt.Sprintf(`{ issueLabels(filter: { team: { id: { eq: "%s" } } }) { nodes { id name color } } }`, r.teamID)
 
 	var result struct {
@@ -735,7 +789,7 @@ func (r *Repository) ListLabels(ctx context.Context) ([]domain.Label, error) {
 }
 
 func (r *Repository) CreateLabel(ctx context.Context, input domain.LabelCreateInput) (*domain.Label, error) {
-	slog.Info("create label", logKeyBackend, BackendName, logKeyTeam, r.team, logKeyOperation, "create_label", "name", input.Name)
+	slog.InfoContext(ctx, "create label", logKeyBackend, BackendName, logKeyTeam, r.team, logKeyOperation, "create_label", logKeyName, input.Name)
 	parts := []string{
 		fmt.Sprintf(`name: "%s"`, escape(input.Name)),
 		fmt.Sprintf(`teamId: "%s"`, r.teamID),
@@ -761,7 +815,7 @@ func (r *Repository) CreateLabel(ctx context.Context, input domain.LabelCreateIn
 		return nil, err
 	}
 	if !result.IssueLabelCreate.Success {
-		return nil, fmt.Errorf("label creation failed")
+		return nil, ErrLabelCreate
 	}
 	l := result.IssueLabelCreate.IssueLabel
 	return &domain.Label{ID: l.ID, Name: l.Name, Color: l.Color}, nil
@@ -770,31 +824,31 @@ func (r *Repository) CreateLabel(ctx context.Context, input domain.LabelCreateIn
 // --- Bulk operations ---
 
 func (r *Repository) BulkCreateIssues(ctx context.Context, inputs []domain.CreateInput) ([]domain.Issue, error) {
-	slog.Info("bulk create issues", logKeyBackend, BackendName, logKeyTeam, r.team, logKeyOperation, "bulk_create", "count", len(inputs))
+	slog.InfoContext(ctx, "bulk create issues", logKeyBackend, BackendName, logKeyTeam, r.team, logKeyOperation, "bulk_create", logKeyCount, len(inputs))
 	if len(inputs) == 0 {
 		return nil, nil
 	}
 
-	var issueInputs []string
-	for _, input := range inputs {
+	issueInputs := make([]string, 0, len(inputs))
+	for i := range inputs {
 		parts := []string{
 			fmt.Sprintf(`teamId: "%s"`, r.teamID),
-			fmt.Sprintf(`title: "%s"`, escape(input.Title)),
+			fmt.Sprintf(`title: "%s"`, escape(inputs[i].Title)),
 		}
-		if input.Description != "" {
-			parts = append(parts, fmt.Sprintf(`description: "%s"`, escape(input.Description)))
+		if inputs[i].Description != "" {
+			parts = append(parts, fmt.Sprintf(`description: "%s"`, escape(inputs[i].Description)))
 		}
-		if input.Priority != domain.PriorityNone {
-			parts = append(parts, fmt.Sprintf(`priority: %d`, input.Priority))
+		if inputs[i].Priority != domain.PriorityNone {
+			parts = append(parts, fmt.Sprintf(`priority: %d`, inputs[i].Priority))
 		}
-		if input.ParentID != "" {
-			parts = append(parts, fmt.Sprintf(`parentId: "%s"`, input.ParentID))
+		if inputs[i].ParentID != "" {
+			parts = append(parts, fmt.Sprintf(`parentId: "%s"`, inputs[i].ParentID))
 		}
-		if input.ProjectID != "" {
-			parts = append(parts, fmt.Sprintf(`projectId: "%s"`, input.ProjectID))
+		if inputs[i].ProjectID != "" {
+			parts = append(parts, fmt.Sprintf(`projectId: "%s"`, inputs[i].ProjectID))
 		}
-		if input.Assignee != "" {
-			userID, err := r.ResolveUser(ctx, input.Assignee)
+		if inputs[i].Assignee != "" {
+			userID, err := r.ResolveUser(ctx, inputs[i].Assignee)
 			if err == nil {
 				parts = append(parts, fmt.Sprintf(`assigneeId: "%s"`, userID))
 			}
@@ -815,11 +869,11 @@ func (r *Repository) BulkCreateIssues(ctx context.Context, inputs []domain.Creat
 		return nil, err
 	}
 	if !result.IssueBatchCreate.Success {
-		return nil, fmt.Errorf("bulk issue creation failed")
+		return nil, ErrBulkCreate
 	}
 	out := make([]domain.Issue, len(result.IssueBatchCreate.Issues))
-	for i, li := range result.IssueBatchCreate.Issues {
-		out[i] = li.toDomain()
+	for i := range result.IssueBatchCreate.Issues {
+		out[i] = result.IssueBatchCreate.Issues[i].toDomain()
 	}
 	return out, nil
 }
@@ -827,7 +881,7 @@ func (r *Repository) BulkCreateIssues(ctx context.Context, inputs []domain.Creat
 // --- Sub-issue / children operations ---
 
 func (r *Repository) ListChildren(ctx context.Context, key string) ([]domain.Issue, error) {
-	slog.Debug("list children", logKeyBackend, BackendName, logKeyIssueKey, key, logKeyOperation, "list_children")
+	slog.DebugContext(ctx, "list children", logKeyBackend, BackendName, logKeyIssueKey, key, logKeyOperation, "list_children")
 	num := extractNumber(key)
 	q := fmt.Sprintf(`{ issues(filter: { team: { key: { eq: "%s" } }, number: { eq: %s } }) { nodes { children { nodes { %s } } } } }`,
 		r.team, num, issueFields)
@@ -849,8 +903,8 @@ func (r *Repository) ListChildren(ctx context.Context, key string) ([]domain.Iss
 	}
 	children := result.Issues.Nodes[0].Children.Nodes
 	out := make([]domain.Issue, len(children))
-	for i, li := range children {
-		out[i] = li.toDomain()
+	for i := range children {
+		out[i] = children[i].toDomain()
 	}
 	return out, nil
 }
@@ -872,7 +926,90 @@ func (r *Repository) ResolveUser(ctx context.Context, name string) (string, erro
 		return "", err
 	}
 	if len(result.Users.Nodes) == 0 {
-		return "", fmt.Errorf("user not found: %s", name)
+		return "", fmt.Errorf("%w: %s", ErrUserNotFound, name)
 	}
 	return result.Users.Nodes[0].ID, nil
+}
+
+// --- Comment operations ---
+
+type linearComment struct {
+	ID        string `json:"id"`
+	Body      string `json:"body"`
+	CreatedAt string `json:"createdAt"`
+	UpdatedAt string `json:"updatedAt"`
+	User      *struct {
+		Name string `json:"name"`
+	} `json:"user"`
+}
+
+func (lc *linearComment) toDomain() domain.Comment {
+	c := domain.Comment{
+		ID:   lc.ID,
+		Body: lc.Body,
+	}
+	if lc.User != nil {
+		c.Author = lc.User.Name
+	}
+	c.CreatedAt, _ = time.Parse(time.RFC3339, lc.CreatedAt)
+	c.UpdatedAt, _ = time.Parse(time.RFC3339, lc.UpdatedAt)
+	return c
+}
+
+func (r *Repository) ListComments(ctx context.Context, key string) ([]domain.Comment, error) {
+	num := extractNumber(key)
+	q := fmt.Sprintf(`{ issues(filter: { team: { key: { eq: "%s" } }, number: { eq: %s } }) { nodes { comments { nodes { id body createdAt updatedAt user { name } } } } } }`,
+		r.team, num)
+	var result struct {
+		Issues struct {
+			Nodes []struct {
+				Comments struct {
+					Nodes []linearComment `json:"nodes"`
+				} `json:"comments"`
+			} `json:"nodes"`
+		} `json:"issues"`
+	}
+	if err := r.gql(ctx, q, &result); err != nil {
+		return nil, err
+	}
+	if len(result.Issues.Nodes) == 0 {
+		return nil, fmt.Errorf("%w: %s", ErrIssueNotFound, key)
+	}
+	raw := result.Issues.Nodes[0].Comments.Nodes
+	comments := make([]domain.Comment, len(raw))
+	for i := range raw {
+		comments[i] = raw[i].toDomain()
+	}
+	return comments, nil
+}
+
+func (r *Repository) AddComment(ctx context.Context, key string, input domain.CommentCreateInput) (*domain.Comment, error) {
+	existing, err := r.Get(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	escaped := escapeGraphQL(input.Body)
+	q := fmt.Sprintf(`mutation { commentCreate(input: { issueId: "%s", body: "%s" }) { success comment { id body createdAt updatedAt user { name } } } }`,
+		existing.ID, escaped)
+	var result struct {
+		CommentCreate struct {
+			Success bool          `json:"success"`
+			Comment linearComment `json:"comment"`
+		} `json:"commentCreate"`
+	}
+	if err := r.gql(ctx, q, &result); err != nil {
+		return nil, err
+	}
+	if !result.CommentCreate.Success {
+		return nil, fmt.Errorf("%w on %s", ErrCommentCreateFailed, key)
+	}
+	c := result.CommentCreate.Comment.toDomain()
+	return &c, nil
+}
+
+func escapeGraphQL(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `"`, `\"`)
+	s = strings.ReplaceAll(s, "\n", `\n`)
+	return s
 }

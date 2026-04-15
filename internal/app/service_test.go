@@ -8,16 +8,17 @@ import (
 	"github.com/DanyPops/emcee/internal/app"
 	"github.com/DanyPops/emcee/internal/domain"
 	"github.com/DanyPops/emcee/internal/port/driven"
+	"github.com/DanyPops/emcee/internal/port/driven/driventest"
 )
 
 // mockRepo implements all driven repository interfaces for testing.
 type mockRepo struct {
-	name       string
-	issues     []domain.Issue
-	docs       []domain.Document
-	projects   []domain.Project
+	name        string
+	issues      []domain.Issue
+	docs        []domain.Document
+	projects    []domain.Project
 	initiatives []domain.Initiative
-	labels     []domain.Label
+	labels      []domain.Label
 }
 
 var _ driven.IssueRepository = (*mockRepo)(nil)
@@ -30,12 +31,12 @@ var _ driven.BulkIssueRepository = (*mockRepo)(nil)
 func (m *mockRepo) Name() string { return m.name }
 
 func (m *mockRepo) List(_ context.Context, filter domain.ListFilter) ([]domain.Issue, error) {
-	var out []domain.Issue
-	for _, i := range m.issues {
-		if filter.Status != "" && i.Status != filter.Status {
+	out := make([]domain.Issue, 0, len(m.issues))
+	for i := range m.issues {
+		if filter.Status != "" && m.issues[i].Status != filter.Status {
 			continue
 		}
-		out = append(out, i)
+		out = append(out, m.issues[i])
 	}
 	if filter.Limit > 0 && len(out) > filter.Limit {
 		out = out[:filter.Limit]
@@ -44,9 +45,9 @@ func (m *mockRepo) List(_ context.Context, filter domain.ListFilter) ([]domain.I
 }
 
 func (m *mockRepo) Get(_ context.Context, key string) (*domain.Issue, error) {
-	for _, i := range m.issues {
-		if i.Key == key {
-			return &i, nil
+	for i := range m.issues {
+		if m.issues[i].Key == key {
+			return &m.issues[i], nil
 		}
 	}
 	return nil, fmt.Errorf("not found: %s", key)
@@ -64,8 +65,8 @@ func (m *mockRepo) Create(_ context.Context, input domain.CreateInput) (*domain.
 }
 
 func (m *mockRepo) Update(_ context.Context, key string, input domain.UpdateInput) (*domain.Issue, error) {
-	for i, issue := range m.issues {
-		if issue.Key == key {
+	for i := range m.issues {
+		if m.issues[i].Key == key {
 			if input.Title != nil {
 				m.issues[i].Title = *input.Title
 			}
@@ -117,8 +118,8 @@ func (m *mockRepo) CreateProject(_ context.Context, input domain.ProjectCreateIn
 }
 
 func (m *mockRepo) UpdateProject(_ context.Context, id string, input domain.ProjectUpdateInput) (*domain.Project, error) {
-	for i, p := range m.projects {
-		if p.ID == id {
+	for i := range m.projects {
+		if m.projects[i].ID == id {
 			if input.Name != nil {
 				m.projects[i].Name = *input.Name
 			}
@@ -157,13 +158,13 @@ func (m *mockRepo) CreateLabel(_ context.Context, input domain.LabelCreateInput)
 }
 
 func (m *mockRepo) BulkCreateIssues(_ context.Context, inputs []domain.CreateInput) ([]domain.Issue, error) {
-	var created []domain.Issue
-	for i, input := range inputs {
+	created := make([]domain.Issue, 0, len(inputs))
+	for i := range inputs {
 		issue := domain.Issue{
 			Ref:   fmt.Sprintf("%s:BULK-%d", m.name, i+1),
 			ID:    fmt.Sprintf("bulk-id-%d", i+1),
 			Key:   fmt.Sprintf("BULK-%d", i+1),
-			Title: input.Title,
+			Title: inputs[i].Title,
 		}
 		created = append(created, issue)
 	}
@@ -377,5 +378,80 @@ func TestServiceDocumentsUnsupportedBackend(t *testing.T) {
 	_, err := svc.ListDocuments(context.Background(), "unknown", domain.DocumentListFilter{})
 	if err == nil {
 		t.Fatal("expected error for unsupported backend")
+	}
+}
+
+// --- Stub-based tests (spy assertion pattern) ---
+
+func TestServiceListPassesFilter(t *testing.T) {
+	stub := &driventest.StubCompositeRepository{}
+	stub.StubIssueRepository.NameVal = "test"
+	stub.StubIssueRepository.Issues = []domain.Issue{{Key: "T-1"}}
+	svc := app.NewService(stub)
+
+	filter := domain.ListFilter{Status: domain.StatusDone, Limit: 5}
+	issues, err := svc.List(context.Background(), "test", filter)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(issues) != 1 {
+		t.Errorf("len = %d, want 1", len(issues))
+	}
+	if len(stub.StubIssueRepository.ListCalls) != 1 {
+		t.Fatalf("ListCalls = %d, want 1", len(stub.StubIssueRepository.ListCalls))
+	}
+	got := stub.StubIssueRepository.ListCalls[0].Filter
+	if got.Status != domain.StatusDone {
+		t.Errorf("filter.Status = %q, want %q", got.Status, domain.StatusDone)
+	}
+	if got.Limit != 5 {
+		t.Errorf("filter.Limit = %d, want 5", got.Limit)
+	}
+}
+
+func TestServiceGetPassesKey(t *testing.T) {
+	stub := &driventest.StubCompositeRepository{}
+	stub.StubIssueRepository.NameVal = "test"
+	stub.StubIssueRepository.Issue = &domain.Issue{Key: "T-1", Title: "Found"}
+	svc := app.NewService(stub)
+
+	issue, err := svc.Get(context.Background(), "test:T-1")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if issue.Title != "Found" {
+		t.Errorf("title = %q, want %q", issue.Title, "Found")
+	}
+	if len(stub.StubIssueRepository.GetCalls) != 1 {
+		t.Fatalf("GetCalls = %d, want 1", len(stub.StubIssueRepository.GetCalls))
+	}
+	if stub.StubIssueRepository.GetCalls[0].Key != "T-1" {
+		t.Errorf("GetCalls[0].Key = %q, want %q", stub.StubIssueRepository.GetCalls[0].Key, "T-1")
+	}
+}
+
+func TestServiceCreatePassesInput(t *testing.T) {
+	stub := &driventest.StubCompositeRepository{}
+	stub.StubIssueRepository.NameVal = "test"
+	stub.StubIssueRepository.Issue = &domain.Issue{Key: "NEW-1", Title: "Created"}
+	svc := app.NewService(stub)
+
+	input := domain.CreateInput{Title: "Created", Priority: domain.PriorityHigh}
+	issue, err := svc.Create(context.Background(), "test", input)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if issue.Title != "Created" {
+		t.Errorf("title = %q, want %q", issue.Title, "Created")
+	}
+	if len(stub.StubIssueRepository.CreateCalls) != 1 {
+		t.Fatalf("CreateCalls = %d, want 1", len(stub.StubIssueRepository.CreateCalls))
+	}
+	got := stub.StubIssueRepository.CreateCalls[0].Input
+	if got.Title != "Created" {
+		t.Errorf("input.Title = %q, want %q", got.Title, "Created")
+	}
+	if got.Priority != domain.PriorityHigh {
+		t.Errorf("input.Priority = %v, want %v", got.Priority, domain.PriorityHigh)
 	}
 }

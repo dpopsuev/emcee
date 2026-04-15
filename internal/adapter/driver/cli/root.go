@@ -4,20 +4,28 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"strings"
 	"text/tabwriter"
 
-	"github.com/DanyPops/emcee/internal/adapter/driven/linear"
+	// Blank imports trigger init() registration with the backend registry.
+	_ "github.com/DanyPops/emcee/internal/adapter/driven/github"
+	_ "github.com/DanyPops/emcee/internal/adapter/driven/gitlab"
+	_ "github.com/DanyPops/emcee/internal/adapter/driven/jira"
+	_ "github.com/DanyPops/emcee/internal/adapter/driven/linear"
+
+	adapterdriven "github.com/DanyPops/emcee/internal/adapter/driven"
 	mcpserver "github.com/DanyPops/emcee/internal/adapter/driver/mcp"
 	"github.com/DanyPops/emcee/internal/app"
 	"github.com/DanyPops/emcee/internal/config"
 	"github.com/DanyPops/emcee/internal/domain"
-	"github.com/DanyPops/emcee/internal/port/driven"
 	"github.com/spf13/cobra"
 )
+
+var errBulkUpdateFailed = errors.New("bulk update failed")
 
 var (
 	flagBackend     string
@@ -49,51 +57,19 @@ func newServiceFromConfig() (*app.Service, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	var repos []driven.IssueRepository
-	for name, backend := range cfg.Backends {
-		switch name {
-		case "linear":
-			key := backend.ResolveKey()
-			if key == "" {
-				return nil, fmt.Errorf("linear: %s is not set", backend.APIKeyEnv)
-			}
-			team := backend.Team
-			if team == "" {
-				team = "HEG"
-			}
-			repo, err := linear.New(key, team)
-			if err != nil {
-				return nil, fmt.Errorf("linear: %w", err)
-			}
-			repos = append(repos, repo)
-		default:
-			return nil, fmt.Errorf("unsupported backend: %s", name)
-		}
-	}
-	if len(repos) == 0 {
-		return nil, fmt.Errorf("no backends configured in config file")
+	repos, warnings := adapterdriven.CreateFromConfig(cfg)
+	for _, w := range warnings {
+		fmt.Fprintln(os.Stderr, "warning:", w)
 	}
 	return app.NewService(repos...), nil
 }
 
 func newServiceFromEnv() (*app.Service, error) {
-	key := os.Getenv("LINEAR_API_KEY")
-	if key == "" {
-		return nil, fmt.Errorf("no backends configured (set LINEAR_API_KEY or create config file)")
+	repos, warnings := adapterdriven.CreateFromEnv()
+	for _, w := range warnings {
+		fmt.Fprintln(os.Stderr, "warning:", w)
 	}
-
-	team := os.Getenv("LINEAR_TEAM")
-	if team == "" {
-		team = "HEG"
-	}
-
-	repo, err := linear.New(key, team)
-	if err != nil {
-		return nil, fmt.Errorf("linear: %w", err)
-	}
-
-	return app.NewService(repo), nil
+	return app.NewService(repos...), nil
 }
 
 func Execute() error {
@@ -115,10 +91,10 @@ var listCmd = &cobra.Command{
 			return err
 		}
 		filter := domain.ListFilter{
-			Project:  flagProject,
-			Status:   domain.Status(flagStatus),
-			Labels:   flagLabels,
-			Limit:    flagLimit,
+			Project: flagProject,
+			Status:  domain.Status(flagStatus),
+			Labels:  flagLabels,
+			Limit:   flagLimit,
 		}
 		issues, err := svc.List(context.Background(), flagBackend, filter)
 		if err != nil {
@@ -162,6 +138,11 @@ var createCmd = &cobra.Command{
 			ParentID:    flagParent,
 			ProjectID:   flagProjectID,
 			Assignee:    flagAssignee,
+		}
+		if flagStage {
+			id := svc.StageItem(flagBackend, input, "")
+			fmt.Printf("Staged %s (backend: %s, title: %s)\n", id, flagBackend, input.Title)
+			return nil
 		}
 		issue, err := svc.Create(context.Background(), flagBackend, input)
 		if err != nil {
@@ -227,9 +208,9 @@ func printIssues(issues []domain.Issue) error {
 	}
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "REF\tSTATUS\tPRI\tTITLE\tLABELS")
-	for _, i := range issues {
-		labels := strings.Join(i.Labels, ",")
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", i.Ref, i.Status, i.Priority, i.Title, labels)
+	for i := range issues {
+		labels := strings.Join(issues[i].Labels, ",")
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", issues[i].Ref, issues[i].Status, issues[i].Priority, issues[i].Title, labels)
 	}
 	return w.Flush()
 }
@@ -323,8 +304,8 @@ func printDocuments(docs []domain.Document) error {
 	}
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "ID\tTITLE\tURL")
-	for _, d := range docs {
-		fmt.Fprintf(w, "%s\t%s\t%s\n", d.ID, d.Title, d.URL)
+	for i := range docs {
+		fmt.Fprintf(w, "%s\t%s\t%s\n", docs[i].ID, docs[i].Title, docs[i].URL)
 	}
 	return w.Flush()
 }
@@ -385,8 +366,8 @@ func printProjects(projs []domain.Project) error {
 	}
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "ID\tNAME\tSTATUS\tURL")
-	for _, p := range projs {
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", p.ID, p.Name, p.Status, p.URL)
+	for i := range projs {
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", projs[i].ID, projs[i].Name, projs[i].Status, projs[i].URL)
 	}
 	return w.Flush()
 }
@@ -580,23 +561,23 @@ var bulkUpdateCmd = &cobra.Command{
 			input.Priority = &p
 		}
 
-		var errors []string
+		var errs []string
 		var updated int
 		for _, ref := range args {
 			_, err := svc.Update(context.Background(), ref, input)
 			if err != nil {
-				errors = append(errors, fmt.Sprintf("%s: %v", ref, err))
+				errs = append(errs, fmt.Sprintf("%s: %v", ref, err))
 				continue
 			}
 			updated++
 		}
 
 		fmt.Printf("Updated %d/%d issues\n", updated, len(args))
-		for _, e := range errors {
+		for _, e := range errs {
 			fmt.Fprintf(os.Stderr, "  error: %s\n", e)
 		}
-		if len(errors) > 0 {
-			return fmt.Errorf("%d issues failed", len(errors))
+		if len(errs) > 0 {
+			return fmt.Errorf("%w: %d issues", errBulkUpdateFailed, len(errs))
 		}
 		return nil
 	},
@@ -667,6 +648,184 @@ func parseMarkdown(content string) (title, body string) {
 		body = strings.TrimSpace(lines[1])
 	}
 	return
+}
+
+func printJSON(v any) error {
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	return enc.Encode(v)
+}
+
+// --- Comment commands ---
+
+var commentCmd = &cobra.Command{
+	Use:   "comment",
+	Short: "Manage issue comments",
+}
+
+var commentListCmd = &cobra.Command{
+	Use:   "list [ref]",
+	Short: "List comments on an issue",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		svc, err := newService()
+		if err != nil {
+			return err
+		}
+		comments, err := svc.ListComments(context.Background(), args[0])
+		if err != nil {
+			return err
+		}
+		if flagJSON {
+			return printJSON(comments)
+		}
+		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+		fmt.Fprintln(w, "ID\tAUTHOR\tBODY\tCREATED")
+		for _, c := range comments {
+			body := c.Body
+			if len(body) > 80 {
+				body = body[:77] + "..."
+			}
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", c.ID, c.Author, body, c.CreatedAt.Format("2006-01-02"))
+		}
+		return w.Flush()
+	},
+}
+
+var commentAddCmd = &cobra.Command{
+	Use:   "add [ref] [body]",
+	Short: "Add a comment to an issue",
+	Args:  cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		svc, err := newService()
+		if err != nil {
+			return err
+		}
+		comment, err := svc.AddComment(context.Background(), args[0], domain.CommentCreateInput{Body: args[1]})
+		if err != nil {
+			return err
+		}
+		if flagJSON {
+			return printJSON(comment)
+		}
+		fmt.Printf("Added comment %s\n", comment.ID)
+		return nil
+	},
+}
+
+// --- Stage commands ---
+
+var (
+	flagStage bool
+)
+
+var stageCmd = &cobra.Command{
+	Use:   "stage",
+	Short: "Manage staged (pre-submission) issues",
+}
+
+var stageListCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List staged items",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		svc, err := newService()
+		if err != nil {
+			return err
+		}
+		items := svc.StageList()
+		if flagJSON {
+			return printJSON(items)
+		}
+		if len(items) == 0 {
+			fmt.Println("No staged items.")
+			return nil
+		}
+		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+		fmt.Fprintln(w, "ID\tBACKEND\tTITLE\tREASON")
+		for _, item := range items {
+			reason := item.Reason
+			if len(reason) > 40 {
+				reason = reason[:37] + "..."
+			}
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", item.ID, item.Backend, item.Input.Title, reason)
+		}
+		return w.Flush()
+	},
+}
+
+var stageShowCmd = &cobra.Command{
+	Use:   "show [id]",
+	Short: "Show a staged item",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		svc, err := newService()
+		if err != nil {
+			return err
+		}
+		item, err := svc.StageGet(args[0])
+		if err != nil {
+			return err
+		}
+		return printJSON(item)
+	},
+}
+
+var stageDropCmd = &cobra.Command{
+	Use:   "drop [id]",
+	Short: "Remove a staged item",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		svc, err := newService()
+		if err != nil {
+			return err
+		}
+		if err := svc.StageDrop(args[0]); err != nil {
+			return err
+		}
+		fmt.Printf("Dropped %s\n", args[0])
+		return nil
+	},
+}
+
+var pushCmd = &cobra.Command{
+	Use:   "push [id]",
+	Short: "Push staged items to backends (all if no ID given)",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		svc, err := newService()
+		if err != nil {
+			return err
+		}
+		ctx := context.Background()
+		if len(args) > 0 {
+			item, err := svc.StagePop(args[0])
+			if err != nil {
+				return err
+			}
+			issue, err := svc.Create(ctx, item.Backend, item.Input)
+			if err != nil {
+				svc.StageItem(item.Backend, item.Input, err.Error())
+				return fmt.Errorf("push failed (re-staged): %w", err)
+			}
+			fmt.Printf("Pushed %s -> %s\n", item.ID, issue.Ref)
+			return nil
+		}
+		// push all
+		items := svc.StagePopAll()
+		if len(items) == 0 {
+			fmt.Println("Nothing staged.")
+			return nil
+		}
+		for _, item := range items {
+			issue, err := svc.Create(ctx, item.Backend, item.Input)
+			if err != nil {
+				svc.StageItem(item.Backend, item.Input, err.Error())
+				fmt.Fprintf(os.Stderr, "  error: %s: %v (re-staged)\n", item.ID, err)
+				continue
+			}
+			fmt.Printf("Pushed %s -> %s\n", item.ID, issue.Ref)
+		}
+		return nil
+	},
 }
 
 // --- Serve command ---
@@ -744,4 +903,15 @@ func init() {
 	bulkUpdateCmd.Flags().StringVar(&flagPriority, "priority", "", "New priority for all issues")
 
 	rootCmd.AddCommand(bulkCreateCmd, bulkUpdateCmd, childrenCmd, importCmd)
+
+	// Comment subcommands
+	commentCmd.AddCommand(commentListCmd, commentAddCmd)
+	rootCmd.AddCommand(commentCmd)
+
+	// Stage subcommands
+	stageCmd.AddCommand(stageListCmd, stageShowCmd, stageDropCmd)
+	rootCmd.AddCommand(stageCmd, pushCmd)
+
+	// Stage flag on create
+	createCmd.Flags().BoolVar(&flagStage, "stage", false, "Stage locally instead of creating immediately")
 }

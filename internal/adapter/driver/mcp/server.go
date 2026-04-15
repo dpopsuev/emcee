@@ -9,17 +9,30 @@ import (
 
 	"github.com/DanyPops/emcee/internal/domain"
 	"github.com/DanyPops/emcee/internal/port/driver"
-	gomcp "github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	"github.com/dpopsuev/battery/mcpserver"
+	"github.com/dpopsuev/battery/server"
+	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 const (
 	serverName    = "emcee"
-	serverVersion = "0.3.0"
+	serverVersion = "0.4.0"
 
 	defaultBackend   = "linear"
 	defaultListMax   = 50
 	defaultSearchMax = 20
+)
+
+var (
+	errRefRequired     = errors.New("ref is required")
+	errTitleRequired   = errors.New("title is required")
+	errQueryRequired   = errors.New("query is required")
+	errIssuesRequired  = errors.New("issues is required")
+	errBodyRequired    = errors.New("body is required")
+	errStageIDRequired = errors.New("stage_id is required")
+	errNameRequired    = errors.New("name is required")
+	errIDRequired      = errors.New("id is required")
+	errUnknownAction   = errors.New("unknown action")
 )
 
 // EmceeService combines all driver port interfaces.
@@ -30,351 +43,536 @@ type EmceeService interface {
 	driver.InitiativeService
 	driver.LabelService
 	driver.BulkService
+	driver.HealthService
+	driver.CommentService
+	driver.StageService
 }
 
-const serverInstructions = `Emcee is a unified issue tracker across Linear, GitHub, and Jira. Two tools: emcee (issue CRUD: list, get, create, update, search, children, bulk_create, bulk_update) and emcee_manage (supporting entities: doc_list, doc_create, project_list, project_create, initiative_list, initiative_create, label_list, label_create). Ref format: "backend:key" (e.g. "linear:HEG-17"). Backend defaults to "linear". Status: backlog, todo, in_progress, in_review, done, canceled. Priority: urgent, high, medium, low. Bulk ops accept JSON array in issues param, auto-batch to 50.`
+const serverInstructions = `Emcee is a unified issue tracker across Linear, GitHub, GitLab, and Jira. Three tools: emcee (issue CRUD + comments + staging), emcee_manage (supporting entities), emcee_health (health check). Ref format: "backend:key" (e.g. "linear:HEG-17"). Backend defaults to "linear". Status: backlog, todo, in_progress, in_review, done, canceled. Priority: urgent, high, medium, low. Bulk ops accept JSON array in issues param, auto-batch to 50. Stage operations queue issues locally before pushing to any backend; push_all submits to mixed backends in one call. Create auto-stages on failure for retry. Comments: use "comments" to list, "comment_add" to add (does not overwrite description). Read cache: responses cached with TTL, use --refresh to bypass.`
 
 // Serve starts the MCP server over stdio, exposing issue management tools.
 func Serve(svc EmceeService) error {
-	s := server.NewMCPServer(serverName, serverVersion,
-		server.WithInstructions(serverInstructions),
+	srv := mcpserver.NewServer(serverName, serverVersion).
+		WithInstructions(serverInstructions)
+	RegisterTools(srv, svc)
+	return srv.Serve(context.Background(), &sdkmcp.StdioTransport{})
+}
+
+// RegisterTools registers all emcee MCP tools on the given server.
+func RegisterTools(srv *mcpserver.Server, svc EmceeService) {
+	srv.ToolWithSchema(
+		server.ToolMeta{
+			Name:        "emcee",
+			Description: "Issue CRUD + comments + staging: list, get, create, update, search, children, bulk_create, bulk_update, comments, comment_add, stage, stage_list, stage_show, stage_patch, stage_drop, push, push_all.",
+			Keywords:    []string{"issue", "ticket", "bug", "task", "comment", "stage", "push", "linear", "github", "jira", "gitlab"},
+			Categories:  []string{"issue-management"},
+		},
+		emceeSchema,
+		emceeHandler(svc),
 	)
-	registerTools(s, svc)
-	return server.ServeStdio(s)
-}
-
-// RegisterToolsForTesting is exported for test access.
-var RegisterToolsForTesting = registerTools
-
-func registerTools(s *server.MCPServer, svc EmceeService) {
-	s.AddTool(emceeTool(), emceeHandler(svc))
-	s.AddTool(manageTool(), manageHandler(svc))
-}
-
-// --- Tool definitions ---
-
-func emceeTool() gomcp.Tool {
-	return gomcp.NewTool("emcee",
-		gomcp.WithDescription("Issue CRUD: list, get, create, update, search, children, bulk_create, bulk_update."),
-		gomcp.WithString("action", gomcp.Required(), gomcp.Description("Action: list, get, create, update, search, children, bulk_create, bulk_update")),
-		gomcp.WithString("backend", gomcp.Description("Backend name (default: linear)")),
-		gomcp.WithString("ref", gomcp.Description("Issue ref for get/update/children (e.g. linear:HEG-17)")),
-		gomcp.WithString("title", gomcp.Description("Issue title (create)")),
-		gomcp.WithString("description", gomcp.Description("Issue description (create/update)")),
-		gomcp.WithString("status", gomcp.Description("Status: backlog, todo, in_progress, in_review, done, canceled")),
-		gomcp.WithString("priority", gomcp.Description("Priority: urgent, high, medium, low")),
-		gomcp.WithString("assignee", gomcp.Description("Assignee name (create/list filter)")),
-		gomcp.WithString("parent_id", gomcp.Description("Parent issue ID for sub-issues (create)")),
-		gomcp.WithString("project_id", gomcp.Description("Project ID (create)")),
-		gomcp.WithString("query", gomcp.Description("Search query text (search)")),
-		gomcp.WithNumber("limit", gomcp.Description("Max results (list/search)")),
-		gomcp.WithString("issues", gomcp.Description("JSON array for bulk_create/bulk_update")),
+	srv.ToolWithSchema(
+		server.ToolMeta{
+			Name:        "emcee_manage",
+			Description: "Supporting entities: doc_list, doc_create, project_list, project_create, project_update, initiative_list, initiative_create, label_list, label_create.",
+			Keywords:    []string{"document", "project", "initiative", "label", "epic"},
+			Categories:  []string{"issue-management", "project-management"},
+		},
+		manageSchema,
+		manageHandler(svc),
 	)
-}
-
-func manageTool() gomcp.Tool {
-	return gomcp.NewTool("emcee_manage",
-		gomcp.WithDescription("Supporting entities: doc_list, doc_create, project_list, project_create, project_update, initiative_list, initiative_create, label_list, label_create."),
-		gomcp.WithString("action", gomcp.Required(), gomcp.Description("Action: doc_list, doc_create, project_list, project_create, project_update, initiative_list, initiative_create, label_list, label_create")),
-		gomcp.WithString("backend", gomcp.Description("Backend name (default: linear)")),
-		gomcp.WithString("title", gomcp.Description("Document title (doc_create)")),
-		gomcp.WithString("name", gomcp.Description("Entity name (project/initiative/label create)")),
-		gomcp.WithString("description", gomcp.Description("Description (doc/project/initiative create)")),
-		gomcp.WithString("content", gomcp.Description("Markdown content (doc_create)")),
-		gomcp.WithString("project_id", gomcp.Description("Link document to project (doc_create)")),
-		gomcp.WithString("color", gomcp.Description("Label color hex (label_create)")),
-		gomcp.WithNumber("limit", gomcp.Description("Max results (list actions)")),
+	srv.Tool(
+		server.ToolMeta{
+			Name:        "emcee_health",
+			Description: "Check emcee backend health and configuration status",
+			Keywords:    []string{"health", "status", "diagnostics"},
+			Categories:  []string{"operations"},
+		},
+		healthHandler(svc),
 	)
 }
 
-// --- Dispatchers ---
+// --- Schemas ---
 
-func emceeHandler(svc EmceeService) server.ToolHandlerFunc {
-	return func(ctx context.Context, req gomcp.CallToolRequest) (*gomcp.CallToolResult, error) {
-		action := stringArg(req, "action", "")
-		backend := stringArg(req, "backend", defaultBackend)
+var emceeSchema = json.RawMessage(`{
+	"type": "object",
+	"properties": {
+		"action":      {"type": "string", "description": "Action: list, get, create, update, search, children, bulk_create, bulk_update, comments, comment_add, stage, stage_list, stage_show, stage_patch, stage_drop, push, push_all"},
+		"backend":     {"type": "string", "description": "Backend name (default: linear)"},
+		"ref":         {"type": "string", "description": "Issue ref for get/update/children (e.g. linear:HEG-17)"},
+		"title":       {"type": "string", "description": "Issue title (create)"},
+		"description": {"type": "string", "description": "Issue description (create/update)"},
+		"status":      {"type": "string", "description": "Status: backlog, todo, in_progress, in_review, done, canceled"},
+		"priority":    {"type": "string", "description": "Priority: urgent, high, medium, low"},
+		"assignee":    {"type": "string", "description": "Assignee name (create/list filter)"},
+		"parent_id":   {"type": "string", "description": "Parent issue ID for sub-issues (create)"},
+		"project_id":  {"type": "string", "description": "Project ID (create)"},
+		"query":       {"type": "string", "description": "Search query text (search)"},
+		"limit":       {"type": "number", "description": "Max results (list/search)"},
+		"issues":      {"type": "string", "description": "JSON array for bulk_create/bulk_update"},
+		"body":        {"type": "string", "description": "Comment body text (comment_add)"},
+		"stage_id":    {"type": "string", "description": "Stage ID for stage_show/stage_patch/stage_drop/push"}
+	},
+	"required": ["action"]
+}`)
 
-		switch action {
+var manageSchema = json.RawMessage(`{
+	"type": "object",
+	"properties": {
+		"action":      {"type": "string", "description": "Action: doc_list, doc_create, project_list, project_create, project_update, initiative_list, initiative_create, label_list, label_create"},
+		"backend":     {"type": "string", "description": "Backend name (default: linear)"},
+		"title":       {"type": "string", "description": "Document title (doc_create)"},
+		"name":        {"type": "string", "description": "Entity name (project/initiative/label create)"},
+		"description": {"type": "string", "description": "Description (doc/project/initiative create)"},
+		"content":     {"type": "string", "description": "Markdown content (doc_create)"},
+		"project_id":  {"type": "string", "description": "Link document to project (doc_create)"},
+		"id":          {"type": "string", "description": "Entity ID (project_update)"},
+		"color":       {"type": "string", "description": "Label color hex (label_create)"},
+		"limit":       {"type": "number", "description": "Max results (list actions)"}
+	},
+	"required": ["action"]
+}`)
+
+// --- Handlers ---
+
+type emceeArgs struct {
+	Action      string  `json:"action"`
+	Backend     string  `json:"backend"`
+	Ref         string  `json:"ref"`
+	Title       string  `json:"title"`
+	Description string  `json:"description"`
+	Status      string  `json:"status"`
+	Priority    string  `json:"priority"`
+	Assignee    string  `json:"assignee"`
+	ParentID    string  `json:"parent_id"`
+	ProjectID   string  `json:"project_id"`
+	Query       string  `json:"query"`
+	Limit       float64 `json:"limit"`
+	Issues      string  `json:"issues"`
+	Body        string  `json:"body"`
+	StageID     string  `json:"stage_id"`
+}
+
+//nolint:gocyclo,funlen // dispatcher with many action cases
+func emceeHandler(svc EmceeService) server.Handler {
+	return func(ctx context.Context, input json.RawMessage) (string, error) {
+		var args emceeArgs
+		if err := json.Unmarshal(input, &args); err != nil {
+			return "", fmt.Errorf("invalid arguments: %w", err)
+		}
+		if args.Backend == "" {
+			args.Backend = defaultBackend
+		}
+		limit := int(args.Limit)
+		if limit == 0 {
+			limit = defaultListMax
+		}
+
+		switch args.Action {
 		case "list":
 			filter := domain.ListFilter{
-				Status:   domain.Status(stringArg(req, "status", "")),
-				Assignee: stringArg(req, "assignee", ""),
-				Limit:    intArg(req, "limit", defaultListMax),
+				Status:   domain.Status(args.Status),
+				Assignee: args.Assignee,
+				Limit:    limit,
 			}
-			issues, err := svc.List(ctx, backend, filter)
+			issues, err := svc.List(ctx, args.Backend, filter)
 			if err != nil {
-				return errResult(err), nil
+				return "", err
 			}
-			return jsonResult(issues)
+			return server.JSONResult(issues)
 
 		case "get":
-			ref := stringArg(req, "ref", "")
-			if ref == "" {
-				return errResult(errors.New("ref is required")), nil
+			if args.Ref == "" {
+				return "", errRefRequired
 			}
-			issue, err := svc.Get(ctx, ref)
+			issue, err := svc.Get(ctx, args.Ref)
 			if err != nil {
-				return errResult(err), nil
+				return "", err
 			}
-			return jsonResult(issue)
+			return server.JSONResult(issue)
 
 		case "create":
-			title := stringArg(req, "title", "")
-			if title == "" {
-				return errResult(errors.New("title is required")), nil
+			if args.Title == "" {
+				return "", errTitleRequired
 			}
 			input := domain.CreateInput{
-				Title:       title,
-				Description: stringArg(req, "description", ""),
-				Priority:    domain.ParsePriority(stringArg(req, "priority", "")),
-				Assignee:    stringArg(req, "assignee", ""),
-				ParentID:    stringArg(req, "parent_id", ""),
-				ProjectID:   stringArg(req, "project_id", ""),
+				Title:       args.Title,
+				Description: args.Description,
+				Priority:    domain.ParsePriority(args.Priority),
+				Assignee:    args.Assignee,
+				ParentID:    args.ParentID,
+				ProjectID:   args.ProjectID,
 			}
-			if s := stringArg(req, "status", ""); s != "" {
-				input.Status = domain.Status(s)
+			if args.Status != "" {
+				input.Status = domain.Status(args.Status)
 			}
-			issue, err := svc.Create(ctx, backend, input)
+			issue, err := svc.Create(ctx, args.Backend, input)
 			if err != nil {
-				return errResult(err), nil
+				// Auto-stage on failure — preserve the payload for retry
+				id := svc.StageItem(args.Backend, input, err.Error())
+				return server.JSONResult(map[string]any{
+					"error":    err.Error(),
+					"staged":   true,
+					"stage_id": id,
+					"message":  fmt.Sprintf("Create failed, auto-staged as %s. Use push to retry.", id),
+				})
 			}
-			return jsonResult(issue)
+			return server.JSONResult(issue)
 
 		case "update":
-			ref := stringArg(req, "ref", "")
-			if ref == "" {
-				return errResult(errors.New("ref is required")), nil
+			if args.Ref == "" {
+				return "", errRefRequired
 			}
-			var input domain.UpdateInput
-			if v := stringArg(req, "title", ""); v != "" {
-				input.Title = &v
+			var updateInput domain.UpdateInput
+			if args.Title != "" {
+				updateInput.Title = &args.Title
 			}
-			if v := stringArg(req, "description", ""); v != "" {
-				input.Description = &v
+			if args.Description != "" {
+				updateInput.Description = &args.Description
 			}
-			if v := stringArg(req, "status", ""); v != "" {
-				s := domain.Status(v)
-				input.Status = &s
+			if args.Status != "" {
+				s := domain.Status(args.Status)
+				updateInput.Status = &s
 			}
-			if v := stringArg(req, "priority", ""); v != "" {
-				p := domain.ParsePriority(v)
-				input.Priority = &p
+			if args.Priority != "" {
+				p := domain.ParsePriority(args.Priority)
+				updateInput.Priority = &p
 			}
-			issue, err := svc.Update(ctx, ref, input)
+			issue, err := svc.Update(ctx, args.Ref, updateInput)
 			if err != nil {
-				return errResult(err), nil
+				return "", err
 			}
-			return jsonResult(issue)
+			return server.JSONResult(issue)
 
 		case "search":
-			query := stringArg(req, "query", "")
-			if query == "" {
-				return errResult(errors.New("query is required")), nil
+			if args.Query == "" {
+				return "", errQueryRequired
 			}
-			issues, err := svc.Search(ctx, backend, query, intArg(req, "limit", defaultSearchMax))
+			searchLimit := int(args.Limit)
+			if searchLimit == 0 {
+				searchLimit = defaultSearchMax
+			}
+			issues, err := svc.Search(ctx, args.Backend, args.Query, searchLimit)
 			if err != nil {
-				return errResult(err), nil
+				return "", err
 			}
-			return jsonResult(issues)
+			return server.JSONResult(issues)
 
 		case "children":
-			ref := stringArg(req, "ref", "")
-			if ref == "" {
-				return errResult(errors.New("ref is required")), nil
+			if args.Ref == "" {
+				return "", errRefRequired
 			}
-			issues, err := svc.ListChildren(ctx, ref)
+			issues, err := svc.ListChildren(ctx, args.Ref)
 			if err != nil {
-				return errResult(err), nil
+				return "", err
 			}
-			return jsonResult(issues)
+			return server.JSONResult(issues)
 
 		case "bulk_create":
-			issuesJSON := stringArg(req, "issues", "")
-			if issuesJSON == "" {
-				return errResult(errors.New("issues is required")), nil
+			if args.Issues == "" {
+				return "", errIssuesRequired
 			}
 			var inputs []domain.CreateInput
-			if err := json.Unmarshal([]byte(issuesJSON), &inputs); err != nil {
-				return errResult(fmt.Errorf("invalid issues JSON: %w", err)), nil
+			if err := json.Unmarshal([]byte(args.Issues), &inputs); err != nil {
+				return "", fmt.Errorf("invalid issues JSON: %w", err)
 			}
-			result, err := svc.BulkCreateIssues(ctx, backend, inputs)
+			result, err := svc.BulkCreateIssues(ctx, args.Backend, inputs)
 			if err != nil {
-				return errResult(err), nil
+				return "", err
 			}
-			return jsonResult(result)
+			return server.JSONResult(result)
 
 		case "bulk_update":
-			issuesJSON := stringArg(req, "issues", "")
-			if issuesJSON == "" {
-				return errResult(errors.New("issues is required")), nil
+			if args.Issues == "" {
+				return "", errIssuesRequired
 			}
 			var inputs []domain.BulkUpdateInput
-			if err := json.Unmarshal([]byte(issuesJSON), &inputs); err != nil {
-				return errResult(fmt.Errorf("invalid issues JSON: %w", err)), nil
+			if err := json.Unmarshal([]byte(args.Issues), &inputs); err != nil {
+				return "", fmt.Errorf("invalid issues JSON: %w", err)
 			}
-			result, err := svc.BulkUpdateIssues(ctx, backend, inputs)
+			result, err := svc.BulkUpdateIssues(ctx, args.Backend, inputs)
 			if err != nil {
-				return errResult(err), nil
+				return "", err
 			}
-			return jsonResult(result)
+			return server.JSONResult(result)
+
+		// --- Comment actions ---
+
+		case "comments":
+			if args.Ref == "" {
+				return "", errRefRequired
+			}
+			comments, err := svc.ListComments(ctx, args.Ref)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(comments)
+
+		case "comment_add":
+			if args.Ref == "" {
+				return "", errRefRequired
+			}
+			if args.Body == "" {
+				return "", errBodyRequired
+			}
+			comment, err := svc.AddComment(ctx, args.Ref, domain.CommentCreateInput{Body: args.Body})
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(comment)
+
+		// --- Stage actions ---
+
+		case "stage":
+			if args.Title == "" {
+				return "", errTitleRequired
+			}
+			input := domain.CreateInput{
+				Title:       args.Title,
+				Description: args.Description,
+				Priority:    domain.ParsePriority(args.Priority),
+				Assignee:    args.Assignee,
+				ParentID:    args.ParentID,
+				ProjectID:   args.ProjectID,
+			}
+			if args.Status != "" {
+				input.Status = domain.Status(args.Status)
+			}
+			id := svc.StageItem(args.Backend, input, "")
+			return server.JSONResult(map[string]string{"stage_id": id, "backend": args.Backend})
+
+		case "stage_list":
+			items := svc.StageList()
+			return server.JSONResult(items)
+
+		case "stage_show":
+			if args.StageID == "" {
+				return "", errStageIDRequired
+			}
+			item, err := svc.StageGet(args.StageID)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(item)
+
+		case "stage_patch":
+			if args.StageID == "" {
+				return "", errStageIDRequired
+			}
+			var patchInput domain.UpdateInput
+			if args.Title != "" {
+				patchInput.Title = &args.Title
+			}
+			if args.Description != "" {
+				patchInput.Description = &args.Description
+			}
+			if args.Status != "" {
+				s := domain.Status(args.Status)
+				patchInput.Status = &s
+			}
+			if args.Priority != "" {
+				p := domain.ParsePriority(args.Priority)
+				patchInput.Priority = &p
+			}
+			if args.Assignee != "" {
+				patchInput.Assignee = &args.Assignee
+			}
+			item, err := svc.StagePatch(args.StageID, patchInput)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(item)
+
+		case "stage_drop":
+			if args.StageID == "" {
+				return "", errStageIDRequired
+			}
+			if err := svc.StageDrop(args.StageID); err != nil {
+				return "", err
+			}
+			return server.JSONResult(map[string]string{"status": "dropped", "id": args.StageID})
+
+		case "push":
+			if args.StageID == "" {
+				return "", errStageIDRequired
+			}
+			item, err := svc.StagePop(args.StageID)
+			if err != nil {
+				return "", err
+			}
+			issue, err := svc.Create(ctx, item.Backend, item.Input)
+			if err != nil {
+				svc.StageItem(item.Backend, item.Input, err.Error())
+				return "", fmt.Errorf("push failed (re-staged): %w", err)
+			}
+			return server.JSONResult(issue)
+
+		case "push_all":
+			items := svc.StagePopAll()
+			if len(items) == 0 {
+				return server.JSONResult(map[string]any{"pushed": 0, "errors": []string{}})
+			}
+			var pushed []domain.Issue
+			var pushErrs []string
+			for i := range items {
+				issue, err := svc.Create(ctx, items[i].Backend, items[i].Input)
+				if err != nil {
+					svc.StageItem(items[i].Backend, items[i].Input, err.Error())
+					pushErrs = append(pushErrs, fmt.Sprintf("%s: %v", items[i].ID, err))
+					continue
+				}
+				pushed = append(pushed, *issue)
+			}
+			return server.JSONResult(map[string]any{"pushed": len(pushed), "issues": pushed, "errors": pushErrs})
 
 		default:
-			return errResult(fmt.Errorf("unknown action %q (valid: list, get, create, update, search, children, bulk_create, bulk_update)", action)), nil
+			return "", fmt.Errorf("%w %q (valid: list, get, create, update, search, children, bulk_create, bulk_update, comments, comment_add, stage, stage_list, stage_show, stage_patch, stage_drop, push, push_all)", errUnknownAction, args.Action)
 		}
 	}
 }
 
-func manageHandler(svc EmceeService) server.ToolHandlerFunc {
-	return func(ctx context.Context, req gomcp.CallToolRequest) (*gomcp.CallToolResult, error) {
-		action := stringArg(req, "action", "")
-		backend := stringArg(req, "backend", defaultBackend)
+type manageArgs struct {
+	Action      string  `json:"action"`
+	Backend     string  `json:"backend"`
+	Title       string  `json:"title"`
+	Name        string  `json:"name"`
+	Description string  `json:"description"`
+	Content     string  `json:"content"`
+	ProjectID   string  `json:"project_id"`
+	ID          string  `json:"id"`
+	Color       string  `json:"color"`
+	Limit       float64 `json:"limit"`
+}
 
-		switch action {
+//nolint:gocyclo,funlen // dispatcher with many action cases
+func manageHandler(svc EmceeService) server.Handler {
+	return func(ctx context.Context, input json.RawMessage) (string, error) {
+		var args manageArgs
+		if err := json.Unmarshal(input, &args); err != nil {
+			return "", fmt.Errorf("invalid arguments: %w", err)
+		}
+		if args.Backend == "" {
+			args.Backend = defaultBackend
+		}
+		limit := int(args.Limit)
+		if limit == 0 {
+			limit = defaultListMax
+		}
+
+		switch args.Action {
 		case "doc_list":
-			filter := domain.DocumentListFilter{Limit: intArg(req, "limit", defaultListMax)}
-			docs, err := svc.ListDocuments(ctx, backend, filter)
+			filter := domain.DocumentListFilter{Limit: limit}
+			docs, err := svc.ListDocuments(ctx, args.Backend, filter)
 			if err != nil {
-				return errResult(err), nil
+				return "", err
 			}
-			return jsonResult(docs)
+			return server.JSONResult(docs)
 
 		case "doc_create":
-			title := stringArg(req, "title", "")
-			if title == "" {
-				return errResult(errors.New("title is required")), nil
+			if args.Title == "" {
+				return "", errTitleRequired
 			}
-			input := domain.DocumentCreateInput{
-				Title:     title,
-				Content:   stringArg(req, "content", ""),
-				ProjectID: stringArg(req, "project_id", ""),
+			docInput := domain.DocumentCreateInput{
+				Title:     args.Title,
+				Content:   args.Content,
+				ProjectID: args.ProjectID,
 			}
-			doc, err := svc.CreateDocument(ctx, backend, input)
+			doc, err := svc.CreateDocument(ctx, args.Backend, docInput)
 			if err != nil {
-				return errResult(err), nil
+				return "", err
 			}
-			return jsonResult(doc)
+			return server.JSONResult(doc)
 
 		case "project_list":
-			filter := domain.ProjectListFilter{Limit: intArg(req, "limit", defaultListMax)}
-			projects, err := svc.ListProjects(ctx, backend, filter)
+			filter := domain.ProjectListFilter{Limit: limit}
+			projects, err := svc.ListProjects(ctx, args.Backend, filter)
 			if err != nil {
-				return errResult(err), nil
+				return "", err
 			}
-			return jsonResult(projects)
+			return server.JSONResult(projects)
 
 		case "project_create":
-			name := stringArg(req, "name", "")
-			if name == "" {
-				return errResult(errors.New("name is required")), nil
+			if args.Name == "" {
+				return "", errNameRequired
 			}
-			input := domain.ProjectCreateInput{
-				Name:        name,
-				Description: stringArg(req, "description", ""),
+			projInput := domain.ProjectCreateInput{
+				Name:        args.Name,
+				Description: args.Description,
 			}
-			proj, err := svc.CreateProject(ctx, backend, input)
+			proj, err := svc.CreateProject(ctx, args.Backend, projInput)
 			if err != nil {
-				return errResult(err), nil
+				return "", err
 			}
-			return jsonResult(proj)
+			return server.JSONResult(proj)
 
 		case "project_update":
-			id := stringArg(req, "id", "")
-			if id == "" {
-				return errResult(errors.New("id is required")), nil
+			if args.ID == "" {
+				return "", errIDRequired
 			}
-			var input domain.ProjectUpdateInput
-			if v := stringArg(req, "name", ""); v != "" {
-				input.Name = &v
+			var projUpdate domain.ProjectUpdateInput
+			if args.Name != "" {
+				projUpdate.Name = &args.Name
 			}
-			if v := stringArg(req, "description", ""); v != "" {
-				input.Description = &v
+			if args.Description != "" {
+				projUpdate.Description = &args.Description
 			}
-			proj, err := svc.UpdateProject(ctx, backend, id, input)
+			proj, err := svc.UpdateProject(ctx, args.Backend, args.ID, projUpdate)
 			if err != nil {
-				return errResult(err), nil
+				return "", err
 			}
-			return jsonResult(proj)
+			return server.JSONResult(proj)
 
 		case "initiative_list":
-			filter := domain.InitiativeListFilter{Limit: intArg(req, "limit", defaultListMax)}
-			inits, err := svc.ListInitiatives(ctx, backend, filter)
+			filter := domain.InitiativeListFilter{Limit: limit}
+			inits, err := svc.ListInitiatives(ctx, args.Backend, filter)
 			if err != nil {
-				return errResult(err), nil
+				return "", err
 			}
-			return jsonResult(inits)
+			return server.JSONResult(inits)
 
 		case "initiative_create":
-			name := stringArg(req, "name", "")
-			if name == "" {
-				return errResult(errors.New("name is required")), nil
+			if args.Name == "" {
+				return "", errNameRequired
 			}
-			input := domain.InitiativeCreateInput{
-				Name:        name,
-				Description: stringArg(req, "description", ""),
+			initInput := domain.InitiativeCreateInput{
+				Name:        args.Name,
+				Description: args.Description,
 			}
-			init, err := svc.CreateInitiative(ctx, backend, input)
+			init, err := svc.CreateInitiative(ctx, args.Backend, initInput)
 			if err != nil {
-				return errResult(err), nil
+				return "", err
 			}
-			return jsonResult(init)
+			return server.JSONResult(init)
 
 		case "label_list":
-			labels, err := svc.ListLabels(ctx, backend)
+			labels, err := svc.ListLabels(ctx, args.Backend)
 			if err != nil {
-				return errResult(err), nil
+				return "", err
 			}
-			return jsonResult(labels)
+			return server.JSONResult(labels)
 
 		case "label_create":
-			name := stringArg(req, "name", "")
-			if name == "" {
-				return errResult(errors.New("name is required")), nil
+			if args.Name == "" {
+				return "", errNameRequired
 			}
-			input := domain.LabelCreateInput{
-				Name:  name,
-				Color: stringArg(req, "color", ""),
+			labelInput := domain.LabelCreateInput{
+				Name:  args.Name,
+				Color: args.Color,
 			}
-			label, err := svc.CreateLabel(ctx, backend, input)
+			label, err := svc.CreateLabel(ctx, args.Backend, labelInput)
 			if err != nil {
-				return errResult(err), nil
+				return "", err
 			}
-			return jsonResult(label)
+			return server.JSONResult(label)
 
 		default:
-			return errResult(fmt.Errorf("unknown action %q (valid: doc_list, doc_create, project_list, project_create, initiative_list, initiative_create, label_list, label_create)", action)), nil
+			return "", fmt.Errorf("%w %q (valid: doc_list, doc_create, project_list, project_create, project_update, initiative_list, initiative_create, label_list, label_create)", errUnknownAction, args.Action)
 		}
 	}
 }
 
-// --- Helpers ---
-
-func stringArg(req gomcp.CallToolRequest, name, fallback string) string {
-	if v, ok := req.GetArguments()[name].(string); ok && v != "" {
-		return v
-	}
-	return fallback
-}
-
-func intArg(req gomcp.CallToolRequest, name string, fallback int) int {
-	if v, ok := req.GetArguments()[name].(float64); ok {
-		return int(v)
-	}
-	return fallback
-}
-
-func jsonResult(v any) (*gomcp.CallToolResult, error) {
-	data, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
-		return errResult(err), nil
-	}
-	return &gomcp.CallToolResult{
-		Content: []gomcp.Content{gomcp.NewTextContent(string(data))},
-	}, nil
-}
-
-func errResult(err error) *gomcp.CallToolResult {
-	return &gomcp.CallToolResult{
-		Content: []gomcp.Content{gomcp.NewTextContent(err.Error())},
-		IsError: true,
+func healthHandler(svc EmceeService) server.Handler {
+	return func(_ context.Context, _ json.RawMessage) (string, error) {
+		health := svc.Health()
+		return server.JSONResult(health)
 	}
 }
