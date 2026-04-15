@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/DanyPops/emcee/internal/domain"
 	"github.com/DanyPops/emcee/internal/port/driver"
@@ -114,7 +115,10 @@ var emceeSchema = json.RawMessage(`{
 		"issues":      {"type": "string", "description": "JSON array for bulk_create/bulk_update"},
 		"body":        {"type": "string", "description": "Comment body text (comment_add)"},
 		"stage_id":    {"type": "string", "description": "Stage ID for stage_show/stage_patch/stage_drop/push"},
-		"issue_type":  {"type": "string", "description": "Issue type (create): Bug, Task, Story, Spike, etc. (Jira)"}
+		"issue_type":  {"type": "string", "description": "Issue type (create): Bug, Task, Story, Spike, etc. (Jira)"},
+		"versions":    {"type": "string", "description": "Comma-separated affected versions (create, Jira): e.g. 4.16,4.17"},
+		"fix_versions":{"type": "string", "description": "Comma-separated fix versions (create, Jira): e.g. 4.16.60"},
+		"components":  {"type": "string", "description": "Comma-separated components (create, Jira): e.g. Networking,PTP"}
 	},
 	"required": ["action"]
 }`)
@@ -155,6 +159,9 @@ type emceeArgs struct {
 	Body        string  `json:"body"`
 	StageID     string  `json:"stage_id"`
 	IssueType   string  `json:"issue_type"`
+	Versions    string  `json:"versions"`
+	FixVersionsStr string `json:"fix_versions"`
+	ComponentsStr  string `json:"components"`
 }
 
 //nolint:gocyclo,funlen // dispatcher with many action cases
@@ -207,6 +214,9 @@ func emceeHandler(svc EmceeService) server.Handler {
 				ParentID:    args.ParentID,
 				ProjectID:   args.ProjectID,
 				IssueType:   args.IssueType,
+				Versions:    splitCSV(args.Versions),
+				FixVersions: splitCSV(args.FixVersionsStr),
+				Components:  splitCSV(args.ComponentsStr),
 			}
 			if args.Status != "" {
 				input.Status = domain.Status(args.Status)
@@ -340,6 +350,9 @@ func emceeHandler(svc EmceeService) server.Handler {
 				ParentID:    args.ParentID,
 				ProjectID:   args.ProjectID,
 				IssueType:   args.IssueType,
+				Versions:    splitCSV(args.Versions),
+				FixVersions: splitCSV(args.FixVersionsStr),
+				Components:  splitCSV(args.ComponentsStr),
 			}
 			if args.Status != "" {
 				input.Status = domain.Status(args.Status)
@@ -666,4 +679,21 @@ func healthHandler(svc EmceeService) server.Handler {
 		health := svc.Health()
 		return server.JSONResult(health)
 	}
+}
+
+// splitCSV splits a comma-separated string into a trimmed slice.
+// Returns nil for empty input.
+func splitCSV(s string) []string {
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	result := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			result = append(result, p)
+		}
+	}
+	return result
 }

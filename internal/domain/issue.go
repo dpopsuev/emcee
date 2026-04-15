@@ -115,6 +115,9 @@ type CreateInput struct {
 	ParentID    string   `json:"parent_id,omitempty"`
 	ProjectID   string   `json:"project_id,omitempty"`
 	IssueType   string   `json:"issue_type,omitempty"`
+	Components  []string `json:"components,omitempty"`
+	FixVersions []string `json:"fix_versions,omitempty"`
+	Versions    []string `json:"versions,omitempty"`
 }
 
 type UpdateInput struct {

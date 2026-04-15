@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -117,8 +118,9 @@ func (r *Repository) api(ctx context.Context, method, path string, body, result 
 		}
 	}
 	if resp.StatusCode >= 400 {
-		sanitized := adapterdriven.SanitizeError(string(respBody))
-		return fmt.Errorf("%w %s %s: %d: %s", ErrAPIError, method, path, resp.StatusCode, sanitized)
+		errMsg := parseJiraError(respBody)
+		adapterdriven.LogAPIError(ctx, BackendName, method, path, resp.StatusCode, errMsg)
+		return fmt.Errorf("%w: %d %s", ErrAPIError, resp.StatusCode, errMsg)
 	}
 
 	if result != nil {
@@ -129,9 +131,32 @@ func (r *Repository) api(ctx context.Context, method, path string, body, result 
 	return nil
 }
 
+// parseJiraError extracts human-readable error messages from Jira's error response.
+// Jira returns: {"errorMessages":["msg1"],"errors":{"field":"reason"}}
+func parseJiraError(body []byte) string {
+	var jiraErr struct {
+		ErrorMessages []string          `json:"errorMessages"`
+		Errors        map[string]string `json:"errors"`
+	}
+	if err := json.Unmarshal(body, &jiraErr); err != nil {
+		return adapterdriven.SanitizeError(string(body))
+	}
+
+	parts := make([]string, 0, len(jiraErr.ErrorMessages)+len(jiraErr.Errors))
+	parts = append(parts, jiraErr.ErrorMessages...)
+	for field, msg := range jiraErr.Errors {
+		parts = append(parts, fmt.Sprintf("%s: %s", field, msg))
+	}
+	if len(parts) == 0 {
+		return adapterdriven.SanitizeError(string(body))
+	}
+	return strings.Join(parts, "; ")
+}
+
 // --- Issue operations ---
 
 func (r *Repository) List(ctx context.Context, filter domain.ListFilter) ([]domain.Issue, error) {
+	adapterdriven.LogOp(ctx, BackendName, "list", slog.String(adapterdriven.LogKeyProject, r.project))
 	project := r.project
 	if filter.Project != "" {
 		project = filter.Project
@@ -167,6 +192,7 @@ func (r *Repository) List(ctx context.Context, filter domain.ListFilter) ([]doma
 }
 
 func (r *Repository) Get(ctx context.Context, key string) (*domain.Issue, error) {
+	adapterdriven.LogOp(ctx, BackendName, "get", slog.String(adapterdriven.LogKeyIssueKey, key))
 	var raw jiraIssue
 	path := fmt.Sprintf("/rest/api/2/issue/%s?fields=summary,status,priority,assignee,description,labels,created,updated,project,issuetype,resolution,fixVersions,components", key)
 	if err := r.api(ctx, "GET", path, nil, &raw); err != nil {
@@ -177,6 +203,7 @@ func (r *Repository) Get(ctx context.Context, key string) (*domain.Issue, error)
 }
 
 func (r *Repository) Create(ctx context.Context, input domain.CreateInput) (*domain.Issue, error) {
+	adapterdriven.LogWrite(ctx, BackendName, "create", slog.String(adapterdriven.LogKeyProject, r.project), slog.String(adapterdriven.LogKeyTitle, input.Title))
 	project := r.project
 	if input.ProjectID != "" {
 		project = input.ProjectID
@@ -204,6 +231,27 @@ func (r *Repository) Create(ctx context.Context, input domain.CreateInput) (*dom
 			"name": mapPriorityToJira(input.Priority),
 		}
 	}
+	if len(input.Versions) > 0 {
+		versions := make([]map[string]string, len(input.Versions))
+		for i, v := range input.Versions {
+			versions[i] = map[string]string{"name": v}
+		}
+		body["fields"].(map[string]any)["versions"] = versions
+	}
+	if len(input.FixVersions) > 0 {
+		fv := make([]map[string]string, len(input.FixVersions))
+		for i, v := range input.FixVersions {
+			fv[i] = map[string]string{"name": v}
+		}
+		body["fields"].(map[string]any)["fixVersions"] = fv
+	}
+	if len(input.Components) > 0 {
+		comps := make([]map[string]string, len(input.Components))
+		for i, c := range input.Components {
+			comps[i] = map[string]string{"name": c}
+		}
+		body["fields"].(map[string]any)["components"] = comps
+	}
 
 	var result struct {
 		ID  string `json:"id"`
@@ -217,6 +265,7 @@ func (r *Repository) Create(ctx context.Context, input domain.CreateInput) (*dom
 }
 
 func (r *Repository) Update(ctx context.Context, key string, input domain.UpdateInput) (*domain.Issue, error) {
+	adapterdriven.LogWrite(ctx, BackendName, "update", slog.String(adapterdriven.LogKeyIssueKey, key))
 	fields := map[string]any{}
 
 	if input.Title != nil {
@@ -251,6 +300,7 @@ func (r *Repository) Update(ctx context.Context, key string, input domain.Update
 }
 
 func (r *Repository) Search(ctx context.Context, query string, limit int) ([]domain.Issue, error) {
+	adapterdriven.LogOp(ctx, BackendName, "search", slog.String(adapterdriven.LogKeyQuery, query))
 	if limit <= 0 {
 		limit = defaultLimit
 	}
@@ -265,6 +315,7 @@ func (r *Repository) Search(ctx context.Context, query string, limit int) ([]dom
 }
 
 func (r *Repository) ListChildren(ctx context.Context, key string) ([]domain.Issue, error) {
+	adapterdriven.LogOp(ctx, BackendName, "list_children", slog.String(adapterdriven.LogKeyIssueKey, key))
 	jql := fmt.Sprintf("parent = %s ORDER BY created ASC", key)
 	return r.searchJQL(ctx, jql, defaultLimit)
 }
@@ -272,6 +323,7 @@ func (r *Repository) ListChildren(ctx context.Context, key string) ([]domain.Iss
 // --- Project operations ---
 
 func (r *Repository) ListProjects(ctx context.Context, filter domain.ProjectListFilter) ([]domain.Project, error) {
+	adapterdriven.LogOp(ctx, BackendName, "list_projects")
 	var result []jiraProject
 	if err := r.api(ctx, "GET", "/rest/api/2/project?recent=20", nil, &result); err != nil {
 		return nil, err
@@ -307,6 +359,7 @@ func (r *Repository) UpdateProject(_ context.Context, _ string, _ domain.Project
 // --- Label operations ---
 
 func (r *Repository) ListLabels(ctx context.Context) ([]domain.Label, error) {
+	adapterdriven.LogOp(ctx, BackendName, "list_labels")
 	var raw []string
 	if err := r.api(ctx, "GET", "/rest/api/2/label", nil, &raw); err != nil {
 		return nil, err
@@ -607,6 +660,7 @@ func (jc jiraComment) toDomain() domain.Comment {
 }
 
 func (r *Repository) ListComments(ctx context.Context, key string) ([]domain.Comment, error) {
+	adapterdriven.LogOp(ctx, BackendName, "list_comments", slog.String(adapterdriven.LogKeyIssueKey, key))
 	path := fmt.Sprintf("/rest/api/2/issue/%s/comment", key)
 	var result struct {
 		Comments []jiraComment `json:"comments"`
@@ -622,6 +676,7 @@ func (r *Repository) ListComments(ctx context.Context, key string) ([]domain.Com
 }
 
 func (r *Repository) AddComment(ctx context.Context, key string, input domain.CommentCreateInput) (*domain.Comment, error) {
+	adapterdriven.LogWrite(ctx, BackendName, "add_comment", slog.String(adapterdriven.LogKeyIssueKey, key))
 	path := fmt.Sprintf("/rest/api/2/issue/%s/comment", key)
 	body := map[string]string{"body": input.Body}
 	var raw jiraComment
@@ -635,6 +690,7 @@ func (r *Repository) AddComment(ctx context.Context, key string, input domain.Co
 // --- Field discovery ---
 
 func (r *Repository) ListFields(ctx context.Context) ([]domain.Field, error) {
+	adapterdriven.LogOp(ctx, BackendName, "list_fields")
 	var raw []struct {
 		ID     string `json:"id"`
 		Name   string `json:"name"`
@@ -664,6 +720,7 @@ func (r *Repository) ListFields(ctx context.Context) ([]domain.Field, error) {
 // --- JQL passthrough ---
 
 func (r *Repository) SearchJQL(ctx context.Context, jql string, limit int) ([]domain.Issue, error) {
+	adapterdriven.LogOp(ctx, BackendName, "search_jql", slog.String(adapterdriven.LogKeyQuery, jql))
 	if limit <= 0 {
 		limit = defaultLimit
 	}

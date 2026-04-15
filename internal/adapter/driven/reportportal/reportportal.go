@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -132,6 +133,7 @@ func (r *Repository) api(ctx context.Context, method, path string, body, result 
 	}
 	if resp.StatusCode >= 400 {
 		sanitized := adapterdriven.SanitizeError(string(respBody))
+		adapterdriven.LogAPIError(ctx, BackendName, method, path, resp.StatusCode, sanitized)
 		return fmt.Errorf("%w %s %s: %d: %s", ErrAPIError, method, path, resp.StatusCode, sanitized)
 	}
 
@@ -195,6 +197,7 @@ func (l *rpLaunch) toDomain(baseURL, project string) domain.Launch {
 }
 
 func (r *Repository) ListLaunches(ctx context.Context, filter domain.LaunchFilter) ([]domain.Launch, error) {
+	adapterdriven.LogOp(ctx, BackendName, "list_launches")
 	limit := filter.Limit
 	if limit <= 0 {
 		limit = defaultLimit
@@ -222,6 +225,7 @@ func (r *Repository) ListLaunches(ctx context.Context, filter domain.LaunchFilte
 }
 
 func (r *Repository) GetLaunch(ctx context.Context, id string) (*domain.Launch, error) {
+	adapterdriven.LogOp(ctx, BackendName, "get_launch", slog.String(adapterdriven.LogKeyID, id))
 	var raw rpLaunch
 	if err := r.api(ctx, "GET", "/launch/"+id, nil, &raw); err != nil {
 		return nil, err
@@ -261,6 +265,7 @@ func (ti *rpTestItem) toDomain(baseURL, project string) domain.TestItem {
 }
 
 func (r *Repository) ListTestItems(ctx context.Context, launchID string, filter domain.TestItemFilter) ([]domain.TestItem, error) {
+	adapterdriven.LogOp(ctx, BackendName, "list_test_items", slog.String(adapterdriven.LogKeyID, launchID))
 	limit := filter.Limit
 	if limit <= 0 {
 		limit = defaultLimit
@@ -286,6 +291,7 @@ func (r *Repository) ListTestItems(ctx context.Context, launchID string, filter 
 }
 
 func (r *Repository) GetTestItem(ctx context.Context, id string) (*domain.TestItem, error) {
+	adapterdriven.LogOp(ctx, BackendName, "get_test_item", slog.String(adapterdriven.LogKeyID, id))
 	var raw rpTestItem
 	if err := r.api(ctx, "GET", "/item/"+id, nil, &raw); err != nil {
 		if errors.Is(err, ErrLaunchNotFound) {
@@ -300,6 +306,7 @@ func (r *Repository) GetTestItem(ctx context.Context, id string) (*domain.TestIt
 // --- Defect update (bulk endpoint per NED-5: always use PUT /item, not PUT /item/{id}/update) ---
 
 func (r *Repository) UpdateDefects(ctx context.Context, updates []domain.DefectUpdate) error {
+	adapterdriven.LogWrite(ctx, BackendName, "update_defects", slog.Int(adapterdriven.LogKeyCount, len(updates)))
 	type issueUpdate struct {
 		TestItemID int `json:"testItemId"`
 		Issue      struct {

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -123,6 +124,7 @@ func (r *Repository) api(ctx context.Context, method, path string, body, result 
 	}
 	if resp.StatusCode >= 400 {
 		sanitized := adapterdriven.SanitizeError(string(respBody))
+		adapterdriven.LogAPIError(ctx, BackendName, method, path, resp.StatusCode, sanitized)
 		return fmt.Errorf("%w %s %s: %d: %s", ErrAPIError, method, path, resp.StatusCode, sanitized)
 	}
 
@@ -137,6 +139,7 @@ func (r *Repository) api(ctx context.Context, method, path string, body, result 
 // --- Issue operations ---
 
 func (r *Repository) List(ctx context.Context, filter domain.ListFilter) ([]domain.Issue, error) {
+	adapterdriven.LogOp(ctx, BackendName, "list")
 	path := fmt.Sprintf("/repos/%s/%s/issues?per_page=%d&state=all", r.owner, r.repo, defaultLimit)
 
 	if filter.Limit > 0 && filter.Limit < defaultLimit {
@@ -176,6 +179,7 @@ func (r *Repository) List(ctx context.Context, filter domain.ListFilter) ([]doma
 }
 
 func (r *Repository) Get(ctx context.Context, key string) (*domain.Issue, error) {
+	adapterdriven.LogOp(ctx, BackendName, "get", slog.String(adapterdriven.LogKeyIssueKey, key))
 	// key can be either issue number or "owner/repo#number" format
 	number := r.parseIssueNumber(key)
 
@@ -194,6 +198,7 @@ func (r *Repository) Get(ctx context.Context, key string) (*domain.Issue, error)
 }
 
 func (r *Repository) Create(ctx context.Context, input domain.CreateInput) (*domain.Issue, error) {
+	adapterdriven.LogWrite(ctx, BackendName, "create", slog.String(adapterdriven.LogKeyTitle, input.Title))
 	body := map[string]any{
 		"title": input.Title,
 		"body":  input.Description,
@@ -218,6 +223,7 @@ func (r *Repository) Create(ctx context.Context, input domain.CreateInput) (*dom
 }
 
 func (r *Repository) Update(ctx context.Context, key string, input domain.UpdateInput) (*domain.Issue, error) {
+	adapterdriven.LogWrite(ctx, BackendName, "update", slog.String(adapterdriven.LogKeyIssueKey, key))
 	number := r.parseIssueNumber(key)
 	body := map[string]any{}
 
@@ -252,6 +258,7 @@ func (r *Repository) Update(ctx context.Context, key string, input domain.Update
 }
 
 func (r *Repository) Search(ctx context.Context, query string, limit int) ([]domain.Issue, error) {
+	adapterdriven.LogOp(ctx, BackendName, "search", slog.String(adapterdriven.LogKeyQuery, query))
 	if limit <= 0 {
 		limit = defaultLimit
 	}
@@ -278,6 +285,7 @@ func (r *Repository) Search(ctx context.Context, query string, limit int) ([]dom
 }
 
 func (r *Repository) ListChildren(ctx context.Context, key string) ([]domain.Issue, error) {
+	adapterdriven.LogOp(ctx, BackendName, "list_children", slog.String(adapterdriven.LogKeyIssueKey, key))
 	// GitHub doesn't have native sub-issues, return empty list
 	// Could be enhanced to parse issue body for task lists or related issues
 	return []domain.Issue{}, nil
@@ -286,6 +294,7 @@ func (r *Repository) ListChildren(ctx context.Context, key string) ([]domain.Iss
 // --- Project operations ---
 
 func (r *Repository) ListProjects(ctx context.Context, filter domain.ProjectListFilter) ([]domain.Project, error) {
+	adapterdriven.LogOp(ctx, BackendName, "list_projects")
 	path := fmt.Sprintf("/repos/%s/%s/projects", r.owner, r.repo)
 
 	var raw []githubProject
@@ -323,6 +332,7 @@ func (r *Repository) UpdateProject(_ context.Context, _ string, _ domain.Project
 // --- Label operations ---
 
 func (r *Repository) ListLabels(ctx context.Context) ([]domain.Label, error) {
+	adapterdriven.LogOp(ctx, BackendName, "list_labels")
 	path := fmt.Sprintf("/repos/%s/%s/labels", r.owner, r.repo)
 
 	var raw []githubLabel
@@ -341,6 +351,7 @@ func (r *Repository) ListLabels(ctx context.Context) ([]domain.Label, error) {
 }
 
 func (r *Repository) CreateLabel(ctx context.Context, input domain.LabelCreateInput) (*domain.Label, error) {
+	adapterdriven.LogWrite(ctx, BackendName, "create_label", slog.String(adapterdriven.LogKeyName, input.Name))
 	body := map[string]any{
 		"name":  input.Name,
 		"color": "ededed", // default gray
@@ -492,6 +503,7 @@ func (gc githubComment) toDomain() domain.Comment {
 }
 
 func (r *Repository) ListComments(ctx context.Context, key string) ([]domain.Comment, error) {
+	adapterdriven.LogOp(ctx, BackendName, "list_comments", slog.String(adapterdriven.LogKeyIssueKey, key))
 	number := r.parseIssueNumber(key)
 	path := fmt.Sprintf("/repos/%s/%s/issues/%s/comments", r.owner, r.repo, number)
 	var raw []githubComment
@@ -506,6 +518,7 @@ func (r *Repository) ListComments(ctx context.Context, key string) ([]domain.Com
 }
 
 func (r *Repository) AddComment(ctx context.Context, key string, input domain.CommentCreateInput) (*domain.Comment, error) {
+	adapterdriven.LogWrite(ctx, BackendName, "add_comment", slog.String(adapterdriven.LogKeyIssueKey, key))
 	number := r.parseIssueNumber(key)
 	path := fmt.Sprintf("/repos/%s/%s/issues/%s/comments", r.owner, r.repo, number)
 	body := map[string]string{"body": input.Body}

@@ -31,17 +31,6 @@ const (
 	stateCompleted = "completed"
 	stateCanceled  = "canceled"
 
-	// Log keys.
-	logKeyBackend   = "backend"
-	logKeyTeam      = "team"
-	logKeyOperation = "op"
-	logKeyIssueKey  = "key"
-	logKeyTitle     = "title"
-	logKeyName      = "name"
-	logKeyQuery     = "query"
-	logKeyID        = "id"
-	logKeyCount     = "count"
-
 	// Rate limit detection strings (GraphQL errors).
 	errMsgRateLimit       = "rate limit"
 	errMsgTooManyRequests = "too many requests"
@@ -241,7 +230,7 @@ func (li *linearIssue) toDomain() domain.Issue {
 }
 
 func (r *Repository) List(ctx context.Context, filter domain.ListFilter) ([]domain.Issue, error) {
-	slog.DebugContext(ctx, "list issues", logKeyBackend, BackendName, logKeyTeam, r.team, logKeyOperation, "list")
+	adapterdriven.LogOp(ctx, BackendName, "list", slog.String(adapterdriven.LogKeyTeam, r.team))
 	limit := filter.Limit
 	if limit == 0 {
 		limit = defaultLimit
@@ -273,7 +262,7 @@ func (r *Repository) List(ctx context.Context, filter domain.ListFilter) ([]doma
 }
 
 func (r *Repository) Get(ctx context.Context, key string) (*domain.Issue, error) {
-	slog.DebugContext(ctx, "get issue", logKeyBackend, BackendName, logKeyIssueKey, key, logKeyOperation, "get")
+	adapterdriven.LogOp(ctx, BackendName, "get", slog.String(adapterdriven.LogKeyIssueKey, key))
 	num := extractNumber(key)
 	q := fmt.Sprintf(`{ issues(filter: { team: { key: { eq: "%s" } }, number: { eq: %s } }) { nodes { %s } } }`,
 		r.team, num, issueFields)
@@ -294,7 +283,7 @@ func (r *Repository) Get(ctx context.Context, key string) (*domain.Issue, error)
 }
 
 func (r *Repository) Create(ctx context.Context, input domain.CreateInput) (*domain.Issue, error) {
-	slog.InfoContext(ctx, "create issue", logKeyBackend, BackendName, logKeyTeam, r.team, logKeyOperation, "create", logKeyTitle, input.Title)
+	adapterdriven.LogWrite(ctx, BackendName, "create", slog.String(adapterdriven.LogKeyTeam, r.team), slog.String(adapterdriven.LogKeyTitle, input.Title))
 	parts := []string{fmt.Sprintf(`teamId: "%s"`, r.teamID)}
 	parts = append(parts, fmt.Sprintf(`title: "%s"`, escape(input.Title)))
 	if input.Description != "" {
@@ -335,7 +324,7 @@ func (r *Repository) Create(ctx context.Context, input domain.CreateInput) (*dom
 }
 
 func (r *Repository) Update(ctx context.Context, key string, input domain.UpdateInput) (*domain.Issue, error) {
-	slog.InfoContext(ctx, "update issue", logKeyBackend, BackendName, logKeyIssueKey, key, logKeyOperation, "update")
+	adapterdriven.LogWrite(ctx, BackendName, "update", slog.String(adapterdriven.LogKeyIssueKey, key))
 	existing, err := r.Get(ctx, key)
 	if err != nil {
 		return nil, err
@@ -379,7 +368,7 @@ func (r *Repository) Update(ctx context.Context, key string, input domain.Update
 }
 
 func (r *Repository) Search(ctx context.Context, query string, limit int) ([]domain.Issue, error) {
-	slog.DebugContext(ctx, "search issues", logKeyBackend, BackendName, logKeyOperation, "search", logKeyQuery, query)
+	adapterdriven.LogOp(ctx, BackendName, "search", slog.String(adapterdriven.LogKeyQuery, query))
 	if limit == 0 {
 		limit = 20
 	}
@@ -506,7 +495,7 @@ func (ld *linearDocument) toDomain() domain.Document {
 
 //nolint:dupl // list methods share patterns by design
 func (r *Repository) ListDocuments(ctx context.Context, filter domain.DocumentListFilter) ([]domain.Document, error) {
-	slog.DebugContext(ctx, "list documents", logKeyBackend, BackendName, logKeyOperation, "list_documents")
+	adapterdriven.LogOp(ctx, BackendName, "list_documents")
 	limit := filter.Limit
 	if limit == 0 {
 		limit = defaultLimit
@@ -529,7 +518,7 @@ func (r *Repository) ListDocuments(ctx context.Context, filter domain.DocumentLi
 }
 
 func (r *Repository) CreateDocument(ctx context.Context, input domain.DocumentCreateInput) (*domain.Document, error) {
-	slog.InfoContext(ctx, "create document", logKeyBackend, BackendName, logKeyOperation, "create_document", logKeyTitle, input.Title)
+	adapterdriven.LogWrite(ctx, BackendName, "create_document", slog.String(adapterdriven.LogKeyTitle, input.Title))
 	parts := []string{fmt.Sprintf(`title: "%s"`, escape(input.Title))}
 	if input.Content != "" {
 		parts = append(parts, fmt.Sprintf(`content: "%s"`, escape(input.Content)))
@@ -586,7 +575,7 @@ func (lp *linearProject) toDomain() domain.Project {
 
 //nolint:dupl // list methods share patterns by design
 func (r *Repository) ListProjects(ctx context.Context, filter domain.ProjectListFilter) ([]domain.Project, error) {
-	slog.DebugContext(ctx, "list projects", logKeyBackend, BackendName, logKeyOperation, "list_projects")
+	adapterdriven.LogOp(ctx, BackendName, "list_projects")
 	limit := filter.Limit
 	if limit == 0 {
 		limit = defaultLimit
@@ -609,7 +598,7 @@ func (r *Repository) ListProjects(ctx context.Context, filter domain.ProjectList
 }
 
 func (r *Repository) CreateProject(ctx context.Context, input domain.ProjectCreateInput) (*domain.Project, error) {
-	slog.InfoContext(ctx, "create project", logKeyBackend, BackendName, logKeyOperation, "create_project", logKeyName, input.Name)
+	adapterdriven.LogWrite(ctx, BackendName, "create_project", slog.String(adapterdriven.LogKeyName, input.Name))
 	teamIDs := input.TeamIDs
 	if len(teamIDs) == 0 {
 		teamIDs = []string{r.teamID}
@@ -647,7 +636,7 @@ func (r *Repository) CreateProject(ctx context.Context, input domain.ProjectCrea
 }
 
 func (r *Repository) UpdateProject(ctx context.Context, id string, input domain.ProjectUpdateInput) (*domain.Project, error) {
-	slog.InfoContext(ctx, "update project", logKeyBackend, BackendName, logKeyOperation, "update_project", logKeyID, id)
+	adapterdriven.LogWrite(ctx, BackendName, "update_project", slog.String(adapterdriven.LogKeyID, id))
 
 	var parts []string
 	if input.Name != nil {
@@ -715,7 +704,7 @@ func (li *linearInitiative) toDomain() domain.Initiative {
 
 //nolint:dupl // list methods share patterns by design
 func (r *Repository) ListInitiatives(ctx context.Context, filter domain.InitiativeListFilter) ([]domain.Initiative, error) {
-	slog.DebugContext(ctx, "list initiatives", logKeyBackend, BackendName, logKeyOperation, "list_initiatives")
+	adapterdriven.LogOp(ctx, BackendName, "list_initiatives")
 	limit := filter.Limit
 	if limit == 0 {
 		limit = defaultLimit
@@ -738,7 +727,7 @@ func (r *Repository) ListInitiatives(ctx context.Context, filter domain.Initiati
 }
 
 func (r *Repository) CreateInitiative(ctx context.Context, input domain.InitiativeCreateInput) (*domain.Initiative, error) {
-	slog.InfoContext(ctx, "create initiative", logKeyBackend, BackendName, logKeyOperation, "create_initiative", logKeyName, input.Name)
+	adapterdriven.LogWrite(ctx, BackendName, "create_initiative", slog.String(adapterdriven.LogKeyName, input.Name))
 	parts := []string{fmt.Sprintf(`name: "%s"`, escape(input.Name))}
 	if input.Description != "" {
 		parts = append(parts, fmt.Sprintf(`description: "%s"`, escape(input.Description)))
@@ -766,7 +755,7 @@ func (r *Repository) CreateInitiative(ctx context.Context, input domain.Initiati
 // --- Label operations ---
 
 func (r *Repository) ListLabels(ctx context.Context) ([]domain.Label, error) {
-	slog.DebugContext(ctx, "list labels", logKeyBackend, BackendName, logKeyTeam, r.team, logKeyOperation, "list_labels")
+	adapterdriven.LogOp(ctx, BackendName, "list_labels", slog.String(adapterdriven.LogKeyTeam, r.team))
 	q := fmt.Sprintf(`{ issueLabels(filter: { team: { id: { eq: "%s" } } }) { nodes { id name color } } }`, r.teamID)
 
 	var result struct {
@@ -789,7 +778,7 @@ func (r *Repository) ListLabels(ctx context.Context) ([]domain.Label, error) {
 }
 
 func (r *Repository) CreateLabel(ctx context.Context, input domain.LabelCreateInput) (*domain.Label, error) {
-	slog.InfoContext(ctx, "create label", logKeyBackend, BackendName, logKeyTeam, r.team, logKeyOperation, "create_label", logKeyName, input.Name)
+	adapterdriven.LogWrite(ctx, BackendName, "create_label", slog.String(adapterdriven.LogKeyTeam, r.team), slog.String(adapterdriven.LogKeyName, input.Name))
 	parts := []string{
 		fmt.Sprintf(`name: "%s"`, escape(input.Name)),
 		fmt.Sprintf(`teamId: "%s"`, r.teamID),
@@ -824,7 +813,7 @@ func (r *Repository) CreateLabel(ctx context.Context, input domain.LabelCreateIn
 // --- Bulk operations ---
 
 func (r *Repository) BulkCreateIssues(ctx context.Context, inputs []domain.CreateInput) ([]domain.Issue, error) {
-	slog.InfoContext(ctx, "bulk create issues", logKeyBackend, BackendName, logKeyTeam, r.team, logKeyOperation, "bulk_create", logKeyCount, len(inputs))
+	adapterdriven.LogWrite(ctx, BackendName, "bulk_create", slog.String(adapterdriven.LogKeyTeam, r.team), slog.Int(adapterdriven.LogKeyCount, len(inputs)))
 	if len(inputs) == 0 {
 		return nil, nil
 	}
@@ -881,7 +870,7 @@ func (r *Repository) BulkCreateIssues(ctx context.Context, inputs []domain.Creat
 // --- Sub-issue / children operations ---
 
 func (r *Repository) ListChildren(ctx context.Context, key string) ([]domain.Issue, error) {
-	slog.DebugContext(ctx, "list children", logKeyBackend, BackendName, logKeyIssueKey, key, logKeyOperation, "list_children")
+	adapterdriven.LogOp(ctx, BackendName, "list_children", slog.String(adapterdriven.LogKeyIssueKey, key))
 	num := extractNumber(key)
 	q := fmt.Sprintf(`{ issues(filter: { team: { key: { eq: "%s" } }, number: { eq: %s } }) { nodes { children { nodes { %s } } } } }`,
 		r.team, num, issueFields)
