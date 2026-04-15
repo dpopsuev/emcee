@@ -110,7 +110,8 @@ var emceeSchema = json.RawMessage(`{
 		"limit":       {"type": "number", "description": "Max results (list/search)"},
 		"issues":      {"type": "string", "description": "JSON array for bulk_create/bulk_update"},
 		"body":        {"type": "string", "description": "Comment body text (comment_add)"},
-		"stage_id":    {"type": "string", "description": "Stage ID for stage_show/stage_patch/stage_drop/push"}
+		"stage_id":    {"type": "string", "description": "Stage ID for stage_show/stage_patch/stage_drop/push"},
+		"issue_type":  {"type": "string", "description": "Issue type (create): Bug, Task, Story, Spike, etc. (Jira)"}
 	},
 	"required": ["action"]
 }`)
@@ -150,6 +151,7 @@ type emceeArgs struct {
 	Issues      string  `json:"issues"`
 	Body        string  `json:"body"`
 	StageID     string  `json:"stage_id"`
+	IssueType   string  `json:"issue_type"`
 }
 
 //nolint:gocyclo,funlen // dispatcher with many action cases
@@ -201,6 +203,7 @@ func emceeHandler(svc EmceeService) server.Handler {
 				Assignee:    args.Assignee,
 				ParentID:    args.ParentID,
 				ProjectID:   args.ProjectID,
+				IssueType:   args.IssueType,
 			}
 			if args.Status != "" {
 				input.Status = domain.Status(args.Status)
@@ -333,6 +336,7 @@ func emceeHandler(svc EmceeService) server.Handler {
 				Assignee:    args.Assignee,
 				ParentID:    args.ParentID,
 				ProjectID:   args.ProjectID,
+				IssueType:   args.IssueType,
 			}
 			if args.Status != "" {
 				input.Status = domain.Status(args.Status)

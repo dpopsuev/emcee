@@ -166,7 +166,7 @@ func (r *Repository) List(ctx context.Context, filter domain.ListFilter) ([]doma
 
 func (r *Repository) Get(ctx context.Context, key string) (*domain.Issue, error) {
 	var raw jiraIssue
-	path := fmt.Sprintf("/rest/api/2/issue/%s?fields=summary,status,priority,assignee,description,labels,created,updated,project", key)
+	path := fmt.Sprintf("/rest/api/2/issue/%s?fields=summary,status,priority,assignee,description,labels,created,updated,project,issuetype,resolution,fixVersions,components", key)
 	if err := r.api(ctx, "GET", path, nil, &raw); err != nil {
 		return nil, err
 	}
@@ -183,12 +183,16 @@ func (r *Repository) Create(ctx context.Context, input domain.CreateInput) (*dom
 		return nil, ErrProjectEmpty
 	}
 
+	issueType := input.IssueType
+	if issueType == "" {
+		issueType = "Task"
+	}
 	body := map[string]any{
 		"fields": map[string]any{
 			"project":     map[string]string{"key": project},
 			"summary":     input.Title,
 			"description": input.Description,
-			"issuetype":   map[string]string{"name": "Task"},
+			"issuetype":   map[string]string{"name": issueType},
 			"labels":      input.Labels,
 		},
 	}
@@ -248,7 +252,13 @@ func (r *Repository) Search(ctx context.Context, query string, limit int) ([]dom
 	if limit <= 0 {
 		limit = defaultLimit
 	}
-	jql := fmt.Sprintf("text ~ %q ORDER BY created DESC", query)
+	// Search across all accessible projects, or scoped to default project if configured
+	var jql string
+	if r.project != "" {
+		jql = fmt.Sprintf("project = %q AND text ~ %q ORDER BY created DESC", r.project, query)
+	} else {
+		jql = fmt.Sprintf("text ~ %q ORDER BY created DESC", query)
+	}
 	return r.searchJQL(ctx, jql, limit)
 }
 
@@ -316,7 +326,7 @@ func (r *Repository) CreateLabel(_ context.Context, _ domain.LabelCreateInput) (
 // --- Internal helpers ---
 
 func (r *Repository) searchJQL(ctx context.Context, jql string, limit int) ([]domain.Issue, error) {
-	path := fmt.Sprintf("/rest/api/3/search/jql?jql=%s&maxResults=%d&fields=summary,status,priority,assignee,description,labels,created,updated,project",
+	path := fmt.Sprintf("/rest/api/3/search/jql?jql=%s&maxResults=%d&fields=summary,status,priority,assignee,description,labels,created,updated,project,issuetype,resolution,fixVersions,components",
 		url.QueryEscape(jql), limit)
 
 	var result struct {
@@ -394,6 +404,18 @@ type jiraIssue struct {
 			Key  string `json:"key"`
 			Name string `json:"name"`
 		} `json:"project"`
+		IssueType *struct {
+			Name string `json:"name"`
+		} `json:"issuetype"`
+		Resolution *struct {
+			Name string `json:"name"`
+		} `json:"resolution"`
+		FixVersions []struct {
+			Name string `json:"name"`
+		} `json:"fixVersions"`
+		Components []struct {
+			Name string `json:"name"`
+		} `json:"components"`
 		Created string `json:"created"`
 		Updated string `json:"updated"`
 	} `json:"fields"`
@@ -405,7 +427,7 @@ type jiraProject struct {
 	Name string `json:"name"`
 }
 
-func (j jiraIssue) toDomain() domain.Issue {
+func (j *jiraIssue) toDomain() domain.Issue {
 	issue := domain.Issue{
 		Ref:    BackendName + ":" + j.Key,
 		ID:     j.ID,
@@ -424,6 +446,18 @@ func (j jiraIssue) toDomain() domain.Issue {
 	}
 	if j.Fields.Project.Key != "" {
 		issue.Project = j.Fields.Project.Key
+	}
+	if j.Fields.IssueType != nil {
+		issue.IssueType = j.Fields.IssueType.Name
+	}
+	if j.Fields.Resolution != nil {
+		issue.Resolution = j.Fields.Resolution.Name
+	}
+	for _, fv := range j.Fields.FixVersions {
+		issue.FixVersions = append(issue.FixVersions, fv.Name)
+	}
+	for _, c := range j.Fields.Components {
+		issue.Components = append(issue.Components, c.Name)
 	}
 	if t, err := time.Parse("2006-01-02T15:04:05.000+0000", j.Fields.Created); err == nil {
 		issue.CreatedAt = t

@@ -95,6 +95,10 @@ type Issue struct {
 	Labels      []string  `json:"labels,omitempty"`
 	Assignee    string    `json:"assignee,omitempty"`
 	Project     string    `json:"project,omitempty"`
+	IssueType   string    `json:"issue_type,omitempty"`
+	Resolution  string    `json:"resolution,omitempty"`
+	FixVersions []string  `json:"fix_versions,omitempty"`
+	Components  []string  `json:"components,omitempty"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 	URL         string    `json:"url,omitempty"`
@@ -110,6 +114,7 @@ type CreateInput struct {
 	Project     string   `json:"project,omitempty"`
 	ParentID    string   `json:"parent_id,omitempty"`
 	ProjectID   string   `json:"project_id,omitempty"`
+	IssueType   string   `json:"issue_type,omitempty"`
 }
 
 type UpdateInput struct {

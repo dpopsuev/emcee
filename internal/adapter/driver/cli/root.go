@@ -43,6 +43,7 @@ var (
 	flagProjectID   string
 	flagDescription string
 	flagColor       string
+	flagIssueType   string
 )
 
 func newService() (*app.Service, error) {
@@ -138,6 +139,7 @@ var createCmd = &cobra.Command{
 			ParentID:    flagParent,
 			ProjectID:   flagProjectID,
 			Assignee:    flagAssignee,
+			IssueType:   flagIssueType,
 		}
 		if flagStage {
 			id := svc.StageItem(flagBackend, input, "")
@@ -858,6 +860,7 @@ func init() {
 	createCmd.Flags().StringVar(&flagParent, "parent", "", "Parent issue ID for sub-issues")
 	createCmd.Flags().StringVar(&flagAssignee, "assignee", "", "Assignee name")
 	createCmd.Flags().StringVar(&flagDescription, "description", "", "Issue description")
+	createCmd.Flags().StringVar(&flagIssueType, "issue-type", "", "Issue type (Bug, Task, Story, etc.)")
 	createCmd.Flags().StringVar(&flagProjectID, "project-id", "", "Project ID")
 
 	updateCmd.Flags().StringVarP(&flagStatus, "status", "s", "", "New status")
