@@ -42,6 +42,8 @@ var (
 	_ driven.ProjectRepository = (*Repository)(nil)
 	_ driven.LabelRepository   = (*Repository)(nil)
 	_ driven.CommentRepository = (*Repository)(nil)
+	_ driven.FieldRepository   = (*Repository)(nil)
+	_ driven.JQLRepository     = (*Repository)(nil)
 )
 
 // Repository implements driven.IssueRepository for Jira.
@@ -628,4 +630,42 @@ func (r *Repository) AddComment(ctx context.Context, key string, input domain.Co
 	}
 	c := raw.toDomain()
 	return &c, nil
+}
+
+// --- Field discovery ---
+
+func (r *Repository) ListFields(ctx context.Context) ([]domain.Field, error) {
+	var raw []struct {
+		ID     string `json:"id"`
+		Name   string `json:"name"`
+		Custom bool   `json:"custom"`
+		Schema *struct {
+			Type string `json:"type"`
+		} `json:"schema"`
+	}
+	if err := r.api(ctx, "GET", "/rest/api/2/field", nil, &raw); err != nil {
+		return nil, err
+	}
+	fields := make([]domain.Field, 0, len(raw))
+	for i := range raw {
+		f := domain.Field{
+			ID:     raw[i].ID,
+			Name:   raw[i].Name,
+			Custom: raw[i].Custom,
+		}
+		if raw[i].Schema != nil {
+			f.Schema = raw[i].Schema.Type
+		}
+		fields = append(fields, f)
+	}
+	return fields, nil
+}
+
+// --- JQL passthrough ---
+
+func (r *Repository) SearchJQL(ctx context.Context, jql string, limit int) ([]domain.Issue, error) {
+	if limit <= 0 {
+		limit = defaultLimit
+	}
+	return r.searchJQL(ctx, jql, limit)
 }

@@ -47,6 +47,8 @@ type EmceeService interface {
 	driver.CommentService
 	driver.StageService
 	driver.LaunchService
+	driver.FieldService
+	driver.JQLService
 }
 
 const serverInstructions = `Emcee is a unified issue tracker across Linear, GitHub, GitLab, and Jira. Three tools: emcee (issue CRUD + comments + staging), emcee_manage (supporting entities), emcee_health (health check). Ref format: "backend:key" (e.g. "linear:HEG-17"). Backend defaults to "linear". Status: backlog, todo, in_progress, in_review, done, canceled. Priority: urgent, high, medium, low. Bulk ops accept JSON array in issues param, auto-batch to 50. Stage operations queue issues locally before pushing to any backend; push_all submits to mixed backends in one call. Create auto-stages on failure for retry. Comments: use "comments" to list, "comment_add" to add (does not overwrite description). Read cache: responses cached with TTL, use --refresh to bypass.`
@@ -489,6 +491,29 @@ func emceeHandler(svc EmceeService) server.Handler {
 				return "", err
 			}
 			return server.JSONResult(map[string]any{"updated": len(updates)})
+
+		// --- Field discovery + JQL ---
+
+		case "fields":
+			fields, err := svc.ListFields(ctx, args.Backend)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(fields)
+
+		case "jql":
+			if args.Query == "" {
+				return "", errQueryRequired
+			}
+			jqlLimit := int(args.Limit)
+			if jqlLimit == 0 {
+				jqlLimit = defaultListMax
+			}
+			issues, err := svc.SearchJQL(ctx, args.Backend, args.Query, jqlLimit)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(issues)
 
 		default:
 			return "", fmt.Errorf("%w %q", errUnknownAction, args.Action)

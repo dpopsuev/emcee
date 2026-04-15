@@ -31,6 +31,8 @@ type Service struct {
 	bulkRepos    map[string]driven.BulkIssueRepository
 	commentRepos map[string]driven.CommentRepository
 	launchRepos  map[string]driven.LaunchRepository
+	fieldRepos   map[string]driven.FieldRepository
+	jqlRepos     map[string]driven.JQLRepository
 	stage        *StageStore
 }
 
@@ -47,6 +49,8 @@ func NewService(repos ...driven.IssueRepository) *Service {
 		bulkRepos:    make(map[string]driven.BulkIssueRepository),
 		commentRepos: make(map[string]driven.CommentRepository),
 		launchRepos:  make(map[string]driven.LaunchRepository),
+		fieldRepos:   make(map[string]driven.FieldRepository),
+		jqlRepos:     make(map[string]driven.JQLRepository),
 		stage:        NewStageStore(),
 	}
 	for _, r := range repos {
@@ -72,6 +76,12 @@ func NewService(repos ...driven.IssueRepository) *Service {
 		}
 		if lr, ok := r.(driven.LaunchRepository); ok {
 			s.launchRepos[name] = lr
+		}
+		if fr, ok := r.(driven.FieldRepository); ok {
+			s.fieldRepos[name] = fr
+		}
+		if jr, ok := r.(driven.JQLRepository); ok {
+			s.jqlRepos[name] = jr
 		}
 	}
 	return s
@@ -338,6 +348,26 @@ func (s *Service) AddComment(ctx context.Context, ref string, input domain.Comme
 		return nil, s.notSupportedErr(backend, "comments")
 	}
 	return r.AddComment(ctx, key, input)
+}
+
+// --- Field discovery ---
+
+func (s *Service) ListFields(ctx context.Context, backend string) ([]domain.Field, error) {
+	r, ok := s.fieldRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "fields")
+	}
+	return r.ListFields(ctx)
+}
+
+// --- JQL passthrough ---
+
+func (s *Service) SearchJQL(ctx context.Context, backend, jql string, limit int) ([]domain.Issue, error) {
+	r, ok := s.jqlRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "jql")
+	}
+	return r.SearchJQL(ctx, jql, limit)
 }
 
 // --- Launch operations (Report Portal) ---

@@ -76,6 +76,18 @@ type LaunchRepository interface {
 	UpdateDefects(ctx context.Context, updates []domain.DefectUpdate) error
 }
 
+// FieldRepository is the outbound port for field metadata discovery.
+type FieldRepository interface {
+	Name() string
+	ListFields(ctx context.Context) ([]domain.Field, error)
+}
+
+// JQLRepository is the outbound port for raw JQL query passthrough (Jira-specific).
+type JQLRepository interface {
+	Name() string
+	SearchJQL(ctx context.Context, jql string, limit int) ([]domain.Issue, error)
+}
+
 // UserResolver resolves human-readable names to backend-specific IDs.
 type UserResolver interface {
 	ResolveUser(ctx context.Context, name string) (string, error)

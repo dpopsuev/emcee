@@ -831,6 +831,55 @@ var pushCmd = &cobra.Command{
 	},
 }
 
+// --- Field discovery command ---
+
+var fieldsCmd = &cobra.Command{
+	Use:   "fields",
+	Short: "List available fields for a backend",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		svc, err := newService()
+		if err != nil {
+			return err
+		}
+		fields, err := svc.ListFields(context.Background(), flagBackend)
+		if err != nil {
+			return err
+		}
+		if flagJSON {
+			return printJSON(fields)
+		}
+		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+		fmt.Fprintln(w, "ID\tNAME\tCUSTOM\tSCHEMA")
+		for _, f := range fields {
+			custom := ""
+			if f.Custom {
+				custom = "yes"
+			}
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", f.ID, f.Name, custom, f.Schema)
+		}
+		return w.Flush()
+	},
+}
+
+// --- JQL command ---
+
+var jqlCmd = &cobra.Command{
+	Use:   "jql [query]",
+	Short: "Run a raw JQL query (Jira only)",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		svc, err := newService()
+		if err != nil {
+			return err
+		}
+		issues, err := svc.SearchJQL(context.Background(), flagBackend, args[0], flagLimit)
+		if err != nil {
+			return err
+		}
+		return printIssues(issues)
+	},
+}
+
 // --- Serve command ---
 
 var serveCmd = &cobra.Command{
@@ -915,6 +964,11 @@ func init() {
 	// Stage subcommands
 	stageCmd.AddCommand(stageListCmd, stageShowCmd, stageDropCmd)
 	rootCmd.AddCommand(stageCmd, pushCmd)
+
+	// Field discovery + JQL
+	fieldsCmd.Flags().BoolVar(&flagJSON, "custom", false, "Show only custom fields")
+	jqlCmd.Flags().IntVarP(&flagLimit, "limit", "n", 50, "Max results")
+	rootCmd.AddCommand(fieldsCmd, jqlCmd)
 
 	// Stage flag on create
 	createCmd.Flags().BoolVar(&flagStage, "stage", false, "Stage locally instead of creating immediately")

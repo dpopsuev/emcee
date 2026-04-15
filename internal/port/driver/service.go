@@ -60,6 +60,16 @@ type LaunchService interface {
 	UpdateDefects(ctx context.Context, backend string, updates []domain.DefectUpdate) error
 }
 
+// FieldService is the inbound port for field metadata discovery.
+type FieldService interface {
+	ListFields(ctx context.Context, backend string) ([]domain.Field, error)
+}
+
+// JQLService is the inbound port for raw JQL query passthrough.
+type JQLService interface {
+	SearchJQL(ctx context.Context, backend, jql string, limit int) ([]domain.Issue, error)
+}
+
 // CommentService is the inbound port for comment operations.
 type CommentService interface {
 	ListComments(ctx context.Context, ref string) ([]domain.Comment, error)
