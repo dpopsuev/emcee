@@ -141,7 +141,16 @@ func (s *Service) Get(ctx context.Context, ref string) (*domain.Issue, error) {
 	if err != nil {
 		return nil, err
 	}
-	return r.Get(ctx, key)
+	issue, err := r.Get(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	if cr, ok := s.commentRepos[backend]; ok {
+		if comments, cerr := cr.ListComments(ctx, key); cerr == nil {
+			issue.Comments = comments
+		}
+	}
+	return issue, nil
 }
 
 func (s *Service) Create(ctx context.Context, backend string, input domain.CreateInput) (*domain.Issue, error) {

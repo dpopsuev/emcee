@@ -455,3 +455,40 @@ func TestServiceCreatePassesInput(t *testing.T) {
 		t.Errorf("input.Priority = %v, want %v", got.Priority, domain.PriorityHigh)
 	}
 }
+
+func TestServiceGetIncludesComments(t *testing.T) {
+	stub := &driventest.StubCompositeRepository{}
+	stub.StubIssueRepository.NameVal = "test"
+	stub.StubIssueRepository.Issue = &domain.Issue{Key: "T-1", Title: "Has Comments"}
+	stub.StubCommentRepository.Comments = []domain.Comment{
+		{ID: "c1", Body: "first comment", Author: "alice"},
+		{ID: "c2", Body: "second comment", Author: "bob"},
+	}
+	svc := app.NewService(stub)
+
+	issue, err := svc.Get(context.Background(), "test:T-1")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if len(issue.Comments) != 2 {
+		t.Fatalf("Comments = %d, want 2", len(issue.Comments))
+	}
+	if issue.Comments[0].Body != "first comment" {
+		t.Errorf("Comments[0].Body = %q, want %q", issue.Comments[0].Body, "first comment")
+	}
+}
+
+func TestServiceGetNoCommentsWhenUnsupported(t *testing.T) {
+	// Backend without CommentRepository — get should still work, no comments
+	stub := driventest.NewStubIssueRepository("test")
+	stub.Issue = &domain.Issue{Key: "T-1", Title: "No Comments"}
+	svc := app.NewService(stub)
+
+	issue, err := svc.Get(context.Background(), "test:T-1")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if len(issue.Comments) != 0 {
+		t.Errorf("Comments = %d, want 0", len(issue.Comments))
+	}
+}

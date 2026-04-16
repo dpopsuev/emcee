@@ -99,6 +99,7 @@ type Issue struct {
 	Resolution  string    `json:"resolution,omitempty"`
 	FixVersions []string  `json:"fix_versions,omitempty"`
 	Components  []string  `json:"components,omitempty"`
+	Comments    []Comment `json:"comments,omitempty"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 	URL         string    `json:"url,omitempty"`
