@@ -651,7 +651,12 @@ func (r *Repository) ListPRs(ctx context.Context, filter domain.PRFilter) ([]dom
 		limit = 50
 	}
 
-	path := fmt.Sprintf("/api/v4/projects/%s/merge_requests?per_page=%d&order_by=updated_at&sort=desc", r.projectID, limit)
+	// Allow project override via filter for multi-project queries
+	projectID := r.projectID
+	if filter.Repo != "" {
+		projectID = url.PathEscape(filter.Repo)
+	}
+	path := fmt.Sprintf("/api/v4/projects/%s/merge_requests?per_page=%d&order_by=updated_at&sort=desc", projectID, limit)
 	if filter.State != "" {
 		path += "&state=" + filter.State
 	} else {

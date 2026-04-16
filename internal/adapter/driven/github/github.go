@@ -589,7 +589,15 @@ func (r *Repository) ListPRs(ctx context.Context, filter domain.PRFilter) ([]dom
 	}
 
 	// Use search API for date filtering
-	q := fmt.Sprintf("repo:%s/%s is:pr", r.owner, r.repo)
+	// Allow repo override via filter for multi-project queries
+	owner, repo := r.owner, r.repo
+	if filter.Repo != "" {
+		parts := strings.SplitN(filter.Repo, "/", 2)
+		if len(parts) == 2 {
+			owner, repo = parts[0], parts[1]
+		}
+	}
+	q := fmt.Sprintf("repo:%s/%s is:pr", owner, repo)
 	if filter.Author != "" {
 		q += " author:" + filter.Author
 	}
@@ -613,7 +621,7 @@ func (r *Repository) ListPRs(ctx context.Context, filter domain.PRFilter) ([]dom
 		return nil, err
 	}
 
-	repoName := r.owner + "/" + r.repo
+	repoName := owner + "/" + repo
 	prs := make([]domain.PullRequest, 0, len(result.Items))
 	for i := range result.Items {
 		prs = append(prs, result.Items[i].toDomain(repoName))

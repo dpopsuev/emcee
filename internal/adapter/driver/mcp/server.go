@@ -53,7 +53,7 @@ type EmceeService interface {
 	driver.PRService
 }
 
-const serverInstructions = `Emcee is a unified issue tracker across Linear, GitHub, GitLab, Jira, and Report Portal. Ref format: "backend:key" (e.g. "linear:HEG-17"). Backend defaults to "linear".
+const serverInstructions = `Emcee is a unified issue tracker across Linear, GitHub, GitLab, Jira, and Report Portal. Ref format: "backend:key" (e.g. "linear:PROJ-42"). Backend defaults to "linear".
 
 ## emcee tool — actions and required params:
 
@@ -90,7 +90,7 @@ Report Portal:
   defect_update — backend=reportportal, issues (JSON array of {test_item_id, issue_type, comment?})
 
 Pull Requests / Merge Requests:
-  prs         — backend, [author, status, merged_after (YYYY-MM-DD), merged_before (YYYY-MM-DD), limit]
+  prs         — backend, [author, status, merged_after (YYYY-MM-DD), merged_before (YYYY-MM-DD), repo (override: owner/repo or namespace/project), limit]
 
 Discovery:
   fields      — backend → list available fields (Jira: custom field IDs)
@@ -161,7 +161,7 @@ var emceeSchema = json.RawMessage(`{
 	"properties": {
 		"action":      {"type": "string", "enum": ["list","get","create","update","search","children","bulk_create","bulk_update","comments","comment_add","stage","stage_list","stage_show","stage_patch","stage_drop","push","push_all","launches","launch_get","test_items","test_item_get","defect_update","fields","jql","prs"], "description": "Action to perform"},
 		"backend":     {"type": "string", "description": "Backend name (default: linear)"},
-		"ref":         {"type": "string", "description": "Issue ref for get/update/children (e.g. linear:HEG-17)"},
+		"ref":         {"type": "string", "description": "Issue ref for get/update/children (e.g. linear:PROJ-42)"},
 		"title":       {"type": "string", "description": "Issue title (create)"},
 		"description": {"type": "string", "description": "Issue description (create/update)"},
 		"status":      {"type": "string", "description": "Status: backlog, todo, in_progress, in_review, done, canceled"},
@@ -177,10 +177,11 @@ var emceeSchema = json.RawMessage(`{
 		"issue_type":  {"type": "string", "description": "Issue type (create): Bug, Task, Story, Spike, etc. (Jira)"},
 		"versions":    {"type": "string", "description": "Comma-separated affected versions (create, Jira): e.g. 4.16,4.17"},
 		"fix_versions":{"type": "string", "description": "Comma-separated fix versions (create, Jira): e.g. 4.16.60"},
-		"components":  {"type": "string", "description": "Comma-separated components (create, Jira): e.g. Networking,PTP"},
+		"components":  {"type": "string", "description": "Comma-separated components (create, Jira)"},
 		"author":      {"type": "string", "description": "Author username (prs filter)"},
 		"merged_after": {"type": "string", "description": "Date filter for PRs (YYYY-MM-DD)"},
-		"merged_before":{"type": "string", "description": "Date filter for PRs (YYYY-MM-DD)"}
+		"merged_before":{"type": "string", "description": "Date filter for PRs (YYYY-MM-DD)"},
+		"repo":         {"type": "string", "description": "Repository override for PRs (e.g. owner/repo for GitHub, namespace/project for GitLab)"}
 	},
 	"required": ["action"]
 }`)
@@ -224,6 +225,7 @@ type emceeArgs struct {
 	Author      string  `json:"author"`
 	MergedAfter string  `json:"merged_after"`
 	MergedBefore string `json:"merged_before"`
+	Repo         string `json:"repo"`
 	Versions    string  `json:"versions"`
 	FixVersionsStr string `json:"fix_versions"`
 	ComponentsStr  string `json:"components"`
@@ -599,6 +601,7 @@ func emceeHandler(svc EmceeService) server.Handler {
 				State:        args.Status,
 				MergedAfter:  args.MergedAfter,
 				MergedBefore: args.MergedBefore,
+				Repo:         args.Repo,
 				Limit:        int(args.Limit),
 			}
 			prs, err := svc.ListPRs(ctx, args.Backend, filter)

@@ -19,5 +19,6 @@ type PRFilter struct {
 	State        string `json:"state,omitempty"`
 	MergedAfter  string `json:"merged_after,omitempty"`
 	MergedBefore string `json:"merged_before,omitempty"`
+	Repo         string `json:"repo,omitempty"`
 	Limit        int    `json:"limit,omitempty"`
 }
