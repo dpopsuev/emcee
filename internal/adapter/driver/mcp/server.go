@@ -52,7 +52,62 @@ type EmceeService interface {
 	driver.JQLService
 }
 
-const serverInstructions = `Emcee is a unified issue tracker across Linear, GitHub, GitLab, and Jira. Three tools: emcee (issue CRUD + comments + staging), emcee_manage (supporting entities), emcee_health (health check). Ref format: "backend:key" (e.g. "linear:HEG-17"). Backend defaults to "linear". Status: backlog, todo, in_progress, in_review, done, canceled. Priority: urgent, high, medium, low. Bulk ops accept JSON array in issues param, auto-batch to 50. Stage operations queue issues locally before pushing to any backend; push_all submits to mixed backends in one call. Create auto-stages on failure for retry. Comments: use "comments" to list, "comment_add" to add (does not overwrite description). Read cache: responses cached with TTL, use --refresh to bypass.`
+const serverInstructions = `Emcee is a unified issue tracker across Linear, GitHub, GitLab, Jira, and Report Portal. Ref format: "backend:key" (e.g. "linear:HEG-17"). Backend defaults to "linear".
+
+## emcee tool — actions and required params:
+
+Issues:
+  list        — backend, [status, assignee, limit]
+  get         — ref → returns issue with comments inline
+  create      — backend, title, [description, status, priority, assignee, parent_id, project_id, issue_type, versions, fix_versions, components]
+  update      — ref, [title, description, status, priority, assignee]
+  search      — backend, query, [limit]
+  children    — ref
+
+Bulk:
+  bulk_create — backend, issues (JSON array of create inputs)
+  bulk_update — backend, issues (JSON array of {ref, title?, status?, priority?})
+
+Comments:
+  comments    — ref → list comments on an issue
+  comment_add — ref, body → add comment without overwriting description
+
+Staging (pre-submission cache, all backends):
+  stage       — backend, title, [all create fields] → returns stage_id
+  stage_list  — (no params) → list all staged items
+  stage_show  — stage_id → preview staged payload
+  stage_patch — stage_id, [title, description, status, priority, assignee]
+  stage_drop  — stage_id → discard staged item
+  push        — stage_id → submit to backend, re-stages on failure
+  push_all    — (no params) → push all staged items to their backends
+
+Report Portal:
+  launches    — backend=reportportal, [query (name filter), status, limit]
+  launch_get  — backend=reportportal, ref (launch ID)
+  test_items  — backend=reportportal, ref (launch ID), [status, limit]
+  test_item_get — backend=reportportal, ref (item ID)
+  defect_update — backend=reportportal, issues (JSON array of {test_item_id, issue_type, comment?})
+
+Discovery:
+  fields      — backend → list available fields (Jira: custom field IDs)
+  jql         — backend=jira, query (raw JQL string), [limit]
+
+## emcee_manage tool — supporting entities:
+  doc_list, doc_create, project_list, project_create, project_update,
+  initiative_list, initiative_create, label_list, label_create
+  All take: action, backend, + entity-specific params.
+
+## Enums:
+  status: backlog, todo, in_progress, in_review, done, canceled
+  priority: urgent, high, medium, low
+  backends: linear (default), github, gitlab, jira, reportportal
+
+## Notes:
+  - create auto-stages on failure — error includes stage_id for retry
+  - get returns comments inline (no separate call needed)
+  - responses are cached with TTL; repeated reads are fast
+  - versions, fix_versions, components are comma-separated strings (Jira)
+  - issue_type defaults to "Task" on Jira if not specified`
 
 // Serve starts the MCP server over stdio, exposing issue management tools.
 func Serve(svc EmceeService) error {
@@ -67,7 +122,7 @@ func RegisterTools(srv *mcpserver.Server, svc EmceeService) {
 	srv.ToolWithSchema(
 		server.ToolMeta{
 			Name:        "emcee",
-			Description: "Issue CRUD + comments + staging: list, get, create, update, search, children, bulk_create, bulk_update, comments, comment_add, stage, stage_list, stage_show, stage_patch, stage_drop, push, push_all.",
+			Description: "Issue management across all backends. Actions: list, get, create, update, search, children, bulk_create, bulk_update, comments, comment_add, stage, stage_list, stage_show, stage_patch, stage_drop, push, push_all, launches, launch_get, test_items, test_item_get, defect_update, fields, jql.",
 			Keywords:    []string{"issue", "ticket", "bug", "task", "comment", "stage", "push", "linear", "github", "jira", "gitlab"},
 			Categories:  []string{"issue-management"},
 		},
@@ -77,7 +132,7 @@ func RegisterTools(srv *mcpserver.Server, svc EmceeService) {
 	srv.ToolWithSchema(
 		server.ToolMeta{
 			Name:        "emcee_manage",
-			Description: "Supporting entities: doc_list, doc_create, project_list, project_create, project_update, initiative_list, initiative_create, label_list, label_create.",
+			Description: "Supporting entities across all backends. Actions: doc_list, doc_create, project_list, project_create, project_update, initiative_list, initiative_create, label_list, label_create. All take action + backend + entity-specific params.",
 			Keywords:    []string{"document", "project", "initiative", "label", "epic"},
 			Categories:  []string{"issue-management", "project-management"},
 		},
@@ -100,7 +155,7 @@ func RegisterTools(srv *mcpserver.Server, svc EmceeService) {
 var emceeSchema = json.RawMessage(`{
 	"type": "object",
 	"properties": {
-		"action":      {"type": "string", "description": "Action: list, get, create, update, search, children, bulk_create, bulk_update, comments, comment_add, stage, stage_list, stage_show, stage_patch, stage_drop, push, push_all"},
+		"action":      {"type": "string", "enum": ["list","get","create","update","search","children","bulk_create","bulk_update","comments","comment_add","stage","stage_list","stage_show","stage_patch","stage_drop","push","push_all","launches","launch_get","test_items","test_item_get","defect_update","fields","jql"], "description": "Action to perform"},
 		"backend":     {"type": "string", "description": "Backend name (default: linear)"},
 		"ref":         {"type": "string", "description": "Issue ref for get/update/children (e.g. linear:HEG-17)"},
 		"title":       {"type": "string", "description": "Issue title (create)"},
@@ -126,7 +181,7 @@ var emceeSchema = json.RawMessage(`{
 var manageSchema = json.RawMessage(`{
 	"type": "object",
 	"properties": {
-		"action":      {"type": "string", "description": "Action: doc_list, doc_create, project_list, project_create, project_update, initiative_list, initiative_create, label_list, label_create"},
+		"action":      {"type": "string", "enum": ["doc_list","doc_create","project_list","project_create","project_update","initiative_list","initiative_create","label_list","label_create"], "description": "Action to perform"},
 		"backend":     {"type": "string", "description": "Backend name (default: linear)"},
 		"title":       {"type": "string", "description": "Document title (doc_create)"},
 		"name":        {"type": "string", "description": "Entity name (project/initiative/label create)"},
