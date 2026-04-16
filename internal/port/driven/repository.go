@@ -88,6 +88,12 @@ type JQLRepository interface {
 	SearchJQL(ctx context.Context, jql string, limit int) ([]domain.Issue, error)
 }
 
+// PRRepository is the outbound port for pull request / merge request operations.
+type PRRepository interface {
+	Name() string
+	ListPRs(ctx context.Context, filter domain.PRFilter) ([]domain.PullRequest, error)
+}
+
 // UserResolver resolves human-readable names to backend-specific IDs.
 type UserResolver interface {
 	ResolveUser(ctx context.Context, name string) (string, error)

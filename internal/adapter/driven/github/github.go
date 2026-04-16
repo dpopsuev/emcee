@@ -10,6 +10,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -43,6 +44,7 @@ var (
 	_ driven.ProjectRepository = (*Repository)(nil)
 	_ driven.LabelRepository   = (*Repository)(nil)
 	_ driven.CommentRepository = (*Repository)(nil)
+	_ driven.PRRepository      = (*Repository)(nil)
 )
 
 // Repository implements driven.IssueRepository for GitHub.
@@ -546,4 +548,75 @@ func parsePriorityFromLabel(label string) domain.Priority {
 	default:
 		return domain.PriorityNone
 	}
+}
+
+// --- Pull Request operations ---
+
+type githubPR struct {
+	Number   int    `json:"number"`
+	Title    string `json:"title"`
+	State    string `json:"state"`
+	MergedAt string `json:"merged_at"`
+	HTMLURL  string `json:"html_url"`
+	User     *struct {
+		Login string `json:"login"`
+	} `json:"user"`
+}
+
+func (pr *githubPR) toDomain(repo string) domain.PullRequest {
+	p := domain.PullRequest{
+		Number: pr.Number,
+		Title:  pr.Title,
+		State:  pr.State,
+		URL:    pr.HTMLURL,
+		Repo:   repo,
+	}
+	if pr.User != nil {
+		p.Author = pr.User.Login
+	}
+	if pr.MergedAt != "" {
+		p.State = "merged"
+		p.MergedAt, _ = time.Parse(time.RFC3339, pr.MergedAt)
+	}
+	return p
+}
+
+func (r *Repository) ListPRs(ctx context.Context, filter domain.PRFilter) ([]domain.PullRequest, error) {
+	adapterdriven.LogOp(ctx, BackendName, "list_prs")
+	limit := filter.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+
+	// Use search API for date filtering
+	q := fmt.Sprintf("repo:%s/%s is:pr", r.owner, r.repo)
+	if filter.Author != "" {
+		q += " author:" + filter.Author
+	}
+	if filter.State == "merged" || filter.State == "" {
+		q += " is:merged"
+	} else {
+		q += " is:" + filter.State
+	}
+	if filter.MergedAfter != "" {
+		q += " merged:>=" + filter.MergedAfter
+	}
+	if filter.MergedBefore != "" {
+		q += " merged:<" + filter.MergedBefore
+	}
+
+	path := fmt.Sprintf("/search/issues?q=%s&per_page=%d&sort=updated&order=desc", url.QueryEscape(q), limit)
+	var result struct {
+		Items []githubPR `json:"items"`
+	}
+	if err := r.api(ctx, "GET", path, nil, &result); err != nil {
+		return nil, err
+	}
+
+	repoName := r.owner + "/" + r.repo
+	prs := make([]domain.PullRequest, 0, len(result.Items))
+	for i := range result.Items {
+		prs = append(prs, result.Items[i].toDomain(repoName))
+	}
+	return prs, nil
 }

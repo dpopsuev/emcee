@@ -58,6 +58,7 @@ var (
 	_ driven.ProjectRepository = (*Repository)(nil)
 	_ driven.LabelRepository   = (*Repository)(nil)
 	_ driven.CommentRepository = (*Repository)(nil)
+	_ driven.PRRepository      = (*Repository)(nil)
 )
 
 // Repository implements driven.IssueRepository for GitLab.
@@ -613,4 +614,67 @@ func (r *Repository) AddComment(ctx context.Context, key string, input domain.Co
 	}
 	c := raw.toDomain()
 	return &c, nil
+}
+
+// --- Merge Request operations ---
+
+type gitlabMR struct {
+	IID      int    `json:"iid"`
+	Title    string `json:"title"`
+	State    string `json:"state"`
+	MergedAt string `json:"merged_at"`
+	WebURL   string `json:"web_url"`
+	Author   struct {
+		Username string `json:"username"`
+	} `json:"author"`
+}
+
+func (mr *gitlabMR) toDomain(projectID string) domain.PullRequest {
+	p := domain.PullRequest{
+		Number: mr.IID,
+		Title:  mr.Title,
+		State:  mr.State,
+		URL:    mr.WebURL,
+		Author: mr.Author.Username,
+		Repo:   projectID,
+	}
+	if mr.MergedAt != "" {
+		p.MergedAt, _ = time.Parse(time.RFC3339, mr.MergedAt)
+	}
+	return p
+}
+
+func (r *Repository) ListPRs(ctx context.Context, filter domain.PRFilter) ([]domain.PullRequest, error) {
+	adapterdriven.LogOp(ctx, BackendName, "list_prs")
+	limit := filter.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+
+	path := fmt.Sprintf("/api/v4/projects/%s/merge_requests?per_page=%d&order_by=updated_at&sort=desc", r.projectID, limit)
+	if filter.State != "" {
+		path += "&state=" + filter.State
+	} else {
+		path += "&state=merged"
+	}
+	if filter.Author != "" {
+		path += "&author_username=" + filter.Author
+	}
+	if filter.MergedAfter != "" {
+		path += "&created_after=" + filter.MergedAfter + "T00:00:00Z"
+	}
+	if filter.MergedBefore != "" {
+		path += "&created_before=" + filter.MergedBefore + "T23:59:59Z"
+	}
+
+	var raw []gitlabMR
+	if err := r.api(ctx, "GET", path, nil, &raw); err != nil {
+		return nil, err
+	}
+
+	prs := make([]domain.PullRequest, 0, len(raw))
+	for i := range raw {
+		prs = append(prs, raw[i].toDomain(r.projectID))
+	}
+	return prs, nil
 }

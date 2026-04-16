@@ -21,4 +21,5 @@ type StubEmceeService struct {
 	StubLaunchService
 	StubFieldService
 	StubJQLService
+	StubPRService
 }

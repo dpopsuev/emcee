@@ -70,6 +70,11 @@ type JQLService interface {
 	SearchJQL(ctx context.Context, backend, jql string, limit int) ([]domain.Issue, error)
 }
 
+// PRService is the inbound port for pull request / merge request operations.
+type PRService interface {
+	ListPRs(ctx context.Context, backend string, filter domain.PRFilter) ([]domain.PullRequest, error)
+}
+
 // CommentService is the inbound port for comment operations.
 type CommentService interface {
 	ListComments(ctx context.Context, ref string) ([]domain.Comment, error)

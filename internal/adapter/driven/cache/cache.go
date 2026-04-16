@@ -57,6 +57,8 @@ type Repository struct {
 	initiatives driven.InitiativeRepository
 	labels      driven.LabelRepository
 	bulk        driven.BulkIssueRepository
+	prs         driven.PRRepository
+	caps        []string
 
 	mu       sync.Mutex
 	items    map[string]*list.Element
@@ -87,30 +89,43 @@ func New(inner driven.IssueRepository, opts ...Option) *Repository {
 	}
 	if v, ok := inner.(driven.CommentRepository); ok {
 		r.comments = v
+		r.caps = append(r.caps, "comments")
 	}
 	if v, ok := inner.(driven.LaunchRepository); ok {
 		r.launches = v
+		r.caps = append(r.caps, "launches")
 	}
 	if v, ok := inner.(driven.FieldRepository); ok {
 		r.fields = v
+		r.caps = append(r.caps, "fields")
 	}
 	if v, ok := inner.(driven.JQLRepository); ok {
 		r.jql = v
+		r.caps = append(r.caps, "jql")
 	}
 	if v, ok := inner.(driven.DocumentRepository); ok {
 		r.docs = v
+		r.caps = append(r.caps, "documents")
 	}
 	if v, ok := inner.(driven.ProjectRepository); ok {
 		r.projects = v
+		r.caps = append(r.caps, "projects")
 	}
 	if v, ok := inner.(driven.InitiativeRepository); ok {
 		r.initiatives = v
+		r.caps = append(r.caps, "initiatives")
 	}
 	if v, ok := inner.(driven.LabelRepository); ok {
 		r.labels = v
+		r.caps = append(r.caps, "labels")
 	}
 	if v, ok := inner.(driven.BulkIssueRepository); ok {
 		r.bulk = v
+		r.caps = append(r.caps, "bulk")
+	}
+	if v, ok := inner.(driven.PRRepository); ok {
+		r.prs = v
+		r.caps = append(r.caps, "prs")
 	}
 	for _, o := range opts {
 		o(r)
@@ -131,6 +146,9 @@ func WithNow(fn func() time.Time) Option { return func(r *Repository) { r.now = 
 // --- Pass-through ---
 
 func (r *Repository) Name() string { return r.inner.Name() }
+
+// Capabilities returns the list of optional interfaces the inner repo supports.
+func (r *Repository) Capabilities() []string { return r.caps }
 
 // --- Cached reads ---
 
@@ -480,4 +498,13 @@ func (r *Repository) BulkCreateIssues(ctx context.Context, inputs []domain.Creat
 		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
 	}
 	return r.bulk.BulkCreateIssues(ctx, inputs)
+}
+
+// --- Passthrough: PRRepository ---
+
+func (r *Repository) ListPRs(ctx context.Context, filter domain.PRFilter) ([]domain.PullRequest, error) {
+	if r.prs == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.prs.ListPRs(ctx, filter)
 }

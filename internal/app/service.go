@@ -33,6 +33,7 @@ type Service struct {
 	launchRepos  map[string]driven.LaunchRepository
 	fieldRepos   map[string]driven.FieldRepository
 	jqlRepos     map[string]driven.JQLRepository
+	prRepos      map[string]driven.PRRepository
 	stage        *StageStore
 }
 
@@ -51,6 +52,7 @@ func NewService(repos ...driven.IssueRepository) *Service {
 		launchRepos:  make(map[string]driven.LaunchRepository),
 		fieldRepos:   make(map[string]driven.FieldRepository),
 		jqlRepos:     make(map[string]driven.JQLRepository),
+		prRepos:      make(map[string]driven.PRRepository),
 		stage:        NewStageStore(),
 	}
 	for _, r := range repos {
@@ -82,6 +84,9 @@ func NewService(repos ...driven.IssueRepository) *Service {
 		}
 		if jr, ok := r.(driven.JQLRepository); ok {
 			s.jqlRepos[name] = jr
+		}
+		if pr, ok := r.(driven.PRRepository); ok {
+			s.prRepos[name] = pr
 		}
 	}
 	return s
@@ -237,6 +242,9 @@ func (s *Service) Health() *driver.HealthStatus {
 		}
 		if _, ok := s.jqlRepos[name]; ok {
 			caps = append(caps, "jql")
+		}
+		if _, ok := s.prRepos[name]; ok {
+			caps = append(caps, "prs")
 		}
 		status.Backends = append(status.Backends, driver.BackendHealth{
 			Name:         name,
@@ -406,6 +414,16 @@ func (s *Service) SearchJQL(ctx context.Context, backend, jql string, limit int)
 		return nil, s.notSupportedErr(backend, "jql")
 	}
 	return r.SearchJQL(ctx, jql, limit)
+}
+
+// --- PR/MR operations ---
+
+func (s *Service) ListPRs(ctx context.Context, backend string, filter domain.PRFilter) ([]domain.PullRequest, error) {
+	r, ok := s.prRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "pull requests")
+	}
+	return r.ListPRs(ctx, filter)
 }
 
 // --- Launch operations (Report Portal) ---

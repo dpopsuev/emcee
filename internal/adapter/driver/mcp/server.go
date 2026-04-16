@@ -50,6 +50,7 @@ type EmceeService interface {
 	driver.LaunchService
 	driver.FieldService
 	driver.JQLService
+	driver.PRService
 }
 
 const serverInstructions = `Emcee is a unified issue tracker across Linear, GitHub, GitLab, Jira, and Report Portal. Ref format: "backend:key" (e.g. "linear:HEG-17"). Backend defaults to "linear".
@@ -87,6 +88,9 @@ Report Portal:
   test_items  — backend=reportportal, ref (launch ID), [status, limit]
   test_item_get — backend=reportportal, ref (item ID)
   defect_update — backend=reportportal, issues (JSON array of {test_item_id, issue_type, comment?})
+
+Pull Requests / Merge Requests:
+  prs         — backend, [author, status, merged_after (YYYY-MM-DD), merged_before (YYYY-MM-DD), limit]
 
 Discovery:
   fields      — backend → list available fields (Jira: custom field IDs)
@@ -155,7 +159,7 @@ func RegisterTools(srv *mcpserver.Server, svc EmceeService) {
 var emceeSchema = json.RawMessage(`{
 	"type": "object",
 	"properties": {
-		"action":      {"type": "string", "enum": ["list","get","create","update","search","children","bulk_create","bulk_update","comments","comment_add","stage","stage_list","stage_show","stage_patch","stage_drop","push","push_all","launches","launch_get","test_items","test_item_get","defect_update","fields","jql"], "description": "Action to perform"},
+		"action":      {"type": "string", "enum": ["list","get","create","update","search","children","bulk_create","bulk_update","comments","comment_add","stage","stage_list","stage_show","stage_patch","stage_drop","push","push_all","launches","launch_get","test_items","test_item_get","defect_update","fields","jql","prs"], "description": "Action to perform"},
 		"backend":     {"type": "string", "description": "Backend name (default: linear)"},
 		"ref":         {"type": "string", "description": "Issue ref for get/update/children (e.g. linear:HEG-17)"},
 		"title":       {"type": "string", "description": "Issue title (create)"},
@@ -173,7 +177,10 @@ var emceeSchema = json.RawMessage(`{
 		"issue_type":  {"type": "string", "description": "Issue type (create): Bug, Task, Story, Spike, etc. (Jira)"},
 		"versions":    {"type": "string", "description": "Comma-separated affected versions (create, Jira): e.g. 4.16,4.17"},
 		"fix_versions":{"type": "string", "description": "Comma-separated fix versions (create, Jira): e.g. 4.16.60"},
-		"components":  {"type": "string", "description": "Comma-separated components (create, Jira): e.g. Networking,PTP"}
+		"components":  {"type": "string", "description": "Comma-separated components (create, Jira): e.g. Networking,PTP"},
+		"author":      {"type": "string", "description": "Author username (prs filter)"},
+		"merged_after": {"type": "string", "description": "Date filter for PRs (YYYY-MM-DD)"},
+		"merged_before":{"type": "string", "description": "Date filter for PRs (YYYY-MM-DD)"}
 	},
 	"required": ["action"]
 }`)
@@ -214,6 +221,9 @@ type emceeArgs struct {
 	Body        string  `json:"body"`
 	StageID     string  `json:"stage_id"`
 	IssueType   string  `json:"issue_type"`
+	Author      string  `json:"author"`
+	MergedAfter string  `json:"merged_after"`
+	MergedBefore string `json:"merged_before"`
 	Versions    string  `json:"versions"`
 	FixVersionsStr string `json:"fix_versions"`
 	ComponentsStr  string `json:"components"`
@@ -582,6 +592,20 @@ func emceeHandler(svc EmceeService) server.Handler {
 				return "", err
 			}
 			return server.JSONResult(issues)
+
+		case "prs":
+			filter := domain.PRFilter{
+				Author:       args.Author,
+				State:        args.Status,
+				MergedAfter:  args.MergedAfter,
+				MergedBefore: args.MergedBefore,
+				Limit:        int(args.Limit),
+			}
+			prs, err := svc.ListPRs(ctx, args.Backend, filter)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(prs)
 
 		default:
 			return "", fmt.Errorf("%w %q", errUnknownAction, args.Action)
