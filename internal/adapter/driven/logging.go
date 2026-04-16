@@ -19,6 +19,8 @@ const (
 	LogKeyTeam      = "team"
 	LogKeyStatus    = "status"
 	LogKeyError     = "error"
+	LogKeyCacheHit  = "cache_hit"
+	LogKeyElapsed   = "elapsed"
 
 	logMsgAPIError = "API error"
 )

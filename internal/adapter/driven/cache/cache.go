@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -17,8 +18,12 @@ import (
 	"github.com/DanyPops/emcee/internal/port/driven"
 )
 
-// ErrCommentsNotSupported indicates the inner repository does not implement comments.
-var ErrCommentsNotSupported = errors.New("comments not supported")
+var (
+	// ErrCommentsNotSupported indicates the inner repository does not implement comments.
+	ErrCommentsNotSupported = errors.New("comments not supported")
+	// ErrNotSupported indicates the inner repository does not implement the requested interface.
+	ErrNotSupported = errors.New("not supported")
+)
 
 // Default configuration.
 const (
@@ -39,11 +44,19 @@ type entry struct {
 }
 
 // Repository wraps an IssueRepository with an LRU+TTL read cache.
-// If the inner repository implements CommentRepository, the wrapper
-// transparently provides cached comment access too.
+// Optional interfaces (CommentRepository, LaunchRepository, etc.) are
+// detected on the inner repo and passed through transparently.
 type Repository struct {
-	inner    driven.IssueRepository
-	comments driven.CommentRepository
+	inner       driven.IssueRepository
+	comments    driven.CommentRepository
+	launches    driven.LaunchRepository
+	fields      driven.FieldRepository
+	jql         driven.JQLRepository
+	docs        driven.DocumentRepository
+	projects    driven.ProjectRepository
+	initiatives driven.InitiativeRepository
+	labels      driven.LabelRepository
+	bulk        driven.BulkIssueRepository
 
 	mu       sync.Mutex
 	items    map[string]*list.Element
@@ -72,8 +85,32 @@ func New(inner driven.IssueRepository, opts ...Option) *Repository {
 		commentsTTL: DefaultCommentsTTL,
 		now:         time.Now,
 	}
-	if cr, ok := inner.(driven.CommentRepository); ok {
-		r.comments = cr
+	if v, ok := inner.(driven.CommentRepository); ok {
+		r.comments = v
+	}
+	if v, ok := inner.(driven.LaunchRepository); ok {
+		r.launches = v
+	}
+	if v, ok := inner.(driven.FieldRepository); ok {
+		r.fields = v
+	}
+	if v, ok := inner.(driven.JQLRepository); ok {
+		r.jql = v
+	}
+	if v, ok := inner.(driven.DocumentRepository); ok {
+		r.docs = v
+	}
+	if v, ok := inner.(driven.ProjectRepository); ok {
+		r.projects = v
+	}
+	if v, ok := inner.(driven.InitiativeRepository); ok {
+		r.initiatives = v
+	}
+	if v, ok := inner.(driven.LabelRepository); ok {
+		r.labels = v
+	}
+	if v, ok := inner.(driven.BulkIssueRepository); ok {
+		r.bulk = v
 	}
 	for _, o := range opts {
 		o(r)
@@ -98,54 +135,70 @@ func (r *Repository) Name() string { return r.inner.Name() }
 // --- Cached reads ---
 
 func (r *Repository) Get(ctx context.Context, key string) (*domain.Issue, error) {
+	start := r.now()
 	ck := "get:" + key
 	if v, ok := r.cacheGet(ck); ok {
+		r.logRead(ctx, "get", true, r.now().Sub(start))
 		return v.(*domain.Issue), nil
 	}
 	issue, err := r.inner.Get(ctx, key)
+	elapsed := r.now().Sub(start)
 	if err != nil {
 		return nil, err
 	}
 	r.cachePut(ck, issue, r.getTTL)
+	r.logRead(ctx, "get", false, elapsed)
 	return issue, nil
 }
 
 func (r *Repository) List(ctx context.Context, filter domain.ListFilter) ([]domain.Issue, error) {
+	start := r.now()
 	ck := "list:" + hashJSON(filter)
 	if v, ok := r.cacheGet(ck); ok {
+		r.logRead(ctx, "list", true, r.now().Sub(start))
 		return v.([]domain.Issue), nil
 	}
 	issues, err := r.inner.List(ctx, filter)
+	elapsed := r.now().Sub(start)
 	if err != nil {
 		return nil, err
 	}
 	r.cachePut(ck, issues, r.listTTL)
+	r.logRead(ctx, "list", false, elapsed)
 	return issues, nil
 }
 
 func (r *Repository) Search(ctx context.Context, query string, limit int) ([]domain.Issue, error) {
+	start := r.now()
 	ck := fmt.Sprintf("search:%s:%d", query, limit)
 	if v, ok := r.cacheGet(ck); ok {
+		r.logRead(ctx, "search", true, r.now().Sub(start))
 		return v.([]domain.Issue), nil
 	}
 	issues, err := r.inner.Search(ctx, query, limit)
+	elapsed := r.now().Sub(start)
 	if err != nil {
 		return nil, err
 	}
 	r.cachePut(ck, issues, r.searchTTL)
+	r.logRead(ctx, "search", false, elapsed)
 	return issues, nil
 }
 
 func (r *Repository) ListChildren(ctx context.Context, key string) ([]domain.Issue, error) {
+	start := r.now()
 	ck := "children:" + key
 	if v, ok := r.cacheGet(ck); ok {
+		r.logRead(ctx, "list_children", true, r.now().Sub(start))
 		return v.([]domain.Issue), nil
 	}
 	issues, err := r.inner.ListChildren(ctx, key)
+	elapsed := r.now().Sub(start)
 	if err != nil {
 		return nil, err
 	}
 	r.cachePut(ck, issues, r.childrenTTL)
+	r.logRead(ctx, "list_children", false, elapsed)
 	return issues, nil
 }
 
@@ -179,15 +232,19 @@ func (r *Repository) ListComments(ctx context.Context, key string) ([]domain.Com
 	if r.comments == nil {
 		return nil, fmt.Errorf("%w by %s", ErrCommentsNotSupported, r.inner.Name())
 	}
+	start := r.now()
 	ck := "comments:" + key
 	if v, ok := r.cacheGet(ck); ok {
+		r.logRead(ctx, "list_comments", true, r.now().Sub(start))
 		return v.([]domain.Comment), nil
 	}
 	comments, err := r.comments.ListComments(ctx, key)
+	elapsed := r.now().Sub(start)
 	if err != nil {
 		return nil, err
 	}
 	r.cachePut(ck, comments, r.commentsTTL)
+	r.logRead(ctx, "list_comments", false, elapsed)
 	return comments, nil
 }
 
@@ -267,8 +324,160 @@ func (r *Repository) removeLocked(el *list.Element, key string) {
 	delete(r.items, key)
 }
 
+const (
+	logMsgCacheRead = "cache read"
+	logKeyBackend   = "backend"
+	logKeyOp        = "op"
+	logKeyCacheHit  = "cache_hit"
+	logKeyElapsed   = "elapsed"
+)
+
+func (r *Repository) logRead(ctx context.Context, op string, cacheHit bool, elapsed time.Duration) {
+	slog.LogAttrs(ctx, slog.LevelDebug, logMsgCacheRead,
+		slog.String(logKeyBackend, r.inner.Name()),
+		slog.String(logKeyOp, op),
+		slog.Bool(logKeyCacheHit, cacheHit),
+		slog.Duration(logKeyElapsed, elapsed),
+	)
+}
+
 func hashJSON(v any) string {
 	data, _ := json.Marshal(v)
 	h := sha256.Sum256(data)
 	return fmt.Sprintf("%x", h[:8])
+}
+
+// --- Passthrough: LaunchRepository ---
+
+func (r *Repository) ListLaunches(ctx context.Context, filter domain.LaunchFilter) ([]domain.Launch, error) {
+	if r.launches == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.launches.ListLaunches(ctx, filter)
+}
+
+func (r *Repository) GetLaunch(ctx context.Context, id string) (*domain.Launch, error) {
+	if r.launches == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.launches.GetLaunch(ctx, id)
+}
+
+func (r *Repository) ListTestItems(ctx context.Context, launchID string, filter domain.TestItemFilter) ([]domain.TestItem, error) {
+	if r.launches == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.launches.ListTestItems(ctx, launchID, filter)
+}
+
+func (r *Repository) GetTestItem(ctx context.Context, id string) (*domain.TestItem, error) {
+	if r.launches == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.launches.GetTestItem(ctx, id)
+}
+
+func (r *Repository) UpdateDefects(ctx context.Context, updates []domain.DefectUpdate) error {
+	if r.launches == nil {
+		return fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.launches.UpdateDefects(ctx, updates)
+}
+
+// --- Passthrough: FieldRepository ---
+
+func (r *Repository) ListFields(ctx context.Context) ([]domain.Field, error) {
+	if r.fields == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.fields.ListFields(ctx)
+}
+
+// --- Passthrough: JQLRepository ---
+
+func (r *Repository) SearchJQL(ctx context.Context, jql string, limit int) ([]domain.Issue, error) {
+	if r.jql == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.jql.SearchJQL(ctx, jql, limit)
+}
+
+// --- Passthrough: DocumentRepository ---
+
+func (r *Repository) ListDocuments(ctx context.Context, filter domain.DocumentListFilter) ([]domain.Document, error) {
+	if r.docs == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.docs.ListDocuments(ctx, filter)
+}
+
+func (r *Repository) CreateDocument(ctx context.Context, input domain.DocumentCreateInput) (*domain.Document, error) {
+	if r.docs == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.docs.CreateDocument(ctx, input)
+}
+
+// --- Passthrough: ProjectRepository ---
+
+func (r *Repository) ListProjects(ctx context.Context, filter domain.ProjectListFilter) ([]domain.Project, error) {
+	if r.projects == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.projects.ListProjects(ctx, filter)
+}
+
+func (r *Repository) CreateProject(ctx context.Context, input domain.ProjectCreateInput) (*domain.Project, error) {
+	if r.projects == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.projects.CreateProject(ctx, input)
+}
+
+func (r *Repository) UpdateProject(ctx context.Context, id string, input domain.ProjectUpdateInput) (*domain.Project, error) {
+	if r.projects == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.projects.UpdateProject(ctx, id, input)
+}
+
+// --- Passthrough: InitiativeRepository ---
+
+func (r *Repository) ListInitiatives(ctx context.Context, filter domain.InitiativeListFilter) ([]domain.Initiative, error) {
+	if r.initiatives == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.initiatives.ListInitiatives(ctx, filter)
+}
+
+func (r *Repository) CreateInitiative(ctx context.Context, input domain.InitiativeCreateInput) (*domain.Initiative, error) {
+	if r.initiatives == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.initiatives.CreateInitiative(ctx, input)
+}
+
+// --- Passthrough: LabelRepository ---
+
+func (r *Repository) ListLabels(ctx context.Context) ([]domain.Label, error) {
+	if r.labels == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.labels.ListLabels(ctx)
+}
+
+func (r *Repository) CreateLabel(ctx context.Context, input domain.LabelCreateInput) (*domain.Label, error) {
+	if r.labels == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.labels.CreateLabel(ctx, input)
+}
+
+// --- Passthrough: BulkIssueRepository ---
+
+func (r *Repository) BulkCreateIssues(ctx context.Context, inputs []domain.CreateInput) ([]domain.Issue, error) {
+	if r.bulk == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.bulk.BulkCreateIssues(ctx, inputs)
 }

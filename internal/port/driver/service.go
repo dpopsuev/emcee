@@ -89,9 +89,10 @@ type StageService interface {
 
 // BackendHealth represents the health status of a single backend.
 type BackendHealth struct {
-	Name       string `json:"name"`
-	Configured bool   `json:"configured"`
-	Status     string `json:"status"`
+	Name         string   `json:"name"`
+	Configured   bool     `json:"configured"`
+	Status       string   `json:"status"`
+	Capabilities []string `json:"capabilities,omitempty"`
 }
 
 // HealthStatus represents the overall health of the service.

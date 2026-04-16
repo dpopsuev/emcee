@@ -199,12 +199,41 @@ func (s *Service) Health() *driver.HealthStatus {
 		Backends: make([]driver.BackendHealth, 0),
 	}
 
-	// Check configured backends
+	// Check configured backends and detect capabilities
 	for name := range s.repos {
+		caps := []string{"issues"}
+		if _, ok := s.docRepos[name]; ok {
+			caps = append(caps, "documents")
+		}
+		if _, ok := s.projRepos[name]; ok {
+			caps = append(caps, "projects")
+		}
+		if _, ok := s.initRepos[name]; ok {
+			caps = append(caps, "initiatives")
+		}
+		if _, ok := s.labelRepos[name]; ok {
+			caps = append(caps, "labels")
+		}
+		if _, ok := s.bulkRepos[name]; ok {
+			caps = append(caps, "bulk")
+		}
+		if _, ok := s.commentRepos[name]; ok {
+			caps = append(caps, "comments")
+		}
+		if _, ok := s.launchRepos[name]; ok {
+			caps = append(caps, "launches")
+		}
+		if _, ok := s.fieldRepos[name]; ok {
+			caps = append(caps, "fields")
+		}
+		if _, ok := s.jqlRepos[name]; ok {
+			caps = append(caps, "jql")
+		}
 		status.Backends = append(status.Backends, driver.BackendHealth{
-			Name:       name,
-			Configured: true,
-			Status:     "healthy",
+			Name:         name,
+			Configured:   true,
+			Status:       "healthy",
+			Capabilities: caps,
 		})
 	}
 
