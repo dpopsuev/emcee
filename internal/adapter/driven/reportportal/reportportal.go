@@ -148,13 +148,13 @@ func (r *Repository) api(ctx context.Context, method, path string, body, result 
 // --- Launch operations ---
 
 type rpLaunch struct {
-	ID          int    `json:"id"`
-	Name        string `json:"name"`
-	Status      string `json:"status"`
-	Description string `json:"description"`
-	Owner       string `json:"owner"`
-	StartTime   int64  `json:"startTime"`
-	EndTime     int64  `json:"endTime"`
+	ID          int             `json:"id"`
+	Name        string          `json:"name"`
+	Status      string          `json:"status"`
+	Description string          `json:"description"`
+	Owner       string          `json:"owner"`
+	StartTime   json.RawMessage `json:"startTime"`
+	EndTime     json.RawMessage `json:"endTime"`
 	Statistics  struct {
 		Executions struct {
 			Total   int `json:"total"`
@@ -175,12 +175,8 @@ func (l *rpLaunch) toDomain(baseURL, project string) domain.Launch {
 		Owner:       l.Owner,
 		URL:         fmt.Sprintf("%s/ui/#%s/launches/all/%d", baseURL, project, l.ID),
 	}
-	if l.StartTime > 0 {
-		launch.StartTime = time.UnixMilli(l.StartTime)
-	}
-	if l.EndTime > 0 {
-		launch.EndTime = time.UnixMilli(l.EndTime)
-	}
+	launch.StartTime = parseRPTimestamp(l.StartTime)
+	launch.EndTime = parseRPTimestamp(l.EndTime)
 	launch.Statistics = domain.LaunchStatistics{
 		Total:   l.Statistics.Executions.Total,
 		Passed:  l.Statistics.Executions.Passed,
@@ -194,6 +190,33 @@ func (l *rpLaunch) toDomain(baseURL, project string) domain.Launch {
 		}
 	}
 	return launch
+}
+
+// parseRPTimestamp handles both int64 (epoch millis) and string (ISO 8601) formats.
+func parseRPTimestamp(raw json.RawMessage) time.Time {
+	if len(raw) == 0 || string(raw) == "null" {
+		return time.Time{}
+	}
+	// Try int64 first (epoch millis)
+	var ms int64
+	if err := json.Unmarshal(raw, &ms); err == nil && ms > 0 {
+		return time.UnixMilli(ms)
+	}
+	// Try string (ISO 8601)
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil && s != "" {
+		for _, layout := range []string{
+			time.RFC3339,
+			"2006-01-02T15:04:05.000Z",
+			"2006-01-02T15:04:05Z",
+			time.RFC3339Nano,
+		} {
+			if t, err := time.Parse(layout, s); err == nil {
+				return t
+			}
+		}
+	}
+	return time.Time{}
 }
 
 func (r *Repository) ListLaunches(ctx context.Context, filter domain.LaunchFilter) ([]domain.Launch, error) {
