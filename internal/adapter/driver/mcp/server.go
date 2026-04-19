@@ -18,9 +18,8 @@ import (
 
 const (
 	serverName    = "emcee"
-	serverVersion = "0.6.0"
+	serverVersion = "0.6.1"
 
-	defaultBackend   = "linear"
 	defaultListMax   = 50
 	defaultSearchMax = 20
 )
@@ -55,7 +54,7 @@ type EmceeService interface {
 	driver.PRService
 }
 
-const serverInstructions = `Emcee — All Ceremonies in one place. Unified issue tracker across Linear, GitHub, GitLab, Jira, and Report Portal. Ref format: "backend:key" (e.g. "linear:PROJ-42"). Backend defaults to "linear".
+const serverInstructions = `Emcee — All Ceremonies in one place. Unified issue tracker across Linear, GitHub, GitLab, Jira, and Report Portal. Ref format: "backend:key" (e.g. "jira:PROJ-42"). Backend is required for list/create/search actions.
 
 ## emcee tool — actions and required params:
 
@@ -115,8 +114,9 @@ Discovery:
 ## Enums:
   status: backlog, todo, in_progress, in_review, done, canceled
   priority: urgent, high, medium, low
-  backends: linear (default), github, gitlab, jira, reportportal, jenkins
+  backends: linear, github, gitlab, jira, reportportal, jenkins
   backend names can be instance names (e.g. jenkins-ci, jira-prod) when configured via config.yaml with type: field
+  backend is required — no default
 
 ## Notes:
   - create auto-stages on failure — error includes stage_id for retry
@@ -172,7 +172,7 @@ var emceeSchema = json.RawMessage(`{
 	"type": "object",
 	"properties": {
 		"action":      {"type": "string", "enum": ["list","get","create","update","search","children","bulk_create","bulk_update","comments","comment_add","stage","stage_list","stage_show","stage_patch","stage_drop","push","push_all","launches","launch_get","test_items","test_item_get","defect_update","jobs","job_get","build_trigger","build_get","build_log","test_results","queue","fields","jql","prs"], "description": "Action to perform"},
-		"backend":     {"type": "string", "description": "Backend name (default: linear)"},
+		"backend":     {"type": "string", "description": "Backend name (required for list/create/search)"},
 		"ref":         {"type": "string", "description": "Issue ref for get/update/children (e.g. linear:PROJ-42)"},
 		"title":       {"type": "string", "description": "Issue title (create)"},
 		"description": {"type": "string", "description": "Issue description (create/update)"},
@@ -203,7 +203,7 @@ var manageSchema = json.RawMessage(`{
 	"type": "object",
 	"properties": {
 		"action":      {"type": "string", "enum": ["doc_list","doc_create","project_list","project_create","project_update","initiative_list","initiative_create","label_list","label_create"], "description": "Action to perform"},
-		"backend":     {"type": "string", "description": "Backend name (default: linear)"},
+		"backend":     {"type": "string", "description": "Backend name (required for list/create/search)"},
 		"title":       {"type": "string", "description": "Document title (doc_create)"},
 		"name":        {"type": "string", "description": "Entity name (project/initiative/label create)"},
 		"description": {"type": "string", "description": "Description (doc/project/initiative create)"},
@@ -251,9 +251,6 @@ func emceeHandler(svc EmceeService) server.Handler {
 		var args emceeArgs
 		if err := json.Unmarshal(input, &args); err != nil {
 			return "", fmt.Errorf("invalid arguments: %w", err)
-		}
-		if args.Backend == "" {
-			args.Backend = defaultBackend
 		}
 		limit := int(args.Limit)
 		if limit == 0 {
@@ -752,9 +749,6 @@ func manageHandler(svc EmceeService) server.Handler {
 		var args manageArgs
 		if err := json.Unmarshal(input, &args); err != nil {
 			return "", fmt.Errorf("invalid arguments: %w", err)
-		}
-		if args.Backend == "" {
-			args.Backend = defaultBackend
 		}
 		limit := int(args.Limit)
 		if limit == 0 {

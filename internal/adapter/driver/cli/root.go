@@ -903,7 +903,7 @@ var serveCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.PersistentFlags().StringVarP(&flagBackend, "backend", "b", "linear", "Backend to use")
+	rootCmd.PersistentFlags().StringVarP(&flagBackend, "backend", "b", "", "Backend to use (required)")
 	rootCmd.PersistentFlags().StringVar(&flagConfig, "config", "", "Config file path (default ~/.config/emcee/config.yaml)")
 	rootCmd.PersistentFlags().BoolVar(&flagJSON, "json", false, "Output as JSON")
 
