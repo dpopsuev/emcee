@@ -282,6 +282,20 @@ func (r *Repository) Update(ctx context.Context, key string, input domain.Update
 	if input.Labels != nil {
 		fields["labels"] = input.Labels
 	}
+	if len(input.Components) > 0 {
+		comps := make([]map[string]string, len(input.Components))
+		for i, c := range input.Components {
+			comps[i] = map[string]string{"name": c}
+		}
+		fields["components"] = comps
+	}
+	if len(input.FixVersions) > 0 {
+		fv := make([]map[string]string, len(input.FixVersions))
+		for i, v := range input.FixVersions {
+			fv[i] = map[string]string{"name": v}
+		}
+		fields["fixVersions"] = fv
+	}
 
 	if len(fields) > 0 {
 		body := map[string]any{"fields": fields}
@@ -291,7 +305,11 @@ func (r *Repository) Update(ctx context.Context, key string, input domain.Update
 	}
 
 	if input.Status != nil {
-		if err := r.transitionTo(ctx, key, *input.Status); err != nil {
+		var resolution string
+		if input.Resolution != nil {
+			resolution = *input.Resolution
+		}
+		if err := r.transitionTo(ctx, key, *input.Status, resolution); err != nil {
 			return nil, fmt.Errorf("transition: %w", err)
 		}
 	}
@@ -398,7 +416,7 @@ func (r *Repository) searchJQL(ctx context.Context, jql string, limit int) ([]do
 	return issues, nil
 }
 
-func (r *Repository) transitionTo(ctx context.Context, key string, status domain.Status) error {
+func (r *Repository) transitionTo(ctx context.Context, key string, status domain.Status, resolution string) error {
 	var result struct {
 		Transitions []struct {
 			ID   string `json:"id"`
@@ -414,6 +432,11 @@ func (r *Repository) transitionTo(ctx context.Context, key string, status domain
 		if strings.EqualFold(t.Name, target) {
 			body := map[string]any{
 				"transition": map[string]string{"id": t.ID},
+			}
+			if resolution != "" {
+				body["fields"] = map[string]any{
+					"resolution": map[string]string{"name": resolution},
+				}
 			}
 			return r.api(ctx, "POST", "/rest/api/2/issue/"+key+"/transitions", body, nil)
 		}

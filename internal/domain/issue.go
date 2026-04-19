@@ -128,6 +128,9 @@ type UpdateInput struct {
 	Priority    *Priority `json:"priority,omitempty"`
 	Labels      []string  `json:"labels,omitempty"`
 	Assignee    *string   `json:"assignee,omitempty"`
+	Components  []string  `json:"components,omitempty"`
+	FixVersions []string  `json:"fix_versions,omitempty"`
+	Resolution  *string   `json:"resolution,omitempty"`
 }
 
 type ListFilter struct {

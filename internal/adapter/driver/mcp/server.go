@@ -61,7 +61,7 @@ Issues:
   list        — backend, [status, assignee, limit]
   get         — ref → returns issue with comments inline
   create      — backend, title, [description, status, priority, assignee, parent_id, project_id, issue_type, versions, fix_versions, components]
-  update      — ref, [title, description, status, priority, assignee]
+  update      — ref, [title, description, status, priority, assignee, components, fix_versions, resolution]
   search      — backend, query, [limit]
   children    — ref
 
@@ -181,7 +181,8 @@ var emceeSchema = json.RawMessage(`{
 		"author":      {"type": "string", "description": "Author username (prs filter)"},
 		"merged_after": {"type": "string", "description": "Date filter for PRs (YYYY-MM-DD)"},
 		"merged_before":{"type": "string", "description": "Date filter for PRs (YYYY-MM-DD)"},
-		"repo":         {"type": "string", "description": "Repository override for PRs (e.g. owner/repo for GitHub, namespace/project for GitLab)"}
+		"repo":         {"type": "string", "description": "Repository override for PRs (e.g. owner/repo for GitHub, namespace/project for GitLab)"},
+		"resolution":   {"type": "string", "description": "Resolution when closing (Jira): Done, Won't Fix, Duplicate, Cannot Reproduce, etc."}
 	},
 	"required": ["action"]
 }`)
@@ -229,6 +230,7 @@ type emceeArgs struct {
 	Versions    string  `json:"versions"`
 	FixVersionsStr string `json:"fix_versions"`
 	ComponentsStr  string `json:"components"`
+	Resolution     string `json:"resolution"`
 }
 
 //nolint:gocyclo,funlen // dispatcher with many action cases
@@ -319,6 +321,15 @@ func emceeHandler(svc EmceeService) server.Handler {
 			if args.Priority != "" {
 				p := domain.ParsePriority(args.Priority)
 				updateInput.Priority = &p
+			}
+			if args.ComponentsStr != "" {
+				updateInput.Components = splitCSV(args.ComponentsStr)
+			}
+			if args.FixVersionsStr != "" {
+				updateInput.FixVersions = splitCSV(args.FixVersionsStr)
+			}
+			if args.Resolution != "" {
+				updateInput.Resolution = &args.Resolution
 			}
 			issue, err := svc.Update(ctx, args.Ref, updateInput)
 			if err != nil {
