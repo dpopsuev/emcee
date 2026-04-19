@@ -65,6 +65,26 @@ func newTestServer(t *testing.T) (*sdkmcp.ClientSession, *drivertest.StubEmceeSe
 		Status:   "healthy",
 		Backends: []driver.BackendHealth{{Name: "test", Configured: true, Status: "healthy"}},
 	}
+	svc.StubLaunchService.Launches = []domain.Launch{
+		{ID: "1", Name: "Regression Suite", Status: "PASSED"},
+		{ID: "2", Name: "Smoke Tests", Status: "FAILED"},
+	}
+	svc.StubLaunchService.Launch = &domain.Launch{ID: "1", Name: "Regression Suite", Status: "PASSED"}
+	svc.StubLaunchService.TestItems = []domain.TestItem{
+		{ID: "10", Name: "test_login", Status: "PASSED", LaunchID: "1"},
+		{ID: "11", Name: "test_logout", Status: "FAILED", LaunchID: "1"},
+	}
+	svc.StubLaunchService.TestItem = &domain.TestItem{ID: "10", Name: "test_login", Status: "PASSED", LaunchID: "1"}
+	svc.StubPRService.PRs = []domain.PullRequest{
+		{Number: 42, Title: "feat: add widget", Author: "alice", State: "merged", URL: "https://github.com/org/repo/pull/42"},
+	}
+	svc.StubFieldService.Fields = []domain.Field{
+		{ID: "summary", Name: "Summary", Custom: false},
+		{ID: "customfield_10001", Name: "Sprint", Custom: true},
+	}
+	svc.StubJQLService.Issues = []domain.Issue{
+		{Ref: "jira:PROJ-1", Key: "PROJ-1", Title: "JQL result"},
+	}
 
 	srv := mcpserver.NewServer("emcee-test", "0.0.1").
 		WithInitTimeout(0)
@@ -339,6 +359,186 @@ func TestHealthToolDegraded(t *testing.T) {
 	}
 	if len(health.Warnings) == 0 {
 		t.Error("expected warnings about no backends")
+	}
+}
+
+// --- launch/RP action tests ---
+
+func TestEmceeLaunches(t *testing.T) {
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "launches", "backend": "reportportal"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var launches []domain.Launch
+	if err := json.Unmarshal([]byte(resultText(t, result)), &launches); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(launches) != 2 {
+		t.Errorf("got %d launches, want 2", len(launches))
+	}
+}
+
+func TestEmceeLaunchGet(t *testing.T) {
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "launch_get", "backend": "reportportal", "ref": "1"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var launch domain.Launch
+	if err := json.Unmarshal([]byte(resultText(t, result)), &launch); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if launch.Name != "Regression Suite" {
+		t.Errorf("name = %q, want %q", launch.Name, "Regression Suite")
+	}
+}
+
+func TestEmceeLaunchGetMissingRef(t *testing.T) {
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "launch_get", "backend": "reportportal"})
+	if !result.IsError {
+		t.Fatal("expected error for missing ref")
+	}
+}
+
+func TestEmceeTestItems(t *testing.T) {
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "test_items", "backend": "reportportal", "ref": "1"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var items []domain.TestItem
+	if err := json.Unmarshal([]byte(resultText(t, result)), &items); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(items) != 2 {
+		t.Errorf("got %d items, want 2", len(items))
+	}
+}
+
+func TestEmceeTestItemGet(t *testing.T) {
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "test_item_get", "backend": "reportportal", "ref": "10"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var item domain.TestItem
+	if err := json.Unmarshal([]byte(resultText(t, result)), &item); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if item.Name != "test_login" {
+		t.Errorf("name = %q, want %q", item.Name, "test_login")
+	}
+}
+
+func TestEmceeDefectUpdate(t *testing.T) {
+	session, svc := newTestServer(t)
+	updates := `[{"test_item_id":"10","issue_type":"pb001","comment":"product bug"}]`
+	result := callTool(t, session, "emcee", map[string]any{"action": "defect_update", "backend": "reportportal", "issues": updates})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	if len(svc.StubLaunchService.UpdateDefectsCalls) != 1 {
+		t.Fatalf("UpdateDefectsCalls = %d, want 1", len(svc.StubLaunchService.UpdateDefectsCalls))
+	}
+	got := svc.StubLaunchService.UpdateDefectsCalls[0]
+	if got.Backend != "reportportal" {
+		t.Errorf("backend = %q, want %q", got.Backend, "reportportal")
+	}
+	if len(got.Updates) != 1 || got.Updates[0].TestItemID != "10" {
+		t.Errorf("unexpected updates: %+v", got.Updates)
+	}
+}
+
+// --- PR action tests ---
+
+func TestEmceePRs(t *testing.T) {
+	session, svc := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{
+		"action":  "prs",
+		"backend": "github",
+		"author":  "alice",
+		"status":  "merged",
+		"repo":    "org/repo",
+	})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var prs []domain.PullRequest
+	if err := json.Unmarshal([]byte(resultText(t, result)), &prs); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(prs) != 1 {
+		t.Errorf("got %d PRs, want 1", len(prs))
+	}
+	if len(svc.StubPRService.ListPRCalls) != 1 {
+		t.Fatalf("ListPRCalls = %d, want 1", len(svc.StubPRService.ListPRCalls))
+	}
+	got := svc.StubPRService.ListPRCalls[0]
+	if got.Filter.Author != "alice" {
+		t.Errorf("author = %q, want %q", got.Filter.Author, "alice")
+	}
+	if got.Filter.Repo != "org/repo" {
+		t.Errorf("repo = %q, want %q", got.Filter.Repo, "org/repo")
+	}
+}
+
+// --- field discovery + JQL action tests ---
+
+func TestEmceeFields(t *testing.T) {
+	session, svc := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "fields", "backend": "jira"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var fields []domain.Field
+	if err := json.Unmarshal([]byte(resultText(t, result)), &fields); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(fields) != 2 {
+		t.Errorf("got %d fields, want 2", len(fields))
+	}
+	if len(svc.StubFieldService.ListFieldsCalls) != 1 {
+		t.Fatalf("ListFieldsCalls = %d, want 1", len(svc.StubFieldService.ListFieldsCalls))
+	}
+}
+
+func TestEmceeJQL(t *testing.T) {
+	session, svc := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{
+		"action":  "jql",
+		"backend": "jira",
+		"query":   "project = PROJ AND status = Open",
+		"limit":   float64(25),
+	})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var issues []domain.Issue
+	if err := json.Unmarshal([]byte(resultText(t, result)), &issues); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(issues) != 1 {
+		t.Errorf("got %d issues, want 1", len(issues))
+	}
+	if len(svc.StubJQLService.SearchJQLCalls) != 1 {
+		t.Fatalf("SearchJQLCalls = %d, want 1", len(svc.StubJQLService.SearchJQLCalls))
+	}
+	got := svc.StubJQLService.SearchJQLCalls[0]
+	if got.JQL != "project = PROJ AND status = Open" {
+		t.Errorf("jql = %q, want %q", got.JQL, "project = PROJ AND status = Open")
+	}
+	if got.Limit != 25 {
+		t.Errorf("limit = %d, want 25", got.Limit)
+	}
+}
+
+func TestEmceeJQLMissingQuery(t *testing.T) {
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "jql", "backend": "jira"})
+	if !result.IsError {
+		t.Fatal("expected error for missing query")
 	}
 }
 
