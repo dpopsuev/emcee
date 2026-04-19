@@ -34,6 +34,7 @@ type Service struct {
 	fieldRepos   map[string]driven.FieldRepository
 	jqlRepos     map[string]driven.JQLRepository
 	prRepos      map[string]driven.PRRepository
+	buildRepos   map[string]driven.BuildRepository
 	stage        *StageStore
 }
 
@@ -53,6 +54,7 @@ func NewService(repos ...driven.IssueRepository) *Service {
 		fieldRepos:   make(map[string]driven.FieldRepository),
 		jqlRepos:     make(map[string]driven.JQLRepository),
 		prRepos:      make(map[string]driven.PRRepository),
+		buildRepos:   make(map[string]driven.BuildRepository),
 		stage:        NewStageStore(),
 	}
 	for _, r := range repos {
@@ -87,6 +89,9 @@ func NewService(repos ...driven.IssueRepository) *Service {
 		}
 		if pr, ok := r.(driven.PRRepository); ok {
 			s.prRepos[name] = pr
+		}
+		if br, ok := r.(driven.BuildRepository); ok {
+			s.buildRepos[name] = br
 		}
 	}
 	return s
@@ -245,6 +250,9 @@ func (s *Service) Health() *driver.HealthStatus {
 		}
 		if _, ok := s.prRepos[name]; ok {
 			caps = append(caps, "prs")
+		}
+		if _, ok := s.buildRepos[name]; ok {
+			caps = append(caps, "builds")
 		}
 		status.Backends = append(status.Backends, driver.BackendHealth{
 			Name:         name,
@@ -466,6 +474,64 @@ func (s *Service) UpdateDefects(ctx context.Context, backend string, updates []d
 		return s.notSupportedErr(backend, "launches")
 	}
 	return r.UpdateDefects(ctx, updates)
+}
+
+// --- Build operations (Jenkins) ---
+
+func (s *Service) ListJobs(ctx context.Context, backend string, filter domain.JobFilter) ([]domain.Job, error) {
+	r, ok := s.buildRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "builds")
+	}
+	return r.ListJobs(ctx, filter)
+}
+
+func (s *Service) GetJob(ctx context.Context, backend, name string) (*domain.Job, error) {
+	r, ok := s.buildRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "builds")
+	}
+	return r.GetJob(ctx, name)
+}
+
+func (s *Service) TriggerBuild(ctx context.Context, backend, jobName string, params map[string]string) (int64, error) {
+	r, ok := s.buildRepos[backend]
+	if !ok {
+		return 0, s.notSupportedErr(backend, "builds")
+	}
+	return r.TriggerBuild(ctx, jobName, params)
+}
+
+func (s *Service) GetBuild(ctx context.Context, backend, jobName string, number int64) (*domain.Build, error) {
+	r, ok := s.buildRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "builds")
+	}
+	return r.GetBuild(ctx, jobName, number)
+}
+
+func (s *Service) GetBuildLog(ctx context.Context, backend, jobName string, number int64) (string, error) {
+	r, ok := s.buildRepos[backend]
+	if !ok {
+		return "", s.notSupportedErr(backend, "builds")
+	}
+	return r.GetBuildLog(ctx, jobName, number)
+}
+
+func (s *Service) GetTestResults(ctx context.Context, backend, jobName string, number int64) (*domain.TestResult, error) {
+	r, ok := s.buildRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "builds")
+	}
+	return r.GetTestResults(ctx, jobName, number)
+}
+
+func (s *Service) GetQueue(ctx context.Context, backend string) ([]domain.QueueItem, error) {
+	r, ok := s.buildRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "builds")
+	}
+	return r.GetQueue(ctx)
 }
 
 // --- Stage operations ---

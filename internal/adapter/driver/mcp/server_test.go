@@ -85,6 +85,18 @@ func newTestServer(t *testing.T) (*sdkmcp.ClientSession, *drivertest.StubEmceeSe
 	svc.StubJQLService.Issues = []domain.Issue{
 		{Ref: "jira:PROJ-1", Key: "PROJ-1", Title: "JQL result"},
 	}
+	svc.StubBuildService.Jobs = []domain.Job{
+		{Name: "my-pipeline", URL: "https://jenkins.example.com/job/my-pipeline", Buildable: true},
+		{Name: "deploy-prod", URL: "https://jenkins.example.com/job/deploy-prod", Buildable: false},
+	}
+	svc.StubBuildService.Job = &domain.Job{Name: "my-pipeline", Buildable: true}
+	svc.StubBuildService.BuildNumber = 42
+	svc.StubBuildService.Build = &domain.Build{Number: 99, Result: domain.BuildSuccess}
+	svc.StubBuildService.BuildLog = "BUILD SUCCESS\nFinished: SUCCESS"
+	svc.StubBuildService.TestResult = &domain.TestResult{Passed: 10, Failed: 1, Skipped: 2, Total: 13}
+	svc.StubBuildService.QueueItems = []domain.QueueItem{
+		{ID: 1, TaskName: "my-pipeline", Blocked: false, Buildable: true},
+	}
 
 	srv := mcpserver.NewServer("emcee-test", "0.0.1").
 		WithInitTimeout(0)
@@ -539,6 +551,132 @@ func TestEmceeJQLMissingQuery(t *testing.T) {
 	result := callTool(t, session, "emcee", map[string]any{"action": "jql", "backend": "jira"})
 	if !result.IsError {
 		t.Fatal("expected error for missing query")
+	}
+}
+
+// --- build/Jenkins action tests ---
+
+func TestEmceeJobs(t *testing.T) {
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "jobs", "backend": "jenkins"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var jobs []domain.Job
+	if err := json.Unmarshal([]byte(resultText(t, result)), &jobs); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(jobs) != 2 {
+		t.Errorf("got %d jobs, want 2", len(jobs))
+	}
+}
+
+func TestEmceeJobGet(t *testing.T) {
+	session, svc := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "job_get", "backend": "jenkins", "query": "my-pipeline"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var job domain.Job
+	if err := json.Unmarshal([]byte(resultText(t, result)), &job); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if job.Name != "my-pipeline" {
+		t.Errorf("name = %q, want %q", job.Name, "my-pipeline")
+	}
+	if len(svc.StubBuildService.GetJobCalls) != 1 {
+		t.Fatalf("GetJobCalls = %d, want 1", len(svc.StubBuildService.GetJobCalls))
+	}
+}
+
+func TestEmceeBuildTrigger(t *testing.T) {
+	session, svc := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{
+		"action":  "build_trigger",
+		"backend": "jenkins",
+		"query":   "my-pipeline",
+		"issues":  `{"BRANCH":"main"}`,
+	})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	if len(svc.StubBuildService.TriggerBuildCalls) != 1 {
+		t.Fatalf("TriggerBuildCalls = %d, want 1", len(svc.StubBuildService.TriggerBuildCalls))
+	}
+	got := svc.StubBuildService.TriggerBuildCalls[0]
+	if got.JobName != "my-pipeline" {
+		t.Errorf("job = %q, want %q", got.JobName, "my-pipeline")
+	}
+	if got.Params["BRANCH"] != "main" {
+		t.Errorf("params[BRANCH] = %q, want %q", got.Params["BRANCH"], "main")
+	}
+}
+
+func TestEmceeBuildGet(t *testing.T) {
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{
+		"action":  "build_get",
+		"backend": "jenkins",
+		"query":   "my-pipeline",
+		"ref":     "99",
+	})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var build domain.Build
+	if err := json.Unmarshal([]byte(resultText(t, result)), &build); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if build.Number != 99 {
+		t.Errorf("number = %d, want 99", build.Number)
+	}
+}
+
+func TestEmceeBuildLog(t *testing.T) {
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{
+		"action":  "build_log",
+		"backend": "jenkins",
+		"query":   "my-pipeline",
+		"ref":     "99",
+	})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+}
+
+func TestEmceeTestResults(t *testing.T) {
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{
+		"action":  "test_results",
+		"backend": "jenkins",
+		"query":   "my-pipeline",
+		"ref":     "99",
+	})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var tr domain.TestResult
+	if err := json.Unmarshal([]byte(resultText(t, result)), &tr); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if tr.Total != 13 {
+		t.Errorf("total = %d, want 13", tr.Total)
+	}
+}
+
+func TestEmceeQueue(t *testing.T) {
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "queue", "backend": "jenkins"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var items []domain.QueueItem
+	if err := json.Unmarshal([]byte(resultText(t, result)), &items); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(items) != 1 {
+		t.Errorf("got %d items, want 1", len(items))
 	}
 }
 

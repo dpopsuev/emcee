@@ -58,6 +58,7 @@ type Repository struct {
 	labels      driven.LabelRepository
 	bulk        driven.BulkIssueRepository
 	prs         driven.PRRepository
+	builds      driven.BuildRepository
 	caps        []string
 
 	mu       sync.Mutex
@@ -126,6 +127,10 @@ func New(inner driven.IssueRepository, opts ...Option) *Repository {
 	if v, ok := inner.(driven.PRRepository); ok {
 		r.prs = v
 		r.caps = append(r.caps, "prs")
+	}
+	if v, ok := inner.(driven.BuildRepository); ok {
+		r.builds = v
+		r.caps = append(r.caps, "builds")
 	}
 	for _, o := range opts {
 		o(r)
@@ -507,4 +512,55 @@ func (r *Repository) ListPRs(ctx context.Context, filter domain.PRFilter) ([]dom
 		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
 	}
 	return r.prs.ListPRs(ctx, filter)
+}
+
+// --- Passthrough: BuildRepository ---
+
+func (r *Repository) ListJobs(ctx context.Context, filter domain.JobFilter) ([]domain.Job, error) {
+	if r.builds == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.builds.ListJobs(ctx, filter)
+}
+
+func (r *Repository) GetJob(ctx context.Context, name string) (*domain.Job, error) {
+	if r.builds == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.builds.GetJob(ctx, name)
+}
+
+func (r *Repository) TriggerBuild(ctx context.Context, jobName string, params map[string]string) (int64, error) {
+	if r.builds == nil {
+		return 0, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.builds.TriggerBuild(ctx, jobName, params)
+}
+
+func (r *Repository) GetBuild(ctx context.Context, jobName string, number int64) (*domain.Build, error) {
+	if r.builds == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.builds.GetBuild(ctx, jobName, number)
+}
+
+func (r *Repository) GetBuildLog(ctx context.Context, jobName string, number int64) (string, error) {
+	if r.builds == nil {
+		return "", fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.builds.GetBuildLog(ctx, jobName, number)
+}
+
+func (r *Repository) GetTestResults(ctx context.Context, jobName string, number int64) (*domain.TestResult, error) {
+	if r.builds == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.builds.GetTestResults(ctx, jobName, number)
+}
+
+func (r *Repository) GetQueue(ctx context.Context) ([]domain.QueueItem, error) {
+	if r.builds == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.builds.GetQueue(ctx)
 }

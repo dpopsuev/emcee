@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/DanyPops/emcee/internal/domain"
@@ -48,6 +49,7 @@ type EmceeService interface {
 	driver.CommentService
 	driver.StageService
 	driver.LaunchService
+	driver.BuildService
 	driver.FieldService
 	driver.JQLService
 	driver.PRService
@@ -89,6 +91,15 @@ Report Portal:
   test_item_get — backend=reportportal, ref (item ID)
   defect_update — backend=reportportal, issues (JSON array of {test_item_id, issue_type, comment?})
 
+Jenkins CI:
+  jobs         — backend=jenkins, [limit]
+  job_get      — backend=jenkins, query (job name)
+  build_trigger — backend=jenkins, query (job name), [issues (JSON object of build params)]
+  build_get    — backend=jenkins, query (job name), ref (build number)
+  build_log    — backend=jenkins, query (job name), ref (build number)
+  test_results — backend=jenkins, query (job name), ref (build number)
+  queue        — backend=jenkins
+
 Pull Requests / Merge Requests:
   prs         — backend, [author, status, merged_after (YYYY-MM-DD), merged_before (YYYY-MM-DD), repo (override: owner/repo or namespace/project), limit]
 
@@ -126,7 +137,7 @@ func RegisterTools(srv *mcpserver.Server, svc EmceeService) {
 	srv.ToolWithSchema(
 		server.ToolMeta{
 			Name:        "emcee",
-			Description: "Issue management across all backends. Actions: list, get, create, update, search, children, bulk_create, bulk_update, comments, comment_add, stage, stage_list, stage_show, stage_patch, stage_drop, push, push_all, launches, launch_get, test_items, test_item_get, defect_update, fields, jql.",
+			Description: "Issue management across all backends. Actions: list, get, create, update, search, children, bulk_create, bulk_update, comments, comment_add, stage, stage_list, stage_show, stage_patch, stage_drop, push, push_all, launches, launch_get, test_items, test_item_get, defect_update, jobs, job_get, build_trigger, build_get, build_log, test_results, queue, fields, jql, prs.",
 			Keywords:    []string{"issue", "ticket", "bug", "task", "comment", "stage", "push", "linear", "github", "jira", "gitlab"},
 			Categories:  []string{"issue-management"},
 		},
@@ -159,7 +170,7 @@ func RegisterTools(srv *mcpserver.Server, svc EmceeService) {
 var emceeSchema = json.RawMessage(`{
 	"type": "object",
 	"properties": {
-		"action":      {"type": "string", "enum": ["list","get","create","update","search","children","bulk_create","bulk_update","comments","comment_add","stage","stage_list","stage_show","stage_patch","stage_drop","push","push_all","launches","launch_get","test_items","test_item_get","defect_update","fields","jql","prs"], "description": "Action to perform"},
+		"action":      {"type": "string", "enum": ["list","get","create","update","search","children","bulk_create","bulk_update","comments","comment_add","stage","stage_list","stage_show","stage_patch","stage_drop","push","push_all","launches","launch_get","test_items","test_item_get","defect_update","jobs","job_get","build_trigger","build_get","build_log","test_results","queue","fields","jql","prs"], "description": "Action to perform"},
 		"backend":     {"type": "string", "description": "Backend name (default: linear)"},
 		"ref":         {"type": "string", "description": "Issue ref for get/update/children (e.g. linear:PROJ-42)"},
 		"title":       {"type": "string", "description": "Issue title (create)"},
@@ -582,6 +593,100 @@ func emceeHandler(svc EmceeService) server.Handler {
 				return "", err
 			}
 			return server.JSONResult(map[string]any{"updated": len(updates)})
+
+		// --- Build/Jenkins actions ---
+
+		case "jobs":
+			filter := domain.JobFilter{Limit: int(args.Limit)}
+			jobs, err := svc.ListJobs(ctx, args.Backend, filter)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(jobs)
+
+		case "job_get":
+			if args.Query == "" {
+				return "", errQueryRequired
+			}
+			job, err := svc.GetJob(ctx, args.Backend, args.Query)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(job)
+
+		case "build_trigger":
+			if args.Query == "" {
+				return "", errQueryRequired
+			}
+			var params map[string]string
+			if args.Issues != "" {
+				if err := json.Unmarshal([]byte(args.Issues), &params); err != nil {
+					return "", fmt.Errorf("invalid build params JSON: %w", err)
+				}
+			}
+			queueID, err := svc.TriggerBuild(ctx, args.Backend, args.Query, params)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(map[string]any{"queue_id": queueID, "job": args.Query})
+
+		case "build_get":
+			if args.Query == "" {
+				return "", errQueryRequired
+			}
+			if args.Ref == "" {
+				return "", errRefRequired
+			}
+			number, err := strconv.ParseInt(args.Ref, 10, 64)
+			if err != nil {
+				return "", fmt.Errorf("invalid build number %q: %w", args.Ref, err)
+			}
+			build, err := svc.GetBuild(ctx, args.Backend, args.Query, number)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(build)
+
+		case "build_log":
+			if args.Query == "" {
+				return "", errQueryRequired
+			}
+			if args.Ref == "" {
+				return "", errRefRequired
+			}
+			number, err := strconv.ParseInt(args.Ref, 10, 64)
+			if err != nil {
+				return "", fmt.Errorf("invalid build number %q: %w", args.Ref, err)
+			}
+			log, err := svc.GetBuildLog(ctx, args.Backend, args.Query, number)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(map[string]string{"log": log})
+
+		case "test_results":
+			if args.Query == "" {
+				return "", errQueryRequired
+			}
+			if args.Ref == "" {
+				return "", errRefRequired
+			}
+			number, err := strconv.ParseInt(args.Ref, 10, 64)
+			if err != nil {
+				return "", fmt.Errorf("invalid build number %q: %w", args.Ref, err)
+			}
+			results, err := svc.GetTestResults(ctx, args.Backend, args.Query, number)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(results)
+
+		case "queue":
+			items, err := svc.GetQueue(ctx, args.Backend)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(items)
 
 		// --- Field discovery + JQL ---
 

@@ -76,6 +76,18 @@ type LaunchRepository interface {
 	UpdateDefects(ctx context.Context, updates []domain.DefectUpdate) error
 }
 
+// BuildRepository is the outbound port for CI build operations (Jenkins).
+type BuildRepository interface {
+	Name() string
+	ListJobs(ctx context.Context, filter domain.JobFilter) ([]domain.Job, error)
+	GetJob(ctx context.Context, name string) (*domain.Job, error)
+	TriggerBuild(ctx context.Context, jobName string, params map[string]string) (int64, error)
+	GetBuild(ctx context.Context, jobName string, number int64) (*domain.Build, error)
+	GetBuildLog(ctx context.Context, jobName string, number int64) (string, error)
+	GetTestResults(ctx context.Context, jobName string, number int64) (*domain.TestResult, error)
+	GetQueue(ctx context.Context) ([]domain.QueueItem, error)
+}
+
 // FieldRepository is the outbound port for field metadata discovery.
 type FieldRepository interface {
 	Name() string

@@ -11,6 +11,7 @@ type StubCompositeRepository struct {
 	StubLabelRepository
 	StubBulkIssueRepository
 	StubCommentRepository
+	StubBuildRepository
 }
 
 // Name returns the name from the embedded StubIssueRepository,

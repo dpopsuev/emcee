@@ -60,6 +60,17 @@ type LaunchService interface {
 	UpdateDefects(ctx context.Context, backend string, updates []domain.DefectUpdate) error
 }
 
+// BuildService is the inbound port for CI build operations (Jenkins).
+type BuildService interface {
+	ListJobs(ctx context.Context, backend string, filter domain.JobFilter) ([]domain.Job, error)
+	GetJob(ctx context.Context, backend, name string) (*domain.Job, error)
+	TriggerBuild(ctx context.Context, backend, jobName string, params map[string]string) (int64, error)
+	GetBuild(ctx context.Context, backend, jobName string, number int64) (*domain.Build, error)
+	GetBuildLog(ctx context.Context, backend, jobName string, number int64) (string, error)
+	GetTestResults(ctx context.Context, backend, jobName string, number int64) (*domain.TestResult, error)
+	GetQueue(ctx context.Context, backend string) ([]domain.QueueItem, error)
+}
+
 // FieldService is the inbound port for field metadata discovery.
 type FieldService interface {
 	ListFields(ctx context.Context, backend string) ([]domain.Field, error)
