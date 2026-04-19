@@ -18,7 +18,7 @@ import (
 
 const (
 	serverName    = "emcee"
-	serverVersion = "0.4.0"
+	serverVersion = "0.5.0"
 
 	defaultBackend   = "linear"
 	defaultListMax   = 50
