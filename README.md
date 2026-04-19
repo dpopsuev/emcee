@@ -1,6 +1,6 @@
 # emcee
 
-Master of Ceremonies — a unified CLI + MCP server for issue/project management across platforms.
+All Ceremonies in one place — a unified CLI + MCP server for issue/project management across platforms.
 
 One interface to rule them all: **Linear**, **GitHub Issues**, **GitLab Issues**, **Jira**.
 

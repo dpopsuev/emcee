@@ -53,7 +53,7 @@ type EmceeService interface {
 	driver.PRService
 }
 
-const serverInstructions = `Emcee is a unified issue tracker across Linear, GitHub, GitLab, Jira, and Report Portal. Ref format: "backend:key" (e.g. "linear:PROJ-42"). Backend defaults to "linear".
+const serverInstructions = `Emcee — All Ceremonies in one place. Unified issue tracker across Linear, GitHub, GitLab, Jira, and Report Portal. Ref format: "backend:key" (e.g. "linear:PROJ-42"). Backend defaults to "linear".
 
 ## emcee tool — actions and required params:
 

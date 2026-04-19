@@ -83,8 +83,8 @@ func Execute() error {
 
 var rootCmd = &cobra.Command{
 	Use:   "emcee",
-	Short: "Master of Ceremonies — unified issue management",
-	Long:  "Emcee provides a single CLI and MCP server for managing issues across Linear, GitHub, and Jira.",
+	Short: "All Ceremonies in one place",
+	Long:  "Emcee — a unified CLI and MCP server for managing issues across Linear, GitHub, GitLab, Jira, and Report Portal.",
 }
 
 var listCmd = &cobra.Command{
