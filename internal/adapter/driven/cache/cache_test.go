@@ -20,6 +20,7 @@ type multiRepo struct {
 	driventest.StubLaunchRepository
 	driventest.StubFieldRepository
 	driventest.StubJQLRepository
+	driventest.StubBuildRepository
 }
 
 func (m *multiRepo) Name() string { return m.StubIssueRepository.NameVal }
@@ -100,6 +101,42 @@ func TestCachePassthroughCommentRepository(t *testing.T) {
 	_, ok := wrapped.(driven.CommentRepository)
 	if !ok {
 		t.Fatal("cache.Repository does not implement CommentRepository")
+	}
+}
+
+func TestCachePassthroughBuildRepository(t *testing.T) {
+	inner := &multiRepo{}
+	inner.StubIssueRepository.NameVal = "jenkins"
+	inner.StubBuildRepository.Jobs = []domain.Job{{Name: "my-pipeline", Buildable: true}}
+
+	wrapped := asIssueRepo(cache.New(inner))
+
+	br, ok := wrapped.(driven.BuildRepository)
+	if !ok {
+		t.Fatal("cache.Repository does not implement BuildRepository — inner capabilities swallowed by decorator")
+	}
+
+	jobs, err := br.ListJobs(context.Background(), domain.JobFilter{})
+	if err != nil {
+		t.Fatalf("ListJobs: %v", err)
+	}
+	if len(jobs) != 1 || jobs[0].Name != "my-pipeline" {
+		t.Errorf("got %v, want [{Name:my-pipeline}]", jobs)
+	}
+}
+
+func TestCacheNoBuildWhenInnerLacks(t *testing.T) {
+	inner := driventest.NewStubIssueRepository("linear")
+
+	wrapped := asIssueRepo(cache.New(inner))
+
+	br, ok := wrapped.(driven.BuildRepository)
+	if !ok {
+		t.Fatal("cache should always implement BuildRepository (returns error if inner doesn't)")
+	}
+	_, err := br.ListJobs(context.Background(), domain.JobFilter{})
+	if err == nil {
+		t.Fatal("expected error when inner doesn't support builds")
 	}
 }
 
