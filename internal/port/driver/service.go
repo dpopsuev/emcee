@@ -6,6 +6,7 @@ import (
 	"context"
 
 	"github.com/DanyPops/emcee/internal/domain"
+	"github.com/DanyPops/emcee/internal/port/driven"
 )
 
 // IssueService is the inbound port for issue operations.
@@ -101,6 +102,13 @@ type StageService interface {
 	StageDrop(id string) error
 	StagePop(id string) (*domain.StagedItem, error)
 	StagePopAll() []domain.StagedItem
+}
+
+// BackendManager is the inbound port for runtime backend management.
+type BackendManager interface {
+	AddBackend(repo driven.IssueRepository)
+	RemoveBackend(name string) bool
+	ReloadConfig(configPath string) (added, removed []string, err error)
 }
 
 // BackendHealth represents the health status of a single backend.

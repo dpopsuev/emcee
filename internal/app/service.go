@@ -7,7 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
+	adapterdriven "github.com/DanyPops/emcee/internal/adapter/driven"
+	"github.com/DanyPops/emcee/internal/config"
 	"github.com/DanyPops/emcee/internal/domain"
 	"github.com/DanyPops/emcee/internal/port/driven"
 	"github.com/DanyPops/emcee/internal/port/driver"
@@ -36,6 +39,7 @@ type Service struct {
 	prRepos      map[string]driven.PRRepository
 	buildRepos   map[string]driven.BuildRepository
 	stage        *StageStore
+	mu           sync.RWMutex
 }
 
 // NewService creates the application service with the given repositories.
@@ -97,6 +101,112 @@ func NewService(repos ...driven.IssueRepository) *Service {
 	return s
 }
 
+// AddBackend registers a new backend at runtime. Thread-safe.
+func (s *Service) AddBackend(r driven.IssueRepository) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	name := r.Name()
+	s.repos[name] = r
+	if dr, ok := r.(driven.DocumentRepository); ok {
+		s.docRepos[name] = dr
+	}
+	if pr, ok := r.(driven.ProjectRepository); ok {
+		s.projRepos[name] = pr
+	}
+	if ir, ok := r.(driven.InitiativeRepository); ok {
+		s.initRepos[name] = ir
+	}
+	if lr, ok := r.(driven.LabelRepository); ok {
+		s.labelRepos[name] = lr
+	}
+	if br, ok := r.(driven.BulkIssueRepository); ok {
+		s.bulkRepos[name] = br
+	}
+	if cr, ok := r.(driven.CommentRepository); ok {
+		s.commentRepos[name] = cr
+	}
+	if lr, ok := r.(driven.LaunchRepository); ok {
+		s.launchRepos[name] = lr
+	}
+	if fr, ok := r.(driven.FieldRepository); ok {
+		s.fieldRepos[name] = fr
+	}
+	if jr, ok := r.(driven.JQLRepository); ok {
+		s.jqlRepos[name] = jr
+	}
+	if pr, ok := r.(driven.PRRepository); ok {
+		s.prRepos[name] = pr
+	}
+	if br, ok := r.(driven.BuildRepository); ok {
+		s.buildRepos[name] = br
+	}
+}
+
+// RemoveBackend removes a backend by name at runtime. Thread-safe.
+func (s *Service) RemoveBackend(name string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.repos[name]; !ok {
+		return false
+	}
+	delete(s.repos, name)
+	delete(s.docRepos, name)
+	delete(s.projRepos, name)
+	delete(s.initRepos, name)
+	delete(s.labelRepos, name)
+	delete(s.bulkRepos, name)
+	delete(s.commentRepos, name)
+	delete(s.launchRepos, name)
+	delete(s.fieldRepos, name)
+	delete(s.jqlRepos, name)
+	delete(s.prRepos, name)
+	delete(s.buildRepos, name)
+	return true
+}
+
+// ReloadConfig re-reads the config file, diffs against current backends,
+// adds new ones and removes stale ones. Returns names of added/removed backends.
+func (s *Service) ReloadConfig(configPath string) (added, removed []string, err error) {
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		return nil, nil, fmt.Errorf("reload config: %w", err)
+	}
+
+	newRepos, warnings := adapterdriven.CreateFromConfig(cfg)
+	for _, w := range warnings {
+		removed = append(removed, "warning: "+w)
+	}
+
+	// Build set of new backend names
+	newNames := make(map[string]bool, len(newRepos))
+	for _, r := range newRepos {
+		newNames[r.Name()] = true
+	}
+
+	// Remove backends no longer in config
+	current := s.Backends()
+	for _, name := range current {
+		if !newNames[name] {
+			s.RemoveBackend(name)
+			removed = append(removed, name)
+		}
+	}
+
+	// Add new/updated backends
+	currentSet := make(map[string]bool, len(current))
+	for _, name := range current {
+		currentSet[name] = true
+	}
+	for _, r := range newRepos {
+		if !currentSet[r.Name()] {
+			s.AddBackend(r)
+			added = append(added, r.Name())
+		}
+	}
+
+	return added, removed, nil
+}
+
 // ParseRef splits "linear:HEG-17" into backend and key.
 func ParseRef(ref string) (backend, key string, err error) {
 	parts := strings.SplitN(ref, ":", 2)
@@ -107,7 +217,9 @@ func ParseRef(ref string) (backend, key string, err error) {
 }
 
 func (s *Service) repo(name string) (driven.IssueRepository, error) {
+	s.mu.RLock()
 	r, ok := s.repos[name]
+	s.mu.RUnlock()
 	if !ok {
 		return nil, s.unknownBackendErr(name)
 	}
@@ -204,6 +316,8 @@ func (s *Service) ListChildren(ctx context.Context, ref string) ([]domain.Issue,
 }
 
 func (s *Service) Backends() []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	names := make([]string, 0, len(s.repos))
 	for k := range s.repos {
 		names = append(names, k)
@@ -213,6 +327,8 @@ func (s *Service) Backends() []string {
 
 // Health returns the current health status of all backends.
 func (s *Service) Health() *driver.HealthStatus {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	status := &driver.HealthStatus{
 		Status:   "healthy",
 		Backends: make([]driver.BackendHealth, 0),

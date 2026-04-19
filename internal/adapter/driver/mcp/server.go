@@ -18,7 +18,7 @@ import (
 
 const (
 	serverName    = "emcee"
-	serverVersion = "0.6.1"
+	serverVersion = "0.7.0"
 
 	defaultListMax   = 50
 	defaultSearchMax = 20
@@ -32,6 +32,7 @@ var (
 	errBodyRequired    = errors.New("body is required")
 	errStageIDRequired = errors.New("stage_id is required")
 	errNameRequired    = errors.New("name is required")
+	errBackendNotFound = errors.New("backend not found")
 	errIDRequired      = errors.New("id is required")
 	errUnknownAction   = errors.New("unknown action")
 )
@@ -49,6 +50,7 @@ type EmceeService interface {
 	driver.StageService
 	driver.LaunchService
 	driver.BuildService
+	driver.BackendManager
 	driver.FieldService
 	driver.JQLService
 	driver.PRService
@@ -148,7 +150,7 @@ func RegisterTools(srv *mcpserver.Server, svc EmceeService) {
 	srv.ToolWithSchema(
 		server.ToolMeta{
 			Name:        "emcee_manage",
-			Description: "Supporting entities across all backends. Actions: doc_list, doc_create, project_list, project_create, project_update, initiative_list, initiative_create, label_list, label_create. All take action + backend + entity-specific params.",
+			Description: "Supporting entities and backend management. Actions: doc_list, doc_create, project_list, project_create, project_update, initiative_list, initiative_create, label_list, label_create, config_reload, backend_remove. All take action + backend + entity-specific params.",
 			Keywords:    []string{"document", "project", "initiative", "label", "epic"},
 			Categories:  []string{"issue-management", "project-management"},
 		},
@@ -202,7 +204,7 @@ var emceeSchema = json.RawMessage(`{
 var manageSchema = json.RawMessage(`{
 	"type": "object",
 	"properties": {
-		"action":      {"type": "string", "enum": ["doc_list","doc_create","project_list","project_create","project_update","initiative_list","initiative_create","label_list","label_create"], "description": "Action to perform"},
+		"action":      {"type": "string", "enum": ["doc_list","doc_create","project_list","project_create","project_update","initiative_list","initiative_create","label_list","label_create","config_reload","backend_remove"], "description": "Action to perform"},
 		"backend":     {"type": "string", "description": "Backend name (required for list/create/search)"},
 		"title":       {"type": "string", "description": "Document title (doc_create)"},
 		"name":        {"type": "string", "description": "Entity name (project/initiative/label create)"},
@@ -861,8 +863,25 @@ func manageHandler(svc EmceeService) server.Handler {
 			}
 			return server.JSONResult(label)
 
+		case "config_reload":
+			added, removed, err := svc.ReloadConfig("")
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(map[string]any{"added": added, "removed": removed})
+
+		case "backend_remove":
+			if args.Name == "" {
+				return "", errNameRequired
+			}
+			ok := svc.RemoveBackend(args.Name)
+			if !ok {
+				return "", fmt.Errorf("%w: %s", errBackendNotFound, args.Name)
+			}
+			return server.JSONResult(map[string]string{"removed": args.Name})
+
 		default:
-			return "", fmt.Errorf("%w %q (valid: doc_list, doc_create, project_list, project_create, project_update, initiative_list, initiative_create, label_list, label_create)", errUnknownAction, args.Action)
+			return "", fmt.Errorf("%w %q (valid: doc_list, doc_create, project_list, project_create, project_update, initiative_list, initiative_create, label_list, label_create, config_reload, backend_remove)", errUnknownAction, args.Action)
 		}
 	}
 }

@@ -3,6 +3,7 @@ package mcp_test
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -97,6 +98,9 @@ func newTestServer(t *testing.T) (*sdkmcp.ClientSession, *drivertest.StubEmceeSe
 	svc.StubBuildService.QueueItems = []domain.QueueItem{
 		{ID: 1, TaskName: "my-pipeline", Blocked: false, Buildable: true},
 	}
+	svc.StubBackendManager.RemoveResult = true
+	svc.StubBackendManager.ReloadAdded = []string{"jenkins-ci"}
+	svc.StubBackendManager.ReloadRemoved = []string{"old-backend"}
 
 	srv := mcpserver.NewServer("emcee-test", "0.0.1").
 		WithInitTimeout(0)
@@ -677,6 +681,45 @@ func TestEmceeQueue(t *testing.T) {
 	}
 	if len(items) != 1 {
 		t.Errorf("got %d items, want 1", len(items))
+	}
+}
+
+// --- backend management tests ---
+
+func TestManageConfigReload(t *testing.T) {
+	session, svc := newTestServer(t)
+	result := callTool(t, session, "emcee_manage", map[string]any{"action": "config_reload"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	if len(svc.StubBackendManager.ReloadConfigCalls) != 1 {
+		t.Fatalf("ReloadConfigCalls = %d, want 1", len(svc.StubBackendManager.ReloadConfigCalls))
+	}
+	text := resultText(t, result)
+	if !strings.Contains(text, "jenkins-ci") {
+		t.Errorf("expected added backend in response, got: %s", text)
+	}
+}
+
+func TestManageBackendRemove(t *testing.T) {
+	session, svc := newTestServer(t)
+	result := callTool(t, session, "emcee_manage", map[string]any{"action": "backend_remove", "name": "old-jira"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	if len(svc.StubBackendManager.RemoveBackendCalls) != 1 {
+		t.Fatalf("RemoveBackendCalls = %d, want 1", len(svc.StubBackendManager.RemoveBackendCalls))
+	}
+	if svc.StubBackendManager.RemoveBackendCalls[0].Name != "old-jira" {
+		t.Errorf("name = %q, want %q", svc.StubBackendManager.RemoveBackendCalls[0].Name, "old-jira")
+	}
+}
+
+func TestManageBackendRemoveMissingName(t *testing.T) {
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee_manage", map[string]any{"action": "backend_remove"})
+	if !result.IsError {
+		t.Fatal("expected error for missing name")
 	}
 }
 
