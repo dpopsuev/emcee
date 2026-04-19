@@ -22,9 +22,11 @@ type Config struct {
 
 // Backend holds credentials and connection details for an issue tracker.
 type Backend struct {
-	Type      string `yaml:"type,omitempty"` // backend type (e.g. "jenkins"); inferred from config key if empty
-	APIKeyEnv string `yaml:"api_key_env"`    // env var name holding the API key
-	TokenEnv  string `yaml:"token_env"`      // alternative env var name (GitHub, Jira)
+	Type      string `yaml:"type,omitempty"`    // backend type (e.g. "jenkins"); inferred from config key if empty
+	APIKey    string `yaml:"api_key,omitempty"` // direct API key value
+	APIKeyEnv string `yaml:"api_key_env"`       // env var name holding the API key
+	Token     string `yaml:"token,omitempty"`   // direct token value
+	TokenEnv  string `yaml:"token_env"`         // alternative env var name (GitHub, Jira)
 	URL       string `yaml:"url,omitempty"`
 	Email     string `yaml:"email,omitempty"`
 	Team      string `yaml:"team,omitempty"`  // Linear team key or GitHub repo name
@@ -40,10 +42,16 @@ func (b Backend) ResolveType(key string) string {
 	return key
 }
 
-// ResolveKey reads the API key from the environment variable named in api_key_env or token_env.
+// ResolveKey returns the API key. Priority: direct value → env var lookup.
 func (b Backend) ResolveKey() string {
+	if b.APIKey != "" {
+		return b.APIKey
+	}
 	if b.APIKeyEnv != "" {
 		return os.Getenv(b.APIKeyEnv)
+	}
+	if b.Token != "" {
+		return b.Token
 	}
 	if b.TokenEnv != "" {
 		return os.Getenv(b.TokenEnv)
