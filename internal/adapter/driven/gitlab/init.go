@@ -31,6 +31,6 @@ func init() {
 		if baseURL == "" {
 			baseURL = "https://gitlab.com"
 		}
-		return NewWithURL(token, project, baseURL)
+		return NewWithURL(name, token, project, baseURL)
 	})
 }

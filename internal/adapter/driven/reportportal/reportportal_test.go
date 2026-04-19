@@ -18,7 +18,7 @@ var (
 )
 
 func TestNew(t *testing.T) {
-	repo, err := New("https://rp.example.com", "project", "token")
+	repo, err := New(BackendName, "https://rp.example.com", "project", "token")
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -28,7 +28,7 @@ func TestNew(t *testing.T) {
 }
 
 func TestNewTrimsTrailingSlash(t *testing.T) {
-	repo, err := New("https://rp.example.com/", "project", "token")
+	repo, err := New(BackendName, "https://rp.example.com/", "project", "token")
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -38,7 +38,7 @@ func TestNewTrimsTrailingSlash(t *testing.T) {
 }
 
 func TestIssueRepositoryStubsReturnError(t *testing.T) {
-	repo, _ := New("https://rp.example.com", "project", "token")
+	repo, _ := New(BackendName, "https://rp.example.com", "project", "token")
 
 	ctx := context.Background()
 	tests := []struct {

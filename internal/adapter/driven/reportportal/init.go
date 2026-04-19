@@ -31,6 +31,6 @@ func init() {
 		if project == "" {
 			return nil, nil
 		}
-		return New(url, project, token)
+		return New(name, url, project, token)
 	})
 }

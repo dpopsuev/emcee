@@ -22,7 +22,7 @@ func TestGitHubContractCompliance(t *testing.T) {
 	// We need at least one issue in the repo for the contract tests to work
 	setup := func(t *testing.T) (driven.IssueRepository, string) {
 		t.Helper()
-		gh, err := github.New(token, owner, repo)
+		gh, err := github.New("github", token, owner, repo)
 		if err != nil {
 			t.Fatalf("Failed to create GitHub adapter: %v", err)
 		}

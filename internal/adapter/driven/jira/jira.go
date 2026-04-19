@@ -49,6 +49,7 @@ var (
 
 // Repository implements driven.IssueRepository for Jira.
 type Repository struct {
+	name    string
 	baseURL string
 	email   string
 	token   string
@@ -57,9 +58,10 @@ type Repository struct {
 }
 
 // New creates a Jira repository.
-func New(baseURL, email, token, project string) (*Repository, error) {
+func New(name, baseURL, email, token, project string) (*Repository, error) {
 	baseURL = strings.TrimRight(baseURL, "/")
 	return &Repository{
+		name:    name,
 		baseURL: baseURL,
 		email:   email,
 		token:   token,
@@ -68,7 +70,7 @@ func New(baseURL, email, token, project string) (*Repository, error) {
 	}, nil
 }
 
-func (r *Repository) Name() string { return BackendName }
+func (r *Repository) Name() string { return r.name }
 
 // api makes an authenticated request to the Jira REST API.
 func (r *Repository) api(ctx context.Context, method, path string, body, result any) error {

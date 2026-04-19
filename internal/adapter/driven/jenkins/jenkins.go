@@ -32,20 +32,21 @@ var (
 
 // Repository implements driven.BuildRepository for Jenkins.
 type Repository struct {
+	name    string
 	jenkins *gojenkins.Jenkins
 	baseURL string
 }
 
 // New creates a Jenkins repository.
-func New(ctx context.Context, baseURL, user, token string) (*Repository, error) {
+func New(ctx context.Context, name, baseURL, user, token string) (*Repository, error) {
 	j, err := gojenkins.CreateJenkins(nil, baseURL, user, token).Init(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("jenkins init: %w", err)
 	}
-	return &Repository{jenkins: j, baseURL: baseURL}, nil
+	return &Repository{name: name, jenkins: j, baseURL: baseURL}, nil
 }
 
-func (r *Repository) Name() string { return BackendName }
+func (r *Repository) Name() string { return r.name }
 
 // --- IssueRepository stubs (Jenkins is not an issue backend) ---
 

@@ -22,12 +22,22 @@ type Config struct {
 
 // Backend holds credentials and connection details for an issue tracker.
 type Backend struct {
-	APIKeyEnv string `yaml:"api_key_env"` // env var name holding the API key
-	TokenEnv  string `yaml:"token_env"`   // alternative env var name (GitHub, Jira)
+	Type      string `yaml:"type,omitempty"` // backend type (e.g. "jenkins"); inferred from config key if empty
+	APIKeyEnv string `yaml:"api_key_env"`    // env var name holding the API key
+	TokenEnv  string `yaml:"token_env"`      // alternative env var name (GitHub, Jira)
 	URL       string `yaml:"url,omitempty"`
 	Email     string `yaml:"email,omitempty"`
 	Team      string `yaml:"team,omitempty"`  // Linear team key or GitHub repo name
 	Owner     string `yaml:"owner,omitempty"` // GitHub owner (org or user)
+}
+
+// ResolveType returns the backend type. If Type is set, returns it.
+// Otherwise falls back to the config key (backward compat).
+func (b Backend) ResolveType(key string) string {
+	if b.Type != "" {
+		return b.Type
+	}
+	return key
 }
 
 // ResolveKey reads the API key from the environment variable named in api_key_env or token_env.

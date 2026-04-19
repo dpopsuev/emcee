@@ -70,6 +70,7 @@ var (
 
 // Repository implements driven.IssueRepository for Linear.
 type Repository struct {
+	name   string
 	apiKey string
 	teamID string
 	team   string
@@ -78,13 +79,14 @@ type Repository struct {
 }
 
 // New creates a Linear repository. It resolves the team key to an ID on init.
-func New(apiKey, teamKey string) (*Repository, error) {
-	return NewWithURL(apiKey, teamKey, apiURL)
+func New(name, apiKey, teamKey string) (*Repository, error) {
+	return NewWithURL(name, apiKey, teamKey, apiURL)
 }
 
 // NewWithURL creates a Linear repository with a custom API URL (for testing).
-func NewWithURL(apiKey, teamKey, url string) (*Repository, error) {
+func NewWithURL(name, apiKey, teamKey, url string) (*Repository, error) {
 	r := &Repository{
+		name:   name,
 		apiKey: apiKey,
 		team:   teamKey,
 		url:    url,
@@ -98,7 +100,7 @@ func NewWithURL(apiKey, teamKey, url string) (*Repository, error) {
 	return r, nil
 }
 
-func (r *Repository) Name() string { return BackendName }
+func (r *Repository) Name() string { return r.name }
 
 func (r *Repository) gql(ctx context.Context, query string, result any) error {
 	body, _ := json.Marshal(map[string]string{"query": query})

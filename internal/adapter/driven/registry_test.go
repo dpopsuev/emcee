@@ -144,6 +144,65 @@ func TestRegistry_Available(t *testing.T) {
 	}
 }
 
+func TestRegistry_MultiInstanceSameType(t *testing.T) {
+	adapterdriven.Reset()
+	t.Cleanup(adapterdriven.Reset)
+
+	adapterdriven.Register("jenkins", 0, func(name string, backend config.Backend) (driven.IssueRepository, error) {
+		return driventest.NewStubIssueRepository(name), nil
+	})
+
+	cfg := &config.Config{
+		Backends: map[string]config.Backend{
+			"jenkins-ci":   {Type: "jenkins"},
+			"jenkins-auto": {Type: "jenkins"},
+		},
+	}
+	repos, warnings := adapterdriven.CreateFromConfig(cfg)
+	if len(warnings) != 0 {
+		t.Errorf("warnings = %v, want none", warnings)
+	}
+	if len(repos) != 2 {
+		t.Fatalf("repos = %d, want 2", len(repos))
+	}
+
+	names := map[string]bool{}
+	for _, r := range repos {
+		names[r.Name()] = true
+	}
+	if !names["jenkins-ci"] {
+		t.Error("missing jenkins-ci instance")
+	}
+	if !names["jenkins-auto"] {
+		t.Error("missing jenkins-auto instance")
+	}
+}
+
+func TestRegistry_TypeInferredFromKey(t *testing.T) {
+	adapterdriven.Reset()
+	t.Cleanup(adapterdriven.Reset)
+
+	adapterdriven.Register("jira", 0, func(name string, backend config.Backend) (driven.IssueRepository, error) {
+		return driventest.NewStubIssueRepository(name), nil
+	})
+
+	cfg := &config.Config{
+		Backends: map[string]config.Backend{
+			"jira": {}, // no Type field — inferred from key
+		},
+	}
+	repos, warnings := adapterdriven.CreateFromConfig(cfg)
+	if len(warnings) != 0 {
+		t.Errorf("warnings = %v, want none", warnings)
+	}
+	if len(repos) != 1 {
+		t.Fatalf("repos = %d, want 1", len(repos))
+	}
+	if repos[0].Name() != "jira" {
+		t.Errorf("name = %q, want %q", repos[0].Name(), "jira")
+	}
+}
+
 func TestRegistry_Reset(t *testing.T) {
 	adapterdriven.Reset()
 	adapterdriven.Register("test", 0, func(name string, backend config.Backend) (driven.IssueRepository, error) {

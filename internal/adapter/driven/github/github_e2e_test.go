@@ -24,7 +24,7 @@ func TestGitHubE2E(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	gh, err := github.New(token, owner, repo)
+	gh, err := github.New("github", token, owner, repo)
 	if err != nil {
 		t.Fatalf("Failed to create GitHub adapter: %v", err)
 	}

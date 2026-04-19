@@ -22,7 +22,7 @@ func TestNewWithURL_ValidURLs(t *testing.T) {
 
 	for _, tc := range validURLs {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := gitlab.NewWithURL("test-token", "test/project", tc.url)
+			_, err := gitlab.NewWithURL("gitlab", "test-token", "test/project", tc.url)
 			if err != nil {
 				t.Errorf("expected %q to be valid, got error: %v", tc.url, err)
 			}
@@ -49,7 +49,7 @@ func TestNewWithURL_BlockedURLs(t *testing.T) {
 
 	for _, tc := range blockedURLs {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := gitlab.NewWithURL("test-token", "test/project", tc.url)
+			_, err := gitlab.NewWithURL("gitlab", "test-token", "test/project", tc.url)
 			if err == nil {
 				t.Errorf("expected %q to be blocked, but got no error", tc.url)
 			}
@@ -74,7 +74,7 @@ func TestNewWithURL_EdgeCases(t *testing.T) {
 
 	for _, tc := range edgeCases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := gitlab.NewWithURL("test-token", "test/project", tc.url)
+			_, err := gitlab.NewWithURL("gitlab", "test-token", "test/project", tc.url)
 			if tc.shouldErr && err == nil {
 				t.Errorf("expected error for %q, got none", tc.url)
 			}

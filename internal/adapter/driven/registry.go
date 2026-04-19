@@ -58,9 +58,10 @@ func CreateFromConfig(cfg *config.Config) (repos []driven.IssueRepository, warni
 	mu.Unlock()
 
 	for name, backend := range cfg.Backends {
+		backendType := backend.ResolveType(name)
 		var found bool
 		for _, e := range entries {
-			if e.name != name {
+			if e.name != backendType {
 				continue
 			}
 			found = true
@@ -75,7 +76,7 @@ func CreateFromConfig(cfg *config.Config) (repos []driven.IssueRepository, warni
 			break
 		}
 		if !found {
-			warnings = append(warnings, fmt.Sprintf("unknown backend %q (available: %v)", name, availableNames(entries)))
+			warnings = append(warnings, fmt.Sprintf("unknown backend type %q for %q (available: %v)", backendType, name, availableNames(entries)))
 		}
 	}
 	return repos, warnings

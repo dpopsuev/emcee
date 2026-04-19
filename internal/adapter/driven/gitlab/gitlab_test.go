@@ -26,7 +26,7 @@ func TestGitLabContractCompliance(t *testing.T) {
 	// We need at least one issue in the project for the contract tests to work
 	setup := func(t *testing.T) (driven.IssueRepository, string) {
 		t.Helper()
-		gl, err := gitlab.NewWithURL(token, project, baseURL)
+		gl, err := gitlab.NewWithURL("gitlab", token, project, baseURL)
 		if err != nil {
 			t.Fatalf("Failed to create GitLab adapter: %v", err)
 		}

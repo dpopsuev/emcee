@@ -24,6 +24,6 @@ func init() {
 		if team == "" {
 			team = "HEG"
 		}
-		return New(key, team)
+		return New(name, key, team)
 	})
 }

@@ -49,6 +49,7 @@ var (
 
 // Repository implements driven.IssueRepository for GitHub.
 type Repository struct {
+	name    string
 	baseURL string
 	token   string
 	owner   string
@@ -57,16 +58,17 @@ type Repository struct {
 }
 
 // New creates a GitHub repository.
-func New(token, owner, repo string) (*Repository, error) {
-	return NewWithURL(token, owner, repo, apiURL)
+func New(name, token, owner, repo string) (*Repository, error) {
+	return NewWithURL(name, token, owner, repo, apiURL)
 }
 
 // NewWithURL creates a GitHub repository with a custom API URL (for testing).
-func NewWithURL(token, owner, repo, url string) (*Repository, error) {
+func NewWithURL(name, token, owner, repo, url string) (*Repository, error) {
 	if owner == "" || repo == "" {
 		return nil, ErrRepoEmpty
 	}
 	return &Repository{
+		name:    name,
 		baseURL: strings.TrimRight(url, "/"),
 		token:   token,
 		owner:   owner,
@@ -75,7 +77,7 @@ func NewWithURL(token, owner, repo, url string) (*Repository, error) {
 	}, nil
 }
 
-func (r *Repository) Name() string { return BackendName }
+func (r *Repository) Name() string { return r.name }
 
 // api makes an authenticated request to the GitHub REST API.
 func (r *Repository) api(ctx context.Context, method, path string, body, result any) error {

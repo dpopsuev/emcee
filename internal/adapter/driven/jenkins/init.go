@@ -36,6 +36,6 @@ func init() {
 
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		return New(ctx, url, user, token)
+		return New(ctx, name, url, user, token)
 	})
 }

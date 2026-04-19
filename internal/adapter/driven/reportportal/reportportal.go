@@ -42,6 +42,7 @@ var (
 
 // Repository implements driven.LaunchRepository for Report Portal.
 type Repository struct {
+	name    string
 	baseURL string // e.g. https://reportportal.example.com
 	project string // RP project name
 	token   string // API key
@@ -49,9 +50,10 @@ type Repository struct {
 }
 
 // New creates a Report Portal repository.
-func New(baseURL, project, token string) (*Repository, error) {
+func New(name, baseURL, project, token string) (*Repository, error) {
 	baseURL = strings.TrimRight(baseURL, "/")
 	return &Repository{
+		name:    name,
 		baseURL: baseURL,
 		project: project,
 		token:   token,
@@ -59,7 +61,7 @@ func New(baseURL, project, token string) (*Repository, error) {
 	}, nil
 }
 
-func (r *Repository) Name() string { return BackendName }
+func (r *Repository) Name() string { return r.name }
 
 // --- IssueRepository stub (RP is not an issue backend, but needs to satisfy the registry) ---
 

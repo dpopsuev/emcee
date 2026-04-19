@@ -31,6 +31,6 @@ func init() {
 		if repoName == "" {
 			return nil, nil
 		}
-		return New(token, owner, repoName)
+		return New(name, token, owner, repoName)
 	})
 }

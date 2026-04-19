@@ -23,7 +23,7 @@ func newTestRepo(t *testing.T) *linear.Repository {
 	if team == "" {
 		team = "HEG"
 	}
-	repo, err := linear.New(apiKey, team)
+	repo, err := linear.New("linear", apiKey, team)
 	if err != nil {
 		t.Fatalf("linear.New: %v", err)
 	}

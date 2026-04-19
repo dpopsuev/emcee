@@ -27,7 +27,7 @@ func TestGitLabE2E(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	gl, err := gitlab.NewWithURL(token, project, baseURL)
+	gl, err := gitlab.NewWithURL("gitlab", token, project, baseURL)
 	if err != nil {
 		t.Fatalf("Failed to create GitLab adapter: %v", err)
 	}
@@ -198,7 +198,7 @@ func TestGitLabE2E(t *testing.T) {
 	})
 
 	t.Run("Invalid credentials", func(t *testing.T) {
-		badGl, err := gitlab.New("invalid-token", "invalid/project")
+		badGl, err := gitlab.New("gitlab", "invalid-token", "invalid/project")
 		if err != nil {
 			t.Skip("Failed to create adapter")
 			return

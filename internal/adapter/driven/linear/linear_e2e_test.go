@@ -224,7 +224,7 @@ func gqlResp(data any) map[string]any {
 func newTestRepo(t *testing.T) (*linear.Repository, *httptest.Server) {
 	t.Helper()
 	srv := fakeLinear()
-	repo, err := linear.NewWithURL("test-key", "TST", srv.URL)
+	repo, err := linear.NewWithURL("linear", "test-key", "TST", srv.URL)
 	if err != nil {
 		srv.Close()
 		t.Fatalf("NewWithURL: %v", err)

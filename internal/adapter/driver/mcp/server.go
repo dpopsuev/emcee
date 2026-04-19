@@ -115,7 +115,8 @@ Discovery:
 ## Enums:
   status: backlog, todo, in_progress, in_review, done, canceled
   priority: urgent, high, medium, low
-  backends: linear (default), github, gitlab, jira, reportportal
+  backends: linear (default), github, gitlab, jira, reportportal, jenkins
+  backend names can be instance names (e.g. jenkins-ci, jira-prod) when configured via config.yaml with type: field
 
 ## Notes:
   - create auto-stages on failure — error includes stage_id for retry

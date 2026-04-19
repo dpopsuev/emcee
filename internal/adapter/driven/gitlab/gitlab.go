@@ -63,6 +63,7 @@ var (
 
 // Repository implements driven.IssueRepository for GitLab.
 type Repository struct {
+	name      string
 	baseURL   string
 	token     string
 	projectID string // numeric ID or "namespace/project" format
@@ -70,12 +71,12 @@ type Repository struct {
 }
 
 // New creates a GitLab repository (defaults to gitlab.com).
-func New(token, projectID string) (*Repository, error) {
-	return NewWithURL(token, projectID, defaultURL)
+func New(name, token, projectID string) (*Repository, error) {
+	return NewWithURL(name, token, projectID, defaultURL)
 }
 
 // NewWithURL creates a GitLab repository with a custom URL (for self-hosted instances).
-func NewWithURL(token, projectID, baseURL string) (*Repository, error) {
+func NewWithURL(name, token, projectID, baseURL string) (*Repository, error) {
 	if projectID == "" {
 		return nil, ErrProjectEmpty
 	}
@@ -89,6 +90,7 @@ func NewWithURL(token, projectID, baseURL string) (*Repository, error) {
 	}
 
 	return &Repository{
+		name:      name,
 		baseURL:   strings.TrimRight(baseURL, "/"),
 		token:     token,
 		projectID: url.PathEscape(projectID), // GitLab accepts URL-encoded project IDs
@@ -96,7 +98,7 @@ func NewWithURL(token, projectID, baseURL string) (*Repository, error) {
 	}, nil
 }
 
-func (r *Repository) Name() string { return BackendName }
+func (r *Repository) Name() string { return r.name }
 
 // validateURL checks if the GitLab URL is safe to use (SSRF prevention).
 // Blocks private IP ranges and enforces HTTPS (except for localhost dev).

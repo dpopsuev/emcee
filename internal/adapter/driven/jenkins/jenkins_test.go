@@ -16,7 +16,7 @@ var (
 )
 
 func TestIssueRepositoryStubsReturnError(t *testing.T) {
-	repo := &Repository{}
+	repo := &Repository{name: BackendName}
 	ctx := context.Background()
 
 	tests := []struct {
@@ -42,7 +42,7 @@ func TestIssueRepositoryStubsReturnError(t *testing.T) {
 }
 
 func TestBackendName(t *testing.T) {
-	repo := &Repository{}
+	repo := &Repository{name: BackendName}
 	if repo.Name() != BackendName {
 		t.Errorf("Name() = %q, want %q", repo.Name(), BackendName)
 	}

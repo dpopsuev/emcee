@@ -141,7 +141,7 @@ func jiraIssueADF(key, summary, statusName, statusCategory, priority, assignee s
 func newTestRepo(t *testing.T) (*jira.Repository, *httptest.Server) {
 	t.Helper()
 	srv := fakeJira()
-	repo, err := jira.New(srv.URL, "test@example.com", "test-token", "TEST")
+	repo, err := jira.New("jira", srv.URL, "test@example.com", "test-token", "TEST")
 	if err != nil {
 		srv.Close()
 		t.Fatalf("New: %v", err)
@@ -208,7 +208,7 @@ func TestE2E_CreateNoProject(t *testing.T) {
 	srv := fakeJira()
 	defer srv.Close()
 
-	repo, _ := jira.New(srv.URL, "test@example.com", "test-token", "")
+	repo, _ := jira.New("jira", srv.URL, "test@example.com", "test-token", "")
 	_, err := repo.Create(context.Background(), domain.CreateInput{Title: "No project"})
 	if err == nil {
 		t.Fatal("expected error when no project configured")

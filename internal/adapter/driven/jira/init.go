@@ -35,6 +35,6 @@ func init() {
 		if project == "" {
 			project = os.Getenv("JIRA_PROJECT")
 		}
-		return New(url, email, token, project)
+		return New(name, url, email, token, project)
 	})
 }
