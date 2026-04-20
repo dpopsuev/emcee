@@ -147,6 +147,8 @@ type TriageConfig struct {
 type LedgerService interface {
 	LedgerGet(ctx context.Context, ref string) (*domain.ArtifactRecord, error)
 	LedgerList(ctx context.Context, filter domain.LedgerFilter) ([]domain.ArtifactRecord, error)
+	LedgerSearch(ctx context.Context, query string, limit int) ([]domain.ArtifactRecord, error)
+	LedgerIngest(ctx context.Context, record domain.ArtifactRecord) error
 	LedgerStats(ctx context.Context) (*domain.LedgerStats, error)
 }
 

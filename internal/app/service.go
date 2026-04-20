@@ -22,34 +22,34 @@ import (
 const batchSize = 50
 
 var (
-	ErrUnknownBackend = errors.New("unknown backend")
-	ErrInvalidRef     = errors.New("invalid ref")
-	ErrNotSupported      = errors.New("operation not supported by backend")
+	ErrUnknownBackend      = errors.New("unknown backend")
+	ErrInvalidRef          = errors.New("invalid ref")
+	ErrNotSupported        = errors.New("operation not supported by backend")
 	ErrTriageNotConfigured = errors.New("triage not configured: missing graph store")
 )
 
 // Service implements all driver port interfaces by routing to the appropriate repository.
 type Service struct {
-	repos        map[string]driven.IssueRepository
-	docRepos     map[string]driven.DocumentRepository
-	projRepos    map[string]driven.ProjectRepository
-	initRepos    map[string]driven.InitiativeRepository
-	labelRepos   map[string]driven.LabelRepository
-	bulkRepos    map[string]driven.BulkIssueRepository
-	commentRepos map[string]driven.CommentRepository
-	launchRepos  map[string]driven.LaunchRepository
-	fieldRepos   map[string]driven.FieldRepository
-	jqlRepos     map[string]driven.JQLRepository
-	prRepos      map[string]driven.PRRepository
-	buildRepos    map[string]driven.BuildRepository
-	pipelineRepos map[string]driven.PipelineRepository
-	extractor       driven.LinkExtractor
-	graphStore      driven.GraphStore
-	ledger          driven.Ledger
-	crawlRateLimit  float64    // requests per second (0 = unlimited)
-	crawlAllowList  []string   // backend names to recurse into (empty = all)
-	stage           *StageStore
-	mu              sync.RWMutex
+	repos          map[string]driven.IssueRepository
+	docRepos       map[string]driven.DocumentRepository
+	projRepos      map[string]driven.ProjectRepository
+	initRepos      map[string]driven.InitiativeRepository
+	labelRepos     map[string]driven.LabelRepository
+	bulkRepos      map[string]driven.BulkIssueRepository
+	commentRepos   map[string]driven.CommentRepository
+	launchRepos    map[string]driven.LaunchRepository
+	fieldRepos     map[string]driven.FieldRepository
+	jqlRepos       map[string]driven.JQLRepository
+	prRepos        map[string]driven.PRRepository
+	buildRepos     map[string]driven.BuildRepository
+	pipelineRepos  map[string]driven.PipelineRepository
+	extractor      driven.LinkExtractor
+	graphStore     driven.GraphStore
+	ledger         driven.Ledger
+	crawlRateLimit float64  // requests per second (0 = unlimited)
+	crawlAllowList []string // backend names to recurse into (empty = all)
+	stage          *StageStore
+	mu             sync.RWMutex
 }
 
 // NewService creates the application service with the given repositories.
@@ -57,17 +57,17 @@ type Service struct {
 // are automatically registered for those capabilities.
 func NewService(repos ...driven.IssueRepository) *Service {
 	s := &Service{
-		repos:        make(map[string]driven.IssueRepository, len(repos)),
-		docRepos:     make(map[string]driven.DocumentRepository),
-		projRepos:    make(map[string]driven.ProjectRepository),
-		initRepos:    make(map[string]driven.InitiativeRepository),
-		labelRepos:   make(map[string]driven.LabelRepository),
-		bulkRepos:    make(map[string]driven.BulkIssueRepository),
-		commentRepos: make(map[string]driven.CommentRepository),
-		launchRepos:  make(map[string]driven.LaunchRepository),
-		fieldRepos:   make(map[string]driven.FieldRepository),
-		jqlRepos:     make(map[string]driven.JQLRepository),
-		prRepos:      make(map[string]driven.PRRepository),
+		repos:         make(map[string]driven.IssueRepository, len(repos)),
+		docRepos:      make(map[string]driven.DocumentRepository),
+		projRepos:     make(map[string]driven.ProjectRepository),
+		initRepos:     make(map[string]driven.InitiativeRepository),
+		labelRepos:    make(map[string]driven.LabelRepository),
+		bulkRepos:     make(map[string]driven.BulkIssueRepository),
+		commentRepos:  make(map[string]driven.CommentRepository),
+		launchRepos:   make(map[string]driven.LaunchRepository),
+		fieldRepos:    make(map[string]driven.FieldRepository),
+		jqlRepos:      make(map[string]driven.JQLRepository),
+		prRepos:       make(map[string]driven.PRRepository),
 		buildRepos:    make(map[string]driven.BuildRepository),
 		pipelineRepos: make(map[string]driven.PipelineRepository),
 		stage:         NewStageStore(),
@@ -996,6 +996,22 @@ func (s *Service) LedgerList(ctx context.Context, filter domain.LedgerFilter) ([
 		return nil, ErrLedgerNotConfigured
 	}
 	return s.ledger.List(ctx, filter)
+}
+
+// LedgerSearch performs full-text search across all ledger artifacts.
+func (s *Service) LedgerSearch(ctx context.Context, query string, limit int) ([]domain.ArtifactRecord, error) {
+	if s.ledger == nil {
+		return nil, ErrLedgerNotConfigured
+	}
+	return s.ledger.Search(ctx, query, limit)
+}
+
+// LedgerIngest actively deposits an artifact record into the ledger.
+func (s *Service) LedgerIngest(ctx context.Context, record domain.ArtifactRecord) error {
+	if s.ledger == nil {
+		return ErrLedgerNotConfigured
+	}
+	return s.ledger.Put(ctx, record)
 }
 
 // LedgerStats returns aggregate ledger statistics.

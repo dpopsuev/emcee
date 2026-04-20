@@ -166,6 +166,9 @@ func newTestServer(t *testing.T) (*sdkmcp.ClientSession, *drivertest.StubEmceeSe
 		{Ref: "jira:BUG-1", Backend: "jira", Type: "issue", Title: "Bug One", Status: "open"},
 		{Ref: "github:org/repo#1", Backend: "github", Type: "issue", Title: "Fix stuff", Status: "closed"},
 	}
+	svc.StubLedgerService.SearchRecords = []domain.ArtifactRecord{
+		{Ref: "jira:BUG-1", Backend: "jira", Type: "issue", Title: "Bug One", Status: "open"},
+	}
 	svc.StubLedgerService.StatsResult = &domain.LedgerStats{
 		Total:     2,
 		ByBackend: map[string]int{"jira": 1, "github": 1},
@@ -1380,5 +1383,78 @@ func TestEmceeLedgerStats(t *testing.T) {
 	}
 	if svc.StubLedgerService.LedgerStatsCalls != 1 {
 		t.Errorf("LedgerStatsCalls = %d, want 1", svc.StubLedgerService.LedgerStatsCalls)
+	}
+}
+
+func TestEmceeLedgerSearch(t *testing.T) {
+	session, svc := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{
+		"action": "ledger_search",
+		"query":  "Bug",
+		"limit":  float64(10),
+	})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var records []domain.ArtifactRecord
+	if err := json.Unmarshal([]byte(resultText(t, result)), &records); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("len = %d, want 1", len(records))
+	}
+	if records[0].Ref != "jira:BUG-1" {
+		t.Errorf("ref = %q, want jira:BUG-1", records[0].Ref)
+	}
+	if len(svc.StubLedgerService.LedgerSearchCalls) != 1 {
+		t.Fatalf("LedgerSearchCalls = %d, want 1", len(svc.StubLedgerService.LedgerSearchCalls))
+	}
+	if svc.StubLedgerService.LedgerSearchCalls[0].Query != "Bug" {
+		t.Errorf("query = %q, want %q", svc.StubLedgerService.LedgerSearchCalls[0].Query, "Bug")
+	}
+}
+
+func TestEmceeLedgerSearchMissingQuery(t *testing.T) {
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "ledger_search"})
+	if !result.IsError {
+		t.Fatal("expected error for missing query")
+	}
+}
+
+func TestEmceeLedgerIngest(t *testing.T) {
+	session, svc := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{
+		"action":      "ledger_ingest",
+		"ref":         "jira:NEW-1",
+		"backend":     "jira",
+		"title":       "Manually ingested issue",
+		"description": "Some description text",
+		"status":      "open",
+	})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	text := resultText(t, result)
+	if !strings.Contains(text, "jira:NEW-1") {
+		t.Errorf("result does not contain ref: %s", text)
+	}
+	if len(svc.StubLedgerService.LedgerIngestCalls) != 1 {
+		t.Fatalf("LedgerIngestCalls = %d, want 1", len(svc.StubLedgerService.LedgerIngestCalls))
+	}
+	rec := svc.StubLedgerService.LedgerIngestCalls[0].Record
+	if rec.Ref != "jira:NEW-1" {
+		t.Errorf("ref = %q, want jira:NEW-1", rec.Ref)
+	}
+	if rec.Title != "Manually ingested issue" {
+		t.Errorf("title = %q, want %q", rec.Title, "Manually ingested issue")
+	}
+}
+
+func TestEmceeLedgerIngestMissingRef(t *testing.T) {
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "ledger_ingest", "title": "No ref"})
+	if !result.IsError {
+		t.Fatal("expected error for missing ref")
 	}
 }

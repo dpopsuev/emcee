@@ -3,6 +3,7 @@ package triage
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 
 	"github.com/DanyPops/emcee/internal/domain"
@@ -69,6 +70,28 @@ func (l *InMemoryLedger) List(_ context.Context, filter domain.LedgerFilter) ([]
 		results = append(results, r)
 		if filter.Limit > 0 && len(results) >= filter.Limit {
 			break
+		}
+	}
+	return results, nil
+}
+
+// Search does a simple substring match across title and text fields.
+func (l *InMemoryLedger) Search(_ context.Context, query string, limit int) ([]domain.ArtifactRecord, error) {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+
+	if limit <= 0 {
+		limit = 50
+	}
+	q := strings.ToLower(query)
+	var results []domain.ArtifactRecord
+	for ref := range l.records {
+		r := l.records[ref]
+		if strings.Contains(strings.ToLower(r.Title), q) || strings.Contains(strings.ToLower(r.Text), q) {
+			results = append(results, r)
+			if len(results) >= limit {
+				break
+			}
 		}
 	}
 	return results, nil

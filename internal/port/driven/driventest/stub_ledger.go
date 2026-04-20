@@ -22,17 +22,24 @@ type LedgerListCall struct {
 	Filter domain.LedgerFilter
 }
 
-type StubLedger struct {
-	Record      *domain.ArtifactRecord
-	Records     []domain.ArtifactRecord
-	StatsResult *domain.LedgerStats
-	Err         error
+type LedgerSearchCall struct {
+	Query string
+	Limit int
+}
 
-	mu         sync.Mutex
-	PutCalls   []LedgerPutCall
-	GetCalls   []LedgerGetCall
-	ListCalls  []LedgerListCall
-	StatsCalls int
+type StubLedger struct {
+	Record        *domain.ArtifactRecord
+	Records       []domain.ArtifactRecord
+	SearchRecords []domain.ArtifactRecord
+	StatsResult   *domain.LedgerStats
+	Err           error
+
+	mu          sync.Mutex
+	PutCalls    []LedgerPutCall
+	GetCalls    []LedgerGetCall
+	ListCalls   []LedgerListCall
+	SearchCalls []LedgerSearchCall
+	StatsCalls  int
 }
 
 func (s *StubLedger) Put(_ context.Context, record domain.ArtifactRecord) error {
@@ -54,6 +61,13 @@ func (s *StubLedger) List(_ context.Context, filter domain.LedgerFilter) ([]doma
 	defer s.mu.Unlock()
 	s.ListCalls = append(s.ListCalls, LedgerListCall{Filter: filter})
 	return s.Records, s.Err
+}
+
+func (s *StubLedger) Search(_ context.Context, query string, limit int) ([]domain.ArtifactRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.SearchCalls = append(s.SearchCalls, LedgerSearchCall{Query: query, Limit: limit})
+	return s.SearchRecords, s.Err
 }
 
 func (s *StubLedger) Stats(_ context.Context) (*domain.LedgerStats, error) {

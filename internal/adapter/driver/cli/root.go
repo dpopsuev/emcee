@@ -20,6 +20,7 @@ import (
 	_ "github.com/DanyPops/emcee/internal/adapter/driven/reportportal"
 
 	adapterdriven "github.com/DanyPops/emcee/internal/adapter/driven"
+	adaptersqlite "github.com/DanyPops/emcee/internal/adapter/driven/sqlite"
 	mcpserver "github.com/DanyPops/emcee/internal/adapter/driver/mcp"
 	"github.com/DanyPops/emcee/internal/app"
 	"github.com/DanyPops/emcee/internal/config"
@@ -84,11 +85,17 @@ func newServiceFromEnv() (*app.Service, error) {
 }
 
 func injectTriage(svc *app.Service) {
+	ledger, err := adaptersqlite.NewLedger("") // defaults to $XDG_DATA_HOME/emcee/ledger.db
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: sqlite ledger unavailable, falling back to in-memory: %v\n", err)
+		svc.Apply(app.WithLedger(triage.NewInMemoryLedger()))
+	} else {
+		svc.Apply(app.WithLedger(ledger))
+	}
 	svc.Apply(
 		app.WithLinkExtractor(triage.NewRegexLinkExtractor(nil)),
 		app.WithGraphStore(triage.NewInMemoryGraphStore()),
 		app.WithCrawlRateLimit(5), // 5 req/s — be polite
-		app.WithLedger(triage.NewInMemoryLedger()),
 	)
 }
 
