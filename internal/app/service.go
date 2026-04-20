@@ -734,6 +734,62 @@ func (s *Service) GetDownstreamJobs(ctx context.Context, backend, jobName string
 	return r.GetDownstreamJobs(ctx, jobName)
 }
 
+func (s *Service) ListArtifacts(ctx context.Context, backend, jobName string, number int64) ([]domain.BuildArtifact, error) {
+	r, ok := s.buildRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "builds")
+	}
+	return r.ListArtifacts(ctx, jobName, number)
+}
+
+func (s *Service) GetBuildRevision(ctx context.Context, backend, jobName string, number int64) (string, error) {
+	r, ok := s.buildRepos[backend]
+	if !ok {
+		return "", s.notSupportedErr(backend, "builds")
+	}
+	return r.GetBuildRevision(ctx, jobName, number)
+}
+
+func (s *Service) GetBuildCauses(ctx context.Context, backend, jobName string, number int64) ([]domain.BuildCause, error) {
+	r, ok := s.buildRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "builds")
+	}
+	return r.GetBuildCauses(ctx, jobName, number)
+}
+
+func (s *Service) ListNodes(ctx context.Context, backend string) ([]domain.JenkinsNode, error) {
+	r, ok := s.buildRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "builds")
+	}
+	return r.ListNodes(ctx)
+}
+
+func (s *Service) GetNode(ctx context.Context, backend, name string) (*domain.JenkinsNode, error) {
+	r, ok := s.buildRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "builds")
+	}
+	return r.GetNode(ctx, name)
+}
+
+func (s *Service) ListViews(ctx context.Context, backend string) ([]domain.JenkinsView, error) {
+	r, ok := s.buildRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "builds")
+	}
+	return r.ListViews(ctx)
+}
+
+func (s *Service) GetViewJobs(ctx context.Context, backend, viewName string) ([]domain.Job, error) {
+	r, ok := s.buildRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "builds")
+	}
+	return r.GetViewJobs(ctx, viewName)
+}
+
 // --- Pipeline operations (Jenkins) ---
 
 func (s *Service) ListPipelineRuns(ctx context.Context, backend, jobName string) ([]domain.PipelineRun, error) {

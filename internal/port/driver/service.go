@@ -79,6 +79,13 @@ type BuildService interface {
 	ListFolderJobs(ctx context.Context, backend, folderPath string) ([]domain.Job, error)
 	GetUpstreamJobs(ctx context.Context, backend, jobName string) ([]domain.Job, error)
 	GetDownstreamJobs(ctx context.Context, backend, jobName string) ([]domain.Job, error)
+	ListArtifacts(ctx context.Context, backend, jobName string, number int64) ([]domain.BuildArtifact, error)
+	GetBuildRevision(ctx context.Context, backend, jobName string, number int64) (string, error)
+	GetBuildCauses(ctx context.Context, backend, jobName string, number int64) ([]domain.BuildCause, error)
+	ListNodes(ctx context.Context, backend string) ([]domain.JenkinsNode, error)
+	GetNode(ctx context.Context, backend, name string) (*domain.JenkinsNode, error)
+	ListViews(ctx context.Context, backend string) ([]domain.JenkinsView, error)
+	GetViewJobs(ctx context.Context, backend, viewName string) ([]domain.Job, error)
 }
 
 // PipelineService is the inbound port for Jenkins pipeline operations.

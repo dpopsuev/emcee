@@ -95,6 +95,13 @@ type BuildRepository interface {
 	ListFolderJobs(ctx context.Context, folderPath string) ([]domain.Job, error)
 	GetUpstreamJobs(ctx context.Context, jobName string) ([]domain.Job, error)
 	GetDownstreamJobs(ctx context.Context, jobName string) ([]domain.Job, error)
+	ListArtifacts(ctx context.Context, jobName string, number int64) ([]domain.BuildArtifact, error)
+	GetBuildRevision(ctx context.Context, jobName string, number int64) (string, error)
+	GetBuildCauses(ctx context.Context, jobName string, number int64) ([]domain.BuildCause, error)
+	ListNodes(ctx context.Context) ([]domain.JenkinsNode, error)
+	GetNode(ctx context.Context, name string) (*domain.JenkinsNode, error)
+	ListViews(ctx context.Context) ([]domain.JenkinsView, error)
+	GetViewJobs(ctx context.Context, viewName string) ([]domain.Job, error)
 }
 
 // PipelineRepository is the outbound port for Jenkins pipeline operations (ISP).

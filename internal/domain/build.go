@@ -104,6 +104,36 @@ type PipelineInput struct {
 	Message string `json:"message"`
 }
 
+// BuildArtifact represents an artifact produced by a Jenkins build.
+type BuildArtifact struct {
+	FileName     string `json:"filename"`
+	RelativePath string `json:"relative_path"`
+}
+
+// BuildCause describes what triggered a Jenkins build.
+type BuildCause struct {
+	ShortDescription string `json:"short_description"`
+	UpstreamJob      string `json:"upstream_job,omitempty"`
+	UpstreamBuild    int64  `json:"upstream_build,omitempty"`
+}
+
+// JenkinsNode represents a Jenkins build agent.
+type JenkinsNode struct {
+	Name               string `json:"name"`
+	Online             bool   `json:"online"`
+	Idle               bool   `json:"idle"`
+	TemporarilyOffline bool   `json:"temporarily_offline"`
+	NumExecutors       int    `json:"num_executors"`
+	BusyExecutors      int    `json:"busy_executors"`
+}
+
+// JenkinsView represents a Jenkins view grouping jobs.
+type JenkinsView struct {
+	Name string `json:"name"`
+	URL  string `json:"url"`
+	Jobs []Job  `json:"jobs,omitempty"`
+}
+
 // JobFilter controls which jobs to list.
 type JobFilter struct {
 	Limit int `json:"limit,omitempty"`

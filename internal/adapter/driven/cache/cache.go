@@ -633,6 +633,55 @@ func (r *Repository) GetDownstreamJobs(ctx context.Context, jobName string) ([]d
 	return r.builds.GetDownstreamJobs(ctx, jobName)
 }
 
+func (r *Repository) ListArtifacts(ctx context.Context, jobName string, number int64) ([]domain.BuildArtifact, error) {
+	if r.builds == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.builds.ListArtifacts(ctx, jobName, number)
+}
+
+func (r *Repository) GetBuildRevision(ctx context.Context, jobName string, number int64) (string, error) {
+	if r.builds == nil {
+		return "", fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.builds.GetBuildRevision(ctx, jobName, number)
+}
+
+func (r *Repository) GetBuildCauses(ctx context.Context, jobName string, number int64) ([]domain.BuildCause, error) {
+	if r.builds == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.builds.GetBuildCauses(ctx, jobName, number)
+}
+
+func (r *Repository) ListNodes(ctx context.Context) ([]domain.JenkinsNode, error) {
+	if r.builds == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.builds.ListNodes(ctx)
+}
+
+func (r *Repository) GetNode(ctx context.Context, name string) (*domain.JenkinsNode, error) {
+	if r.builds == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.builds.GetNode(ctx, name)
+}
+
+func (r *Repository) ListViews(ctx context.Context) ([]domain.JenkinsView, error) {
+	if r.builds == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.builds.ListViews(ctx)
+}
+
+func (r *Repository) GetViewJobs(ctx context.Context, viewName string) ([]domain.Job, error) {
+	if r.builds == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.builds.GetViewJobs(ctx, viewName)
+}
+
 // --- Passthrough: PipelineRepository ---
 
 func (r *Repository) ListPipelineRuns(ctx context.Context, jobName string) ([]domain.PipelineRun, error) {

@@ -64,6 +64,13 @@ type StubBuildService struct {
 	FolderJobs     []domain.Job
 	UpstreamJobs   []domain.Job
 	DownstreamJobs []domain.Job
+	Artifacts      []domain.BuildArtifact
+	BuildRevision  string
+	BuildCauses    []domain.BuildCause
+	Nodes          []domain.JenkinsNode
+	Node           *domain.JenkinsNode
+	Views          []domain.JenkinsView
+	ViewJobs       []domain.Job
 	Err            error
 
 	mu                  sync.Mutex
@@ -83,6 +90,13 @@ type StubBuildService struct {
 	ListFolderJobsCalls    []FolderJobsCall
 	GetUpstreamJobsCalls   []JobDepsCall
 	GetDownstreamJobsCalls []JobDepsCall
+	ListArtifactsCalls     []BuildGetCall
+	GetBuildRevisionCalls  []BuildGetCall
+	GetBuildCausesCalls    []BuildGetCall
+	ListNodesCalls         []QueueGetCall
+	GetNodeCalls           []NodeGetCall
+	ListViewsCalls         []QueueGetCall
+	GetViewJobsCalls       []ViewJobsCall
 }
 
 type FolderJobsCall struct {
@@ -93,6 +107,16 @@ type FolderJobsCall struct {
 type JobDepsCall struct {
 	Backend string
 	JobName string
+}
+
+type NodeGetCall struct {
+	Backend string
+	Name    string
+}
+
+type ViewJobsCall struct {
+	Backend  string
+	ViewName string
 }
 
 type BuildStopCall struct {
@@ -227,4 +251,53 @@ func (s *StubBuildService) GetDownstreamJobs(_ context.Context, backend, jobName
 	defer s.mu.Unlock()
 	s.GetDownstreamJobsCalls = append(s.GetDownstreamJobsCalls, JobDepsCall{Backend: backend, JobName: jobName})
 	return s.DownstreamJobs, s.Err
+}
+
+func (s *StubBuildService) ListArtifacts(_ context.Context, backend, jobName string, number int64) ([]domain.BuildArtifact, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ListArtifactsCalls = append(s.ListArtifactsCalls, BuildGetCall{Backend: backend, JobName: jobName, Number: number})
+	return s.Artifacts, s.Err
+}
+
+func (s *StubBuildService) GetBuildRevision(_ context.Context, backend, jobName string, number int64) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.GetBuildRevisionCalls = append(s.GetBuildRevisionCalls, BuildGetCall{Backend: backend, JobName: jobName, Number: number})
+	return s.BuildRevision, s.Err
+}
+
+func (s *StubBuildService) GetBuildCauses(_ context.Context, backend, jobName string, number int64) ([]domain.BuildCause, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.GetBuildCausesCalls = append(s.GetBuildCausesCalls, BuildGetCall{Backend: backend, JobName: jobName, Number: number})
+	return s.BuildCauses, s.Err
+}
+
+func (s *StubBuildService) ListNodes(_ context.Context, backend string) ([]domain.JenkinsNode, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ListNodesCalls = append(s.ListNodesCalls, QueueGetCall{Backend: backend})
+	return s.Nodes, s.Err
+}
+
+func (s *StubBuildService) GetNode(_ context.Context, backend, name string) (*domain.JenkinsNode, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.GetNodeCalls = append(s.GetNodeCalls, NodeGetCall{Backend: backend, Name: name})
+	return s.Node, s.Err
+}
+
+func (s *StubBuildService) ListViews(_ context.Context, backend string) ([]domain.JenkinsView, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ListViewsCalls = append(s.ListViewsCalls, QueueGetCall{Backend: backend})
+	return s.Views, s.Err
+}
+
+func (s *StubBuildService) GetViewJobs(_ context.Context, backend, viewName string) ([]domain.Job, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.GetViewJobsCalls = append(s.GetViewJobsCalls, ViewJobsCall{Backend: backend, ViewName: viewName})
+	return s.ViewJobs, s.Err
 }

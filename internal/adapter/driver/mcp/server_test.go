@@ -114,6 +114,25 @@ func newTestServer(t *testing.T) (*sdkmcp.ClientSession, *drivertest.StubEmceeSe
 	}
 	svc.StubBuildService.UpstreamJobs = []domain.Job{{Name: "trigger-job"}}
 	svc.StubBuildService.DownstreamJobs = []domain.Job{{Name: "deploy-job"}}
+	svc.StubBuildService.Artifacts = []domain.BuildArtifact{
+		{FileName: "app.jar", RelativePath: "target/app.jar"},
+	}
+	svc.StubBuildService.BuildRevision = "abc123def"
+	svc.StubBuildService.BuildCauses = []domain.BuildCause{
+		{ShortDescription: "Started by upstream project", UpstreamJob: "trigger-job", UpstreamBuild: 10},
+	}
+	svc.StubBuildService.Nodes = []domain.JenkinsNode{
+		{Name: "master", Online: true, Idle: false, NumExecutors: 2, BusyExecutors: 1},
+		{Name: "agent-1", Online: true, Idle: true, NumExecutors: 4, BusyExecutors: 0},
+	}
+	svc.StubBuildService.Node = &domain.JenkinsNode{Name: "agent-1", Online: true, Idle: true, NumExecutors: 4}
+	svc.StubBuildService.Views = []domain.JenkinsView{
+		{Name: "All", URL: "https://jenkins.example.com/view/All/"},
+		{Name: "CI", URL: "https://jenkins.example.com/view/CI/", Jobs: []domain.Job{{Name: "ci-job"}}},
+	}
+	svc.StubBuildService.ViewJobs = []domain.Job{
+		{Name: "ci-job", Buildable: true},
+	}
 	svc.StubPipelineService.PipelineRuns = []domain.PipelineRun{
 		{ID: "1", Name: "#1", Status: "SUCCESS", Duration: 12345, Stages: []domain.PipelineStage{
 			{ID: "10", Name: "Build", Status: "SUCCESS", Duration: 5000},
@@ -826,6 +845,142 @@ func TestEmceeJobDownstream(t *testing.T) {
 	}
 	if len(jobs) != 1 || jobs[0].Name != "deploy-job" {
 		t.Errorf("got %v, want [{Name:deploy-job}]", jobs)
+	}
+}
+
+// --- artifacts & traceability tests ---
+
+func TestEmceeBuildArtifacts(t *testing.T) {
+	session, svc := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "build_artifacts", "backend": "jenkins", "query": "my-pipeline", "ref": "99"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var artifacts []domain.BuildArtifact
+	if err := json.Unmarshal([]byte(resultText(t, result)), &artifacts); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(artifacts) != 1 {
+		t.Errorf("got %d artifacts, want 1", len(artifacts))
+	}
+	if artifacts[0].FileName != "app.jar" {
+		t.Errorf("filename = %q, want %q", artifacts[0].FileName, "app.jar")
+	}
+	if len(svc.StubBuildService.ListArtifactsCalls) != 1 {
+		t.Fatalf("ListArtifactsCalls = %d, want 1", len(svc.StubBuildService.ListArtifactsCalls))
+	}
+}
+
+func TestEmceeBuildRevision(t *testing.T) {
+	session, svc := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "build_revision", "backend": "jenkins", "query": "my-pipeline", "ref": "99"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	text := resultText(t, result)
+	if !strings.Contains(text, "abc123def") {
+		t.Errorf("expected revision abc123def in response, got: %s", text)
+	}
+	if len(svc.StubBuildService.GetBuildRevisionCalls) != 1 {
+		t.Fatalf("GetBuildRevisionCalls = %d, want 1", len(svc.StubBuildService.GetBuildRevisionCalls))
+	}
+}
+
+func TestEmceeBuildCauses(t *testing.T) {
+	session, svc := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "build_causes", "backend": "jenkins", "query": "my-pipeline", "ref": "99"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var causes []domain.BuildCause
+	if err := json.Unmarshal([]byte(resultText(t, result)), &causes); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(causes) != 1 {
+		t.Errorf("got %d causes, want 1", len(causes))
+	}
+	if causes[0].UpstreamJob != "trigger-job" {
+		t.Errorf("upstream_job = %q, want %q", causes[0].UpstreamJob, "trigger-job")
+	}
+	if len(svc.StubBuildService.GetBuildCausesCalls) != 1 {
+		t.Fatalf("GetBuildCausesCalls = %d, want 1", len(svc.StubBuildService.GetBuildCausesCalls))
+	}
+}
+
+// --- nodes & views tests ---
+
+func TestEmceeNodes(t *testing.T) {
+	session, svc := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "nodes", "backend": "jenkins"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var nodes []domain.JenkinsNode
+	if err := json.Unmarshal([]byte(resultText(t, result)), &nodes); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(nodes) != 2 {
+		t.Errorf("got %d nodes, want 2", len(nodes))
+	}
+	if len(svc.StubBuildService.ListNodesCalls) != 1 {
+		t.Fatalf("ListNodesCalls = %d, want 1", len(svc.StubBuildService.ListNodesCalls))
+	}
+}
+
+func TestEmceeNodeGet(t *testing.T) {
+	session, svc := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "node_get", "backend": "jenkins", "query": "agent-1"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var node domain.JenkinsNode
+	if err := json.Unmarshal([]byte(resultText(t, result)), &node); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if node.Name != "agent-1" {
+		t.Errorf("name = %q, want %q", node.Name, "agent-1")
+	}
+	if len(svc.StubBuildService.GetNodeCalls) != 1 {
+		t.Fatalf("GetNodeCalls = %d, want 1", len(svc.StubBuildService.GetNodeCalls))
+	}
+}
+
+func TestEmceeViews(t *testing.T) {
+	session, svc := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "views", "backend": "jenkins"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var views []domain.JenkinsView
+	if err := json.Unmarshal([]byte(resultText(t, result)), &views); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(views) != 2 {
+		t.Errorf("got %d views, want 2", len(views))
+	}
+	if len(svc.StubBuildService.ListViewsCalls) != 1 {
+		t.Fatalf("ListViewsCalls = %d, want 1", len(svc.StubBuildService.ListViewsCalls))
+	}
+}
+
+func TestEmceeViewJobs(t *testing.T) {
+	session, svc := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "view_jobs", "backend": "jenkins", "query": "CI"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var jobs []domain.Job
+	if err := json.Unmarshal([]byte(resultText(t, result)), &jobs); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(jobs) != 1 {
+		t.Errorf("got %d jobs, want 1", len(jobs))
+	}
+	if jobs[0].Name != "ci-job" {
+		t.Errorf("name = %q, want %q", jobs[0].Name, "ci-job")
+	}
+	if len(svc.StubBuildService.GetViewJobsCalls) != 1 {
+		t.Fatalf("GetViewJobsCalls = %d, want 1", len(svc.StubBuildService.GetViewJobsCalls))
 	}
 }
 

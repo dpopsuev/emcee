@@ -422,6 +422,158 @@ func (r *Repository) GetDownstreamJobs(ctx context.Context, jobName string) ([]d
 	return r.getJobDeps(ctx, jobName, "get_downstream_jobs", j.GetDownstreamJobsMetadata)
 }
 
+// --- Artifacts & Traceability ---
+
+func (r *Repository) ListArtifacts(ctx context.Context, jobName string, number int64) ([]domain.BuildArtifact, error) {
+	start := time.Now()
+	adapterdriven.LogOp(ctx, BackendName, "list_artifacts", slog.String(adapterdriven.LogKeyID, jobName), slog.Int64("number", number))
+	b, err := r.getBuild(ctx, jobName, number)
+	if err != nil {
+		r.logErr(ctx, "list_artifacts", err)
+		return nil, err
+	}
+	raw := b.GetArtifacts()
+	artifacts := make([]domain.BuildArtifact, 0, len(raw))
+	for i := range raw {
+		artifacts = append(artifacts, domain.BuildArtifact{
+			FileName:     raw[i].FileName,
+			RelativePath: raw[i].Path,
+		})
+	}
+	adapterdriven.LogOpDone(ctx, BackendName, "list_artifacts", slog.Duration(adapterdriven.LogKeyElapsed, time.Since(start)), slog.Int(adapterdriven.LogKeyCount, len(artifacts)))
+	return artifacts, nil
+}
+
+func (r *Repository) GetBuildRevision(ctx context.Context, jobName string, number int64) (string, error) {
+	start := time.Now()
+	adapterdriven.LogOp(ctx, BackendName, "get_build_revision", slog.String(adapterdriven.LogKeyID, jobName), slog.Int64("number", number))
+	b, err := r.getBuild(ctx, jobName, number)
+	if err != nil {
+		r.logErr(ctx, "get_build_revision", err)
+		return "", err
+	}
+	rev := b.GetRevision()
+	adapterdriven.LogOpDone(ctx, BackendName, "get_build_revision", slog.Duration(adapterdriven.LogKeyElapsed, time.Since(start)))
+	return rev, nil
+}
+
+func (r *Repository) GetBuildCauses(ctx context.Context, jobName string, number int64) ([]domain.BuildCause, error) {
+	start := time.Now()
+	adapterdriven.LogOp(ctx, BackendName, "get_build_causes", slog.String(adapterdriven.LogKeyID, jobName), slog.Int64("number", number))
+	b, err := r.getBuild(ctx, jobName, number)
+	if err != nil {
+		r.logErr(ctx, "get_build_causes", err)
+		return nil, err
+	}
+	raw, err := b.GetCauses(ctx)
+	if err != nil {
+		r.logErr(ctx, "get_build_causes", err)
+		return nil, err
+	}
+	causes := make([]domain.BuildCause, 0, len(raw))
+	for _, c := range raw {
+		cause := domain.BuildCause{}
+		if v, ok := c["shortDescription"].(string); ok {
+			cause.ShortDescription = v
+		}
+		if v, ok := c["upstreamProject"].(string); ok {
+			cause.UpstreamJob = v
+		}
+		if v, ok := c["upstreamBuild"].(float64); ok {
+			cause.UpstreamBuild = int64(v)
+		}
+		causes = append(causes, cause)
+	}
+	adapterdriven.LogOpDone(ctx, BackendName, "get_build_causes", slog.Duration(adapterdriven.LogKeyElapsed, time.Since(start)), slog.Int(adapterdriven.LogKeyCount, len(causes)))
+	return causes, nil
+}
+
+// --- Nodes & Views ---
+
+func (r *Repository) ListNodes(ctx context.Context) ([]domain.JenkinsNode, error) {
+	start := time.Now()
+	adapterdriven.LogOp(ctx, BackendName, "list_nodes")
+	raw, err := r.jenkins.GetAllNodes(ctx)
+	if err != nil {
+		r.logErr(ctx, "list_nodes", err)
+		return nil, err
+	}
+	nodes := make([]domain.JenkinsNode, 0, len(raw))
+	for _, n := range raw {
+		nodes = append(nodes, r.mapNode(ctx, n))
+	}
+	adapterdriven.LogOpDone(ctx, BackendName, "list_nodes", slog.Duration(adapterdriven.LogKeyElapsed, time.Since(start)), slog.Int(adapterdriven.LogKeyCount, len(nodes)))
+	return nodes, nil
+}
+
+func (r *Repository) GetNode(ctx context.Context, name string) (*domain.JenkinsNode, error) {
+	start := time.Now()
+	adapterdriven.LogOp(ctx, BackendName, "get_node", slog.String(adapterdriven.LogKeyID, name))
+	n, err := r.jenkins.GetNode(ctx, name)
+	if err != nil {
+		r.logErr(ctx, "get_node", err)
+		return nil, err
+	}
+	node := r.mapNode(ctx, n)
+	adapterdriven.LogOpDone(ctx, BackendName, "get_node", slog.Duration(adapterdriven.LogKeyElapsed, time.Since(start)))
+	return &node, nil
+}
+
+func (r *Repository) mapNode(ctx context.Context, n *gojenkins.Node) domain.JenkinsNode {
+	online, _ := n.IsOnline(ctx)
+	idle, _ := n.IsIdle(ctx)
+	tempOffline, _ := n.IsTemporarilyOffline(ctx)
+	// Count busy executors from current executables.
+	busy := 0
+	for _, e := range n.Raw.Executors {
+		if e.CurrentExecutable.URL != "" {
+			busy++
+		}
+	}
+	return domain.JenkinsNode{
+		Name:               n.GetName(),
+		Online:             online,
+		Idle:               idle,
+		TemporarilyOffline: tempOffline,
+		NumExecutors:       int(n.Raw.NumExecutors),
+		BusyExecutors:      busy,
+	}
+}
+
+func (r *Repository) ListViews(ctx context.Context) ([]domain.JenkinsView, error) {
+	start := time.Now()
+	adapterdriven.LogOp(ctx, BackendName, "list_views")
+	raw, err := r.jenkins.GetAllViews(ctx)
+	if err != nil {
+		r.logErr(ctx, "list_views", err)
+		return nil, err
+	}
+	views := make([]domain.JenkinsView, 0, len(raw))
+	for _, v := range raw {
+		view := domain.JenkinsView{
+			Name: v.GetName(),
+			URL:  v.GetUrl(),
+			Jobs: mapInnerJobs(v.GetJobs()),
+		}
+		views = append(views, view)
+	}
+	adapterdriven.LogOpDone(ctx, BackendName, "list_views", slog.Duration(adapterdriven.LogKeyElapsed, time.Since(start)), slog.Int(adapterdriven.LogKeyCount, len(views)))
+	return views, nil
+}
+
+func (r *Repository) GetViewJobs(ctx context.Context, viewName string) ([]domain.Job, error) {
+	start := time.Now()
+	adapterdriven.LogOp(ctx, BackendName, "get_view_jobs", slog.String(adapterdriven.LogKeyID, viewName))
+	v, err := r.jenkins.GetView(ctx, viewName)
+	if err != nil {
+		r.logErr(ctx, "get_view_jobs", err)
+		return nil, err
+	}
+	jobs := mapInnerJobs(v.GetJobs())
+	adapterdriven.LogOpDone(ctx, BackendName, "get_view_jobs", slog.Duration(adapterdriven.LogKeyElapsed, time.Since(start)), slog.Int(adapterdriven.LogKeyCount, len(jobs)))
+	return jobs, nil
+}
+
 // --- PipelineRepository implementation ---
 
 func (r *Repository) ListPipelineRuns(ctx context.Context, jobName string) ([]domain.PipelineRun, error) {

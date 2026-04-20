@@ -18,7 +18,7 @@ import (
 
 const (
 	serverName    = "emcee"
-	serverVersion = "0.7.0"
+	serverVersion = "0.8.0"
 
 	defaultListMax   = 50
 	defaultSearchMax = 20
@@ -110,6 +110,13 @@ Jenkins CI:
   folder_jobs  — backend=jenkins, query (folder path) → list jobs in folder
   job_upstream — backend=jenkins, query (job name) → upstream dependencies
   job_downstream — backend=jenkins, query (job name) → downstream dependencies
+  build_artifacts — backend=jenkins, query (job name), ref (build number) → list build artifacts
+  build_revision — backend=jenkins, query (job name), ref (build number) → get SCM revision
+  build_causes — backend=jenkins, query (job name), ref (build number) → get build trigger causes
+  nodes       — backend=jenkins → list all build agents
+  node_get    — backend=jenkins, query (node name) → get node details
+  views       — backend=jenkins → list all views
+  view_jobs   — backend=jenkins, query (view name) → list jobs in view
 
 Jenkins Pipelines:
   pipeline_runs — backend=jenkins, query (job name) → list pipeline runs
@@ -157,7 +164,7 @@ func RegisterTools(srv *mcpserver.Server, svc EmceeService) {
 	srv.ToolWithSchema(
 		server.ToolMeta{
 			Name:        "emcee",
-			Description: "Issue management across all backends. Actions: list, get, create, update, search, children, bulk_create, bulk_update, comments, comment_add, stage, stage_list, stage_show, stage_patch, stage_drop, push, push_all, launches, launch_get, test_items, test_item_get, defect_update, jobs, job_get, build_trigger, build_get, build_log, test_results, queue, pipeline_runs, pipeline_run_get, pipeline_inputs, pipeline_input_approve, pipeline_input_abort, fields, jql, prs.",
+			Description: "Issue management across all backends. Actions: list, get, create, update, search, children, bulk_create, bulk_update, comments, comment_add, stage, stage_list, stage_show, stage_patch, stage_drop, push, push_all, launches, launch_get, test_items, test_item_get, defect_update, jobs, job_get, build_trigger, build_get, build_log, test_results, queue, build_artifacts, build_revision, build_causes, nodes, node_get, views, view_jobs, pipeline_runs, pipeline_run_get, pipeline_inputs, pipeline_input_approve, pipeline_input_abort, fields, jql, prs.",
 			Keywords:    []string{"issue", "ticket", "bug", "task", "comment", "stage", "push", "linear", "github", "jira", "gitlab"},
 			Categories:  []string{"issue-management"},
 		},
@@ -190,7 +197,7 @@ func RegisterTools(srv *mcpserver.Server, svc EmceeService) {
 var emceeSchema = json.RawMessage(`{
 	"type": "object",
 	"properties": {
-		"action":      {"type": "string", "enum": ["list","get","create","update","search","children","bulk_create","bulk_update","comments","comment_add","stage","stage_list","stage_show","stage_patch","stage_drop","push","push_all","launches","launch_get","test_items","test_item_get","defect_update","jobs","job_get","build_trigger","build_get","build_log","test_results","queue","builds","build_last","build_last_failed","build_last_successful","build_stop","job_params","folder_jobs","job_upstream","job_downstream","pipeline_runs","pipeline_run_get","pipeline_inputs","pipeline_input_approve","pipeline_input_abort","fields","jql","prs"], "description": "Action to perform"},
+		"action":      {"type": "string", "enum": ["list","get","create","update","search","children","bulk_create","bulk_update","comments","comment_add","stage","stage_list","stage_show","stage_patch","stage_drop","push","push_all","launches","launch_get","test_items","test_item_get","defect_update","jobs","job_get","build_trigger","build_get","build_log","test_results","queue","builds","build_last","build_last_failed","build_last_successful","build_stop","job_params","folder_jobs","job_upstream","job_downstream","build_artifacts","build_revision","build_causes","nodes","node_get","views","view_jobs","pipeline_runs","pipeline_run_get","pipeline_inputs","pipeline_input_approve","pipeline_input_abort","fields","jql","prs"], "description": "Action to perform"},
 		"backend":     {"type": "string", "description": "Backend name (required for list/create/search)"},
 		"ref":         {"type": "string", "description": "Issue ref for get/update/children (e.g. linear:PROJ-42)"},
 		"title":       {"type": "string", "description": "Issue title (create)"},
@@ -793,6 +800,91 @@ func emceeHandler(svc EmceeService) server.Handler {
 				return "", errQueryRequired
 			}
 			jobs, err := svc.GetDownstreamJobs(ctx, args.Backend, args.Query)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(jobs)
+
+		case "build_artifacts":
+			if args.Query == "" {
+				return "", errQueryRequired
+			}
+			if args.Ref == "" {
+				return "", errRefRequired
+			}
+			number, err := strconv.ParseInt(args.Ref, 10, 64)
+			if err != nil {
+				return "", fmt.Errorf("invalid build number %q: %w", args.Ref, err)
+			}
+			artifacts, err := svc.ListArtifacts(ctx, args.Backend, args.Query, number)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(artifacts)
+
+		case "build_revision":
+			if args.Query == "" {
+				return "", errQueryRequired
+			}
+			if args.Ref == "" {
+				return "", errRefRequired
+			}
+			number, err := strconv.ParseInt(args.Ref, 10, 64)
+			if err != nil {
+				return "", fmt.Errorf("invalid build number %q: %w", args.Ref, err)
+			}
+			rev, err := svc.GetBuildRevision(ctx, args.Backend, args.Query, number)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(map[string]string{"revision": rev})
+
+		case "build_causes":
+			if args.Query == "" {
+				return "", errQueryRequired
+			}
+			if args.Ref == "" {
+				return "", errRefRequired
+			}
+			number, err := strconv.ParseInt(args.Ref, 10, 64)
+			if err != nil {
+				return "", fmt.Errorf("invalid build number %q: %w", args.Ref, err)
+			}
+			causes, err := svc.GetBuildCauses(ctx, args.Backend, args.Query, number)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(causes)
+
+		case "nodes":
+			nodes, err := svc.ListNodes(ctx, args.Backend)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(nodes)
+
+		case "node_get":
+			if args.Query == "" {
+				return "", errQueryRequired
+			}
+			node, err := svc.GetNode(ctx, args.Backend, args.Query)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(node)
+
+		case "views":
+			views, err := svc.ListViews(ctx, args.Backend)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(views)
+
+		case "view_jobs":
+			if args.Query == "" {
+				return "", errQueryRequired
+			}
+			jobs, err := svc.GetViewJobs(ctx, args.Backend, args.Query)
 			if err != nil {
 				return "", err
 			}
