@@ -24,6 +24,7 @@ import (
 	"github.com/DanyPops/emcee/internal/app"
 	"github.com/DanyPops/emcee/internal/config"
 	"github.com/DanyPops/emcee/internal/domain"
+	"github.com/DanyPops/emcee/internal/triage"
 	"github.com/spf13/cobra"
 )
 
@@ -67,7 +68,9 @@ func newServiceFromConfig() (*app.Service, error) {
 	for _, w := range warnings {
 		fmt.Fprintln(os.Stderr, "warning:", w)
 	}
-	return app.NewService(repos...), nil
+	svc := app.NewService(repos...)
+	injectTriage(svc)
+	return svc, nil
 }
 
 func newServiceFromEnv() (*app.Service, error) {
@@ -75,7 +78,16 @@ func newServiceFromEnv() (*app.Service, error) {
 	for _, w := range warnings {
 		fmt.Fprintln(os.Stderr, "warning:", w)
 	}
-	return app.NewService(repos...), nil
+	svc := app.NewService(repos...)
+	injectTriage(svc)
+	return svc, nil
+}
+
+func injectTriage(svc *app.Service) {
+	svc.Apply(
+		app.WithLinkExtractor(triage.NewRegexLinkExtractor(nil)),
+		app.WithGraphStore(triage.NewInMemoryGraphStore()),
+	)
 }
 
 func Execute() error {

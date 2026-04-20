@@ -927,57 +927,91 @@ func (s *Service) Apply(opts ...ServiceOption) {
 // --- Triage ---
 
 // Triage returns the defect lifecycle graph reachable from a seed artifact.
+// It crawls recursively: fetch artifact → extract cross-refs → resolve each → repeat up to maxDepth.
 func (s *Service) Triage(ctx context.Context, ref string, maxDepth int) (*domain.TriageGraph, error) {
 	if s.graphStore == nil {
 		return nil, ErrTriageNotConfigured
 	}
 
+	visited := make(map[string]bool)
+	s.triageCrawl(ctx, ref, 0, maxDepth, visited)
+
+	return s.graphStore.GetGraph(ctx, ref, maxDepth)
+}
+
+// triageCrawl recursively fetches an artifact, extracts cross-refs, and recurses.
+func (s *Service) triageCrawl(ctx context.Context, ref string, depth, maxDepth int, visited map[string]bool) {
+	if depth > maxDepth || visited[ref] {
+		return
+	}
+	visited[ref] = true
+
+	node, text := s.triageFetchNode(ctx, ref)
+	if node == nil {
+		return
+	}
+	_ = s.graphStore.PutNode(ctx, *node)
+
+	if s.extractor == nil || text == "" {
+		return
+	}
+
+	refs, _ := s.extractor.Extract(ctx, text)
+	for _, cr := range refs {
+		if cr.Ref == ref {
+			continue
+		}
+		edge := domain.TriageEdge{
+			From:       ref,
+			To:         cr.Ref,
+			Type:       "mentions",
+			Confidence: cr.Confidence,
+			Source:     cr.Source,
+		}
+		_ = s.graphStore.PutEdge(ctx, edge)
+		s.triageCrawl(ctx, cr.Ref, depth+1, maxDepth, visited)
+	}
+}
+
+// triageFetchNode fetches an artifact by ref and returns its node + text content for extraction.
+// Returns nil if the artifact can't be fetched (wrong backend, not found, etc.).
+func (s *Service) triageFetchNode(ctx context.Context, ref string) (node *domain.TriageNode, text string) {
 	backend, key, err := ParseRef(ref)
 	if err != nil {
-		return nil, err
+		return nil, ""
 	}
 
 	r, err := s.repo(backend)
 	if err != nil {
-		return nil, err
+		// Backend not configured — create a placeholder node
+		return &domain.TriageNode{
+			Ref:  ref,
+			Type: "unknown",
+		}, ""
 	}
 
 	issue, err := r.Get(ctx, key)
 	if err != nil {
-		return nil, err
+		return &domain.TriageNode{
+			Ref:  ref,
+			Type: "unknown",
+		}, ""
 	}
 
-	seed := domain.TriageNode{
-		Ref:    ref,
-		Type:   "issue",
-		Phase:  "stored",
-		Title:  issue.Title,
-		URL:    issue.URL,
-		Status: string(issue.Status),
+	var b strings.Builder
+	b.WriteString(issue.Description)
+	for _, c := range issue.Comments {
+		b.WriteString("\n")
+		b.WriteString(c.Body)
 	}
 
-	if err := s.graphStore.PutNode(ctx, seed); err != nil {
-		return nil, err
-	}
-
-	// Extract cross-refs from description + comments if extractor is available
-	if s.extractor != nil {
-		text := issue.Description
-		for _, c := range issue.Comments {
-			text += "\n" + c.Body
-		}
-		refs, _ := s.extractor.Extract(ctx, text)
-		for _, cr := range refs {
-			edge := domain.TriageEdge{
-				From:       ref,
-				To:         cr.Ref,
-				Type:       "mentions",
-				Confidence: cr.Confidence,
-				Source:     cr.Source,
-			}
-			_ = s.graphStore.PutEdge(ctx, edge)
-		}
-	}
-
-	return s.graphStore.GetGraph(ctx, ref, maxDepth)
+	return &domain.TriageNode{
+		Ref:       ref,
+		Type:      "issue",
+		Phase:     "stored",
+		Title:     issue.Title,
+		URL:       issue.URL,
+		Status:    string(issue.Status),
+		Timestamp: issue.CreatedAt,
+	}, b.String()
 }
