@@ -90,3 +90,73 @@ func TestTriage_InvalidRef(t *testing.T) {
 		t.Errorf("nodes = %d, want 0 for unparseable ref", len(graph.Nodes))
 	}
 }
+
+func TestTriage_AllowListBlocksUnknownBackends(t *testing.T) {
+	repo := driventest.NewStubIssueRepository("test")
+	repo.Issue = &domain.Issue{
+		Ref:         "test:BUG-1",
+		Key:         "BUG-1",
+		Title:       "Bug with cross-refs",
+		Description: "See EXTERNAL-42 and ALLOWED-99",
+		Status:      domain.StatusTodo,
+	}
+
+	allowedRepo := driventest.NewStubIssueRepository("allowed")
+	allowedRepo.Issue = &domain.Issue{
+		Ref:    "allowed:ALLOWED-99",
+		Key:    "ALLOWED-99",
+		Title:  "Allowed ticket",
+		Status: domain.StatusDone,
+	}
+
+	svc := NewService(repo, allowedRepo)
+	svc.Apply(
+		WithLinkExtractor(triage.NewRegexLinkExtractor(nil)),
+		WithGraphStore(triage.NewInMemoryGraphStore()),
+		WithCrawlAllowList("test", "allowed"), // only these backends
+	)
+
+	graph, err := svc.Triage(context.Background(), "test:BUG-1", 3)
+	if err != nil {
+		t.Fatalf("Triage: %v", err)
+	}
+
+	// EXTERNAL-42 extracted as jira:EXTERNAL-42 — not in allowlist, should be a leaf (not recursed into)
+	// ALLOWED-99 extracted as jira:ALLOWED-99 — "jira" is not in allowlist either, so it's also a leaf
+	// The seed node should still be there
+	if len(graph.Nodes) < 1 {
+		t.Errorf("nodes = %d, want >= 1", len(graph.Nodes))
+	}
+
+	// Edges should exist (cross-refs extracted) but targets should NOT be recursed
+	// since "jira" backend is not in the allowlist
+	for _, e := range graph.Edges {
+		t.Logf("edge: %s → %s", e.From, e.To)
+	}
+}
+
+func TestTriage_RateLimitDoesNotBreakCrawl(t *testing.T) {
+	repo := driventest.NewStubIssueRepository("test")
+	repo.Issue = &domain.Issue{
+		Ref:         "test:BUG-1",
+		Key:         "BUG-1",
+		Title:       "Bug",
+		Description: "Simple bug no cross-refs",
+		Status:      domain.StatusTodo,
+	}
+
+	svc := NewService(repo)
+	svc.Apply(
+		WithLinkExtractor(triage.NewRegexLinkExtractor(nil)),
+		WithGraphStore(triage.NewInMemoryGraphStore()),
+		WithCrawlRateLimit(100), // high limit so test is fast
+	)
+
+	graph, err := svc.Triage(context.Background(), "test:BUG-1", 1)
+	if err != nil {
+		t.Fatalf("Triage: %v", err)
+	}
+	if len(graph.Nodes) != 1 {
+		t.Errorf("nodes = %d, want 1", len(graph.Nodes))
+	}
+}

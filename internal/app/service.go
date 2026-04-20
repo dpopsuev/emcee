@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 
+	"golang.org/x/time/rate"
+
 	adapterdriven "github.com/DanyPops/emcee/internal/adapter/driven"
 	"github.com/DanyPops/emcee/internal/config"
 	"github.com/DanyPops/emcee/internal/domain"
@@ -40,10 +42,12 @@ type Service struct {
 	prRepos      map[string]driven.PRRepository
 	buildRepos    map[string]driven.BuildRepository
 	pipelineRepos map[string]driven.PipelineRepository
-	extractor     driven.LinkExtractor
-	graphStore    driven.GraphStore
-	stage         *StageStore
-	mu            sync.RWMutex
+	extractor       driven.LinkExtractor
+	graphStore      driven.GraphStore
+	crawlRateLimit  float64    // requests per second (0 = unlimited)
+	crawlAllowList  []string   // backend names to recurse into (empty = all)
+	stage           *StageStore
+	mu              sync.RWMutex
 }
 
 // NewService creates the application service with the given repositories.
@@ -917,6 +921,16 @@ func WithGraphStore(g driven.GraphStore) ServiceOption {
 	return func(s *Service) { s.graphStore = g }
 }
 
+// WithCrawlRateLimit sets the max requests per second during triage crawl.
+func WithCrawlRateLimit(rps float64) ServiceOption {
+	return func(s *Service) { s.crawlRateLimit = rps }
+}
+
+// WithCrawlAllowList restricts triage crawl to only recurse into these backends.
+func WithCrawlAllowList(backends ...string) ServiceOption {
+	return func(s *Service) { s.crawlAllowList = backends }
+}
+
 // Apply applies options to the service. Used to inject optional dependencies after construction.
 func (s *Service) Apply(opts ...ServiceOption) {
 	for _, o := range opts {
@@ -928,23 +942,34 @@ func (s *Service) Apply(opts ...ServiceOption) {
 
 // Triage returns the defect lifecycle graph reachable from a seed artifact.
 // It crawls recursively: fetch artifact → extract cross-refs → resolve each → repeat up to maxDepth.
+// Rate-limited and filtered by allowlist.
 func (s *Service) Triage(ctx context.Context, ref string, maxDepth int) (*domain.TriageGraph, error) {
 	if s.graphStore == nil {
 		return nil, ErrTriageNotConfigured
 	}
 
+	var limiter *rate.Limiter
+	if s.crawlRateLimit > 0 {
+		limiter = rate.NewLimiter(rate.Limit(s.crawlRateLimit), 1)
+	}
+
 	visited := make(map[string]bool)
-	s.triageCrawl(ctx, ref, 0, maxDepth, visited)
+	s.triageCrawl(ctx, ref, 0, maxDepth, visited, limiter)
 
 	return s.graphStore.GetGraph(ctx, ref, maxDepth)
 }
 
 // triageCrawl recursively fetches an artifact, extracts cross-refs, and recurses.
-func (s *Service) triageCrawl(ctx context.Context, ref string, depth, maxDepth int, visited map[string]bool) {
+func (s *Service) triageCrawl(ctx context.Context, ref string, depth, maxDepth int, visited map[string]bool, limiter *rate.Limiter) {
 	if depth > maxDepth || visited[ref] {
 		return
 	}
 	visited[ref] = true
+
+	// Rate limit
+	if limiter != nil {
+		_ = limiter.Wait(ctx)
+	}
 
 	node, text := s.triageFetchNode(ctx, ref)
 	if node == nil {
@@ -969,49 +994,133 @@ func (s *Service) triageCrawl(ctx context.Context, ref string, depth, maxDepth i
 			Source:     cr.Source,
 		}
 		_ = s.graphStore.PutEdge(ctx, edge)
-		s.triageCrawl(ctx, cr.Ref, depth+1, maxDepth, visited)
+
+		// Allowlist check — only recurse into allowed backends
+		if !s.crawlAllowed(cr.Ref) {
+			continue
+		}
+
+		s.triageCrawl(ctx, cr.Ref, depth+1, maxDepth, visited, limiter)
 	}
 }
 
+// crawlAllowed checks if a ref's backend is in the allowlist.
+// Empty allowlist means allow all configured backends.
+func (s *Service) crawlAllowed(ref string) bool {
+	backend, _, err := ParseRef(ref)
+	if err != nil {
+		return false
+	}
+
+	if len(s.crawlAllowList) == 0 {
+		// Default: allow if backend is configured
+		_, ok := s.repos[backend]
+		return ok
+	}
+
+	for _, allowed := range s.crawlAllowList {
+		if allowed == backend {
+			return true
+		}
+	}
+	return false
+}
+
 // triageFetchNode fetches an artifact by ref and returns its node + text content for extraction.
-// Returns nil if the artifact can't be fetched (wrong backend, not found, etc.).
+// Dispatches to the correct port based on ref format.
 func (s *Service) triageFetchNode(ctx context.Context, ref string) (node *domain.TriageNode, text string) {
 	backend, key, err := ParseRef(ref)
 	if err != nil {
 		return nil, ""
 	}
 
-	r, err := s.repo(backend)
+	// Try issue first (most common)
+	if r, ok := s.repos[backend]; ok {
+		issue, issueErr := r.Get(ctx, key)
+		if issueErr == nil {
+			var b strings.Builder
+			b.WriteString(issue.Description)
+			for _, c := range issue.Comments {
+				b.WriteString("\n")
+				b.WriteString(c.Body)
+			}
+			return &domain.TriageNode{
+				Ref:       ref,
+				Type:      "issue",
+				Phase:     "stored",
+				Title:     issue.Title,
+				URL:       issue.URL,
+				Status:    string(issue.Status),
+				Timestamp: issue.CreatedAt,
+			}, b.String()
+		}
+	}
+
+	// Try launch (reportportal:launch/N)
+	if lr, ok := s.launchRepos[backend]; ok && strings.HasPrefix(key, "launch/") {
+		launchID := strings.TrimPrefix(key, "launch/")
+		launch, launchErr := lr.GetLaunch(ctx, launchID)
+		if launchErr == nil {
+			return &domain.TriageNode{
+				Ref:       ref,
+				Type:      "launch",
+				Phase:     "detected",
+				Title:     launch.Name,
+				URL:       launch.URL,
+				Status:    launch.Status,
+				Timestamp: launch.StartTime,
+			}, launch.Description
+		}
+	}
+
+	// Try build (jenkins:jobName#buildNumber)
+	if n := s.triageFetchBuild(ctx, ref, backend, key); n != nil {
+		return n, ""
+	}
+
+	// Try PR (github:org/repo#N or gitlab:path!N)
+	if pr, ok := s.prRepos[backend]; ok {
+		prs, prErr := pr.ListPRs(ctx, domain.PRFilter{Limit: 1})
+		if prErr == nil && len(prs) > 0 {
+			return &domain.TriageNode{
+				Ref:   ref,
+				Type:  "pr",
+				Phase: "fixed",
+			}, ""
+		}
+	}
+
+	// Unknown — store as placeholder leaf node
+	return &domain.TriageNode{
+		Ref:  ref,
+		Type: "unknown",
+	}, ""
+}
+
+func (s *Service) triageFetchBuild(ctx context.Context, ref, backend, key string) *domain.TriageNode {
+	br, ok := s.buildRepos[backend]
+	if !ok || !strings.Contains(key, "#") {
+		return nil
+	}
+	parts := strings.SplitN(key, "#", 2)
+	if len(parts) != 2 {
+		return nil
+	}
+	var buildNum int64
+	if _, err := fmt.Sscanf(parts[1], "%d", &buildNum); err != nil {
+		return nil
+	}
+	build, err := br.GetBuild(ctx, parts[0], buildNum)
 	if err != nil {
-		// Backend not configured — create a placeholder node
-		return &domain.TriageNode{
-			Ref:  ref,
-			Type: "unknown",
-		}, ""
+		return nil
 	}
-
-	issue, err := r.Get(ctx, key)
-	if err != nil {
-		return &domain.TriageNode{
-			Ref:  ref,
-			Type: "unknown",
-		}, ""
-	}
-
-	var b strings.Builder
-	b.WriteString(issue.Description)
-	for _, c := range issue.Comments {
-		b.WriteString("\n")
-		b.WriteString(c.Body)
-	}
-
 	return &domain.TriageNode{
 		Ref:       ref,
-		Type:      "issue",
-		Phase:     "stored",
-		Title:     issue.Title,
-		URL:       issue.URL,
-		Status:    string(issue.Status),
-		Timestamp: issue.CreatedAt,
-	}, b.String()
+		Type:      "build",
+		Phase:     "detected",
+		Title:     fmt.Sprintf("%s #%d", parts[0], buildNum),
+		URL:       build.URL,
+		Status:    string(build.Result),
+		Timestamp: build.Timestamp,
+	}
 }
