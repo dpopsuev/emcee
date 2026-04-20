@@ -108,6 +108,12 @@ func newTestServer(t *testing.T) (*sdkmcp.ClientSession, *drivertest.StubEmceeSe
 	svc.StubBuildService.JobParameters = []domain.JobParameter{
 		{Name: "BRANCH", Type: "StringParameterDefinition", DefaultValue: "main", Description: "Branch to build"},
 	}
+	svc.StubBuildService.FolderJobs = []domain.Job{
+		{Name: "sub-job-1", Buildable: true},
+		{Name: "sub-job-2", Buildable: false},
+	}
+	svc.StubBuildService.UpstreamJobs = []domain.Job{{Name: "trigger-job"}}
+	svc.StubBuildService.DownstreamJobs = []domain.Job{{Name: "deploy-job"}}
 	svc.StubBackendManager.RemoveResult = true
 	svc.StubBackendManager.ReloadAdded = []string{"jenkins-ci"}
 	svc.StubBackendManager.ReloadRemoved = []string{"old-backend"}
@@ -760,6 +766,53 @@ func TestEmceeBuildLastSuccessful(t *testing.T) {
 	}
 	if build.Result != domain.BuildSuccess {
 		t.Errorf("result = %q, want %q", build.Result, domain.BuildSuccess)
+	}
+}
+
+// --- folder navigation tests ---
+
+func TestEmceeFolderJobs(t *testing.T) {
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "folder_jobs", "backend": "jenkins", "query": "my-folder"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var jobs []domain.Job
+	if err := json.Unmarshal([]byte(resultText(t, result)), &jobs); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(jobs) != 2 {
+		t.Errorf("got %d jobs, want 2", len(jobs))
+	}
+}
+
+func TestEmceeJobUpstream(t *testing.T) {
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "job_upstream", "backend": "jenkins", "query": "my-pipeline"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var jobs []domain.Job
+	if err := json.Unmarshal([]byte(resultText(t, result)), &jobs); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(jobs) != 1 || jobs[0].Name != "trigger-job" {
+		t.Errorf("got %v, want [{Name:trigger-job}]", jobs)
+	}
+}
+
+func TestEmceeJobDownstream(t *testing.T) {
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "job_downstream", "backend": "jenkins", "query": "my-pipeline"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var jobs []domain.Job
+	if err := json.Unmarshal([]byte(resultText(t, result)), &jobs); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(jobs) != 1 || jobs[0].Name != "deploy-job" {
+		t.Errorf("got %v, want [{Name:deploy-job}]", jobs)
 	}
 }
 

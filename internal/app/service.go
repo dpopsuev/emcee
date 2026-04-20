@@ -698,6 +698,30 @@ func (s *Service) GetJobParameters(ctx context.Context, backend, jobName string)
 	return r.GetJobParameters(ctx, jobName)
 }
 
+func (s *Service) ListFolderJobs(ctx context.Context, backend, folderPath string) ([]domain.Job, error) {
+	r, ok := s.buildRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "builds")
+	}
+	return r.ListFolderJobs(ctx, folderPath)
+}
+
+func (s *Service) GetUpstreamJobs(ctx context.Context, backend, jobName string) ([]domain.Job, error) {
+	r, ok := s.buildRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "builds")
+	}
+	return r.GetUpstreamJobs(ctx, jobName)
+}
+
+func (s *Service) GetDownstreamJobs(ctx context.Context, backend, jobName string) ([]domain.Job, error) {
+	r, ok := s.buildRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "builds")
+	}
+	return r.GetDownstreamJobs(ctx, jobName)
+}
+
 // --- Stage operations ---
 
 func (s *Service) StageItem(backend string, input domain.CreateInput, reason string) string {

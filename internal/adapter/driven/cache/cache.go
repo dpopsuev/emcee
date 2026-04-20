@@ -606,3 +606,24 @@ func (r *Repository) GetJobParameters(ctx context.Context, jobName string) ([]do
 	}
 	return r.builds.GetJobParameters(ctx, jobName)
 }
+
+func (r *Repository) ListFolderJobs(ctx context.Context, folderPath string) ([]domain.Job, error) {
+	if r.builds == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.builds.ListFolderJobs(ctx, folderPath)
+}
+
+func (r *Repository) GetUpstreamJobs(ctx context.Context, jobName string) ([]domain.Job, error) {
+	if r.builds == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.builds.GetUpstreamJobs(ctx, jobName)
+}
+
+func (r *Repository) GetDownstreamJobs(ctx context.Context, jobName string) ([]domain.Job, error) {
+	if r.builds == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.builds.GetDownstreamJobs(ctx, jobName)
+}

@@ -61,6 +61,9 @@ type StubBuildService struct {
 	LastSuccessful *domain.Build
 	LastFailed     *domain.Build
 	JobParameters  []domain.JobParameter
+	FolderJobs     []domain.Job
+	UpstreamJobs   []domain.Job
+	DownstreamJobs []domain.Job
 	Err            error
 
 	mu                  sync.Mutex
@@ -77,6 +80,19 @@ type StubBuildService struct {
 	GetLastFailedCalls     []BuildLastCall
 	StopBuildCalls         []BuildStopCall
 	GetJobParametersCalls  []JobParamsCall
+	ListFolderJobsCalls    []FolderJobsCall
+	GetUpstreamJobsCalls   []JobDepsCall
+	GetDownstreamJobsCalls []JobDepsCall
+}
+
+type FolderJobsCall struct {
+	Backend    string
+	FolderPath string
+}
+
+type JobDepsCall struct {
+	Backend string
+	JobName string
 }
 
 type BuildStopCall struct {
@@ -190,4 +206,25 @@ func (s *StubBuildService) GetJobParameters(_ context.Context, backend, jobName 
 	defer s.mu.Unlock()
 	s.GetJobParametersCalls = append(s.GetJobParametersCalls, JobParamsCall{Backend: backend, JobName: jobName})
 	return s.JobParameters, s.Err
+}
+
+func (s *StubBuildService) ListFolderJobs(_ context.Context, backend, folderPath string) ([]domain.Job, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ListFolderJobsCalls = append(s.ListFolderJobsCalls, FolderJobsCall{Backend: backend, FolderPath: folderPath})
+	return s.FolderJobs, s.Err
+}
+
+func (s *StubBuildService) GetUpstreamJobs(_ context.Context, backend, jobName string) ([]domain.Job, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.GetUpstreamJobsCalls = append(s.GetUpstreamJobsCalls, JobDepsCall{Backend: backend, JobName: jobName})
+	return s.UpstreamJobs, s.Err
+}
+
+func (s *StubBuildService) GetDownstreamJobs(_ context.Context, backend, jobName string) ([]domain.Job, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.GetDownstreamJobsCalls = append(s.GetDownstreamJobsCalls, JobDepsCall{Backend: backend, JobName: jobName})
+	return s.DownstreamJobs, s.Err
 }

@@ -369,3 +369,54 @@ func (r *Repository) GetJobParameters(ctx context.Context, jobName string) ([]do
 	adapterdriven.LogOpDone(ctx, BackendName, "get_job_params", slog.Duration(adapterdriven.LogKeyElapsed, time.Since(start)), slog.Int(adapterdriven.LogKeyCount, len(params)))
 	return params, nil
 }
+
+// --- Folder navigation ---
+
+func mapInnerJobs(inner []gojenkins.InnerJob) []domain.Job {
+	jobs := make([]domain.Job, 0, len(inner))
+	for i := range inner {
+		jobs = append(jobs, domain.Job{
+			Name:  inner[i].Name,
+			URL:   inner[i].Url,
+			Color: inner[i].Color,
+		})
+	}
+	return jobs
+}
+
+func (r *Repository) ListFolderJobs(ctx context.Context, folderPath string) ([]domain.Job, error) {
+	start := time.Now()
+	adapterdriven.LogOp(ctx, BackendName, "list_folder_jobs", slog.String(adapterdriven.LogKeyID, folderPath))
+	folder, err := r.jenkins.GetFolder(ctx, folderPath)
+	if err != nil {
+		r.logErr(ctx, "list_folder_jobs", err)
+		return nil, fmt.Errorf("%w: folder %s", ErrJobNotFound, folderPath)
+	}
+	jobs := mapInnerJobs(folder.Raw.Jobs)
+	adapterdriven.LogOpDone(ctx, BackendName, "list_folder_jobs", slog.Duration(adapterdriven.LogKeyElapsed, time.Since(start)), slog.Int(adapterdriven.LogKeyCount, len(jobs)))
+	return jobs, nil
+}
+
+func (r *Repository) getJobDeps(ctx context.Context, jobName, op string, metadataFn func() []gojenkins.InnerJob) ([]domain.Job, error) {
+	start := time.Now()
+	adapterdriven.LogOp(ctx, BackendName, op, slog.String(adapterdriven.LogKeyID, jobName))
+	jobs := mapInnerJobs(metadataFn())
+	adapterdriven.LogOpDone(ctx, BackendName, op, slog.Duration(adapterdriven.LogKeyElapsed, time.Since(start)), slog.Int(adapterdriven.LogKeyCount, len(jobs)))
+	return jobs, nil
+}
+
+func (r *Repository) GetUpstreamJobs(ctx context.Context, jobName string) ([]domain.Job, error) {
+	j, err := r.getJob(ctx, jobName)
+	if err != nil {
+		return nil, err
+	}
+	return r.getJobDeps(ctx, jobName, "get_upstream_jobs", j.GetUpstreamJobsMetadata)
+}
+
+func (r *Repository) GetDownstreamJobs(ctx context.Context, jobName string) ([]domain.Job, error) {
+	j, err := r.getJob(ctx, jobName)
+	if err != nil {
+		return nil, err
+	}
+	return r.getJobDeps(ctx, jobName, "get_downstream_jobs", j.GetDownstreamJobsMetadata)
+}

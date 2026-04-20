@@ -106,6 +106,9 @@ Jenkins CI:
   build_last_successful — backend=jenkins, query (job name)
   build_stop   — backend=jenkins, query (job name), ref (build number)
   job_params   — backend=jenkins, query (job name) → list parameter definitions
+  folder_jobs  — backend=jenkins, query (folder path) → list jobs in folder
+  job_upstream — backend=jenkins, query (job name) → upstream dependencies
+  job_downstream — backend=jenkins, query (job name) → downstream dependencies
 
 Pull Requests / Merge Requests:
   prs         — backend, [author, status, merged_after (YYYY-MM-DD), merged_before (YYYY-MM-DD), repo (override: owner/repo or namespace/project), limit]
@@ -179,7 +182,7 @@ func RegisterTools(srv *mcpserver.Server, svc EmceeService) {
 var emceeSchema = json.RawMessage(`{
 	"type": "object",
 	"properties": {
-		"action":      {"type": "string", "enum": ["list","get","create","update","search","children","bulk_create","bulk_update","comments","comment_add","stage","stage_list","stage_show","stage_patch","stage_drop","push","push_all","launches","launch_get","test_items","test_item_get","defect_update","jobs","job_get","build_trigger","build_get","build_log","test_results","queue","builds","build_last","build_last_failed","build_last_successful","build_stop","job_params","fields","jql","prs"], "description": "Action to perform"},
+		"action":      {"type": "string", "enum": ["list","get","create","update","search","children","bulk_create","bulk_update","comments","comment_add","stage","stage_list","stage_show","stage_patch","stage_drop","push","push_all","launches","launch_get","test_items","test_item_get","defect_update","jobs","job_get","build_trigger","build_get","build_log","test_results","queue","builds","build_last","build_last_failed","build_last_successful","build_stop","job_params","folder_jobs","job_upstream","job_downstream","fields","jql","prs"], "description": "Action to perform"},
 		"backend":     {"type": "string", "description": "Backend name (required for list/create/search)"},
 		"ref":         {"type": "string", "description": "Issue ref for get/update/children (e.g. linear:PROJ-42)"},
 		"title":       {"type": "string", "description": "Issue title (create)"},
@@ -756,6 +759,36 @@ func emceeHandler(svc EmceeService) server.Handler {
 				return "", err
 			}
 			return server.JSONResult(params)
+
+		case "folder_jobs":
+			if args.Query == "" {
+				return "", errQueryRequired
+			}
+			jobs, err := svc.ListFolderJobs(ctx, args.Backend, args.Query)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(jobs)
+
+		case "job_upstream":
+			if args.Query == "" {
+				return "", errQueryRequired
+			}
+			jobs, err := svc.GetUpstreamJobs(ctx, args.Backend, args.Query)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(jobs)
+
+		case "job_downstream":
+			if args.Query == "" {
+				return "", errQueryRequired
+			}
+			jobs, err := svc.GetDownstreamJobs(ctx, args.Backend, args.Query)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(jobs)
 
 		case "queue":
 			items, err := svc.GetQueue(ctx, args.Backend)
