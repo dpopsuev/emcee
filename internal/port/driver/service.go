@@ -143,6 +143,13 @@ type TriageConfig struct {
 	AllowList []string `json:"allow_list"` // backends to recurse into (empty = all configured)
 }
 
+// LedgerService is the inbound port for cross-backend artifact queries.
+type LedgerService interface {
+	LedgerGet(ctx context.Context, ref string) (*domain.ArtifactRecord, error)
+	LedgerList(ctx context.Context, filter domain.LedgerFilter) ([]domain.ArtifactRecord, error)
+	LedgerStats(ctx context.Context) (*domain.LedgerStats, error)
+}
+
 // BackendManager is the inbound port for runtime backend management.
 type BackendManager interface {
 	AddBackend(repo driven.IssueRepository)

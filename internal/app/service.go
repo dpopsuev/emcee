@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"golang.org/x/time/rate"
 
@@ -44,6 +45,7 @@ type Service struct {
 	pipelineRepos map[string]driven.PipelineRepository
 	extractor       driven.LinkExtractor
 	graphStore      driven.GraphStore
+	ledger          driven.Ledger
 	crawlRateLimit  float64    // requests per second (0 = unlimited)
 	crawlAllowList  []string   // backend names to recurse into (empty = all)
 	stage           *StageStore
@@ -267,7 +269,13 @@ func (s *Service) List(ctx context.Context, backend string, filter domain.ListFi
 	if err != nil {
 		return nil, err
 	}
-	return r.List(ctx, filter)
+	issues, err := r.List(ctx, filter)
+	if err == nil && s.ledger != nil {
+		for i := range issues {
+			_ = s.ledger.Put(ctx, issueToRecord(backend, &issues[i]))
+		}
+	}
+	return issues, err
 }
 
 func (s *Service) Get(ctx context.Context, ref string) (*domain.Issue, error) {
@@ -287,6 +295,9 @@ func (s *Service) Get(ctx context.Context, ref string) (*domain.Issue, error) {
 		if comments, cerr := cr.ListComments(ctx, key); cerr == nil {
 			issue.Comments = comments
 		}
+	}
+	if s.ledger != nil {
+		_ = s.ledger.Put(ctx, issueToRecord(backend, issue))
 	}
 	return issue, nil
 }
@@ -316,7 +327,13 @@ func (s *Service) Search(ctx context.Context, backend, query string, limit int) 
 	if err != nil {
 		return nil, err
 	}
-	return r.Search(ctx, query, limit)
+	issues, err := r.Search(ctx, query, limit)
+	if err == nil && s.ledger != nil {
+		for i := range issues {
+			_ = s.ledger.Put(ctx, issueToRecord(backend, &issues[i]))
+		}
+	}
+	return issues, err
 }
 
 func (s *Service) ListChildren(ctx context.Context, ref string) ([]domain.Issue, error) {
@@ -921,6 +938,11 @@ func WithGraphStore(g driven.GraphStore) ServiceOption {
 	return func(s *Service) { s.graphStore = g }
 }
 
+// WithLedger injects a Ledger for artifact record tracking.
+func WithLedger(l driven.Ledger) ServiceOption {
+	return func(s *Service) { s.ledger = l }
+}
+
 // WithCrawlRateLimit sets the max requests per second during triage crawl.
 func WithCrawlRateLimit(rps float64) ServiceOption {
 	return func(s *Service) { s.crawlRateLimit = rps }
@@ -954,6 +976,68 @@ func (s *Service) Apply(opts ...ServiceOption) {
 	for _, o := range opts {
 		o(s)
 	}
+}
+
+// --- Ledger ---
+
+var ErrLedgerNotConfigured = errors.New("ledger not configured")
+
+// LedgerGet returns a single artifact record by ref.
+func (s *Service) LedgerGet(ctx context.Context, ref string) (*domain.ArtifactRecord, error) {
+	if s.ledger == nil {
+		return nil, ErrLedgerNotConfigured
+	}
+	return s.ledger.Get(ctx, ref)
+}
+
+// LedgerList returns artifact records matching the filter.
+func (s *Service) LedgerList(ctx context.Context, filter domain.LedgerFilter) ([]domain.ArtifactRecord, error) {
+	if s.ledger == nil {
+		return nil, ErrLedgerNotConfigured
+	}
+	return s.ledger.List(ctx, filter)
+}
+
+// LedgerStats returns aggregate ledger statistics.
+func (s *Service) LedgerStats(ctx context.Context) (*domain.LedgerStats, error) {
+	if s.ledger == nil {
+		return nil, ErrLedgerNotConfigured
+	}
+	return s.ledger.Stats(ctx)
+}
+
+// issueToRecord converts an Issue to an ArtifactRecord for ledger deposit.
+func issueToRecord(backend string, issue *domain.Issue) domain.ArtifactRecord {
+	text := issue.Description
+	for _, c := range issue.Comments {
+		text += "\n" + c.Body
+	}
+	ref := issue.Ref
+	if ref == "" {
+		ref = backend + ":" + issue.Key
+	}
+	return domain.ArtifactRecord{
+		Ref:        ref,
+		Backend:    extractBackend(ref),
+		Type:       "issue",
+		Title:      issue.Title,
+		URL:        issue.URL,
+		Status:     string(issue.Status),
+		Labels:     issue.Labels,
+		Components: issue.Components,
+		Text:       text,
+		SeenAt:     time.Now(),
+		UpdatedAt:  issue.UpdatedAt,
+	}
+}
+
+// extractBackend returns the backend portion of a "backend:key" ref.
+func extractBackend(ref string) string {
+	parts := strings.SplitN(ref, ":", 2)
+	if len(parts) == 2 {
+		return parts[0]
+	}
+	return ref
 }
 
 // --- Triage ---

@@ -56,6 +56,7 @@ type EmceeService interface {
 	driver.FieldService
 	driver.JQLService
 	driver.PRService
+	driver.LedgerService
 }
 
 const serverInstructions = `Emcee — All Ceremonies in one place. Unified issue tracker across Linear, GitHub, GitLab, Jira, and Report Portal. Ref format: "backend:key" (e.g. "jira:PROJ-42"). Backend is required for list/create/search actions.
@@ -134,6 +135,11 @@ Triage (Defect Lifecycle):
 Pull Requests / Merge Requests:
   prs         — backend, [author, status, merged_after (YYYY-MM-DD), merged_before (YYYY-MM-DD), repo (override: owner/repo or namespace/project), limit]
 
+Ledger (cross-backend artifact index, populated from get/list/search):
+  ledger_list  — [backend, status, components (via components param), limit] → list seen artifacts
+  ledger_get   — ref → get a single artifact record
+  ledger_stats — (no params) → totals and by-backend counts
+
 Discovery:
   fields      — backend → list available fields (Jira: custom field IDs)
   jql         — backend=jira, query (raw JQL string), [limit]
@@ -170,7 +176,7 @@ func RegisterTools(srv *mcpserver.Server, svc EmceeService) {
 	srv.ToolWithSchema(
 		server.ToolMeta{
 			Name:        "emcee",
-			Description: "Issue management across all backends. Actions: list, get, create, update, search, children, bulk_create, bulk_update, comments, comment_add, stage, stage_list, stage_show, stage_patch, stage_drop, push, push_all, launches, launch_get, test_items, test_item_get, defect_update, jobs, job_get, build_trigger, build_get, build_log, test_results, queue, build_artifacts, build_revision, build_causes, nodes, node_get, views, view_jobs, pipeline_runs, pipeline_run_get, pipeline_inputs, pipeline_input_approve, pipeline_input_abort, fields, jql, prs.",
+			Description: "Issue management across all backends. Actions: list, get, create, update, search, children, bulk_create, bulk_update, comments, comment_add, stage, stage_list, stage_show, stage_patch, stage_drop, push, push_all, launches, launch_get, test_items, test_item_get, defect_update, jobs, job_get, build_trigger, build_get, build_log, test_results, queue, build_artifacts, build_revision, build_causes, nodes, node_get, views, view_jobs, pipeline_runs, pipeline_run_get, pipeline_inputs, pipeline_input_approve, pipeline_input_abort, fields, jql, prs, ledger_list, ledger_get, ledger_stats.",
 			Keywords:    []string{"issue", "ticket", "bug", "task", "comment", "stage", "push", "linear", "github", "jira", "gitlab"},
 			Categories:  []string{"issue-management"},
 		},
@@ -203,7 +209,7 @@ func RegisterTools(srv *mcpserver.Server, svc EmceeService) {
 var emceeSchema = json.RawMessage(`{
 	"type": "object",
 	"properties": {
-		"action":      {"type": "string", "enum": ["list","get","create","update","search","children","bulk_create","bulk_update","comments","comment_add","stage","stage_list","stage_show","stage_patch","stage_drop","push","push_all","launches","launch_get","test_items","test_item_get","defect_update","jobs","job_get","build_trigger","build_get","build_log","test_results","queue","builds","build_last","build_last_failed","build_last_successful","build_stop","job_params","folder_jobs","job_upstream","job_downstream","build_artifacts","build_revision","build_causes","nodes","node_get","views","view_jobs","pipeline_runs","pipeline_run_get","pipeline_inputs","pipeline_input_approve","pipeline_input_abort","triage","triage_config","triage_config_set","fields","jql","prs"], "description": "Action to perform"},
+		"action":      {"type": "string", "enum": ["list","get","create","update","search","children","bulk_create","bulk_update","comments","comment_add","stage","stage_list","stage_show","stage_patch","stage_drop","push","push_all","launches","launch_get","test_items","test_item_get","defect_update","jobs","job_get","build_trigger","build_get","build_log","test_results","queue","builds","build_last","build_last_failed","build_last_successful","build_stop","job_params","folder_jobs","job_upstream","job_downstream","build_artifacts","build_revision","build_causes","nodes","node_get","views","view_jobs","pipeline_runs","pipeline_run_get","pipeline_inputs","pipeline_input_approve","pipeline_input_abort","triage","triage_config","triage_config_set","fields","jql","prs","ledger_list","ledger_get","ledger_stats"], "description": "Action to perform"},
 		"backend":     {"type": "string", "description": "Backend name (required for list/create/search)"},
 		"ref":         {"type": "string", "description": "Issue ref for get/update/children (e.g. linear:PROJ-42)"},
 		"title":       {"type": "string", "description": "Issue title (create)"},
@@ -1033,6 +1039,39 @@ func emceeHandler(svc EmceeService) server.Handler {
 				return "", err
 			}
 			return server.JSONResult(prs)
+
+		// --- Ledger actions ---
+
+		case "ledger_list":
+			filter := domain.LedgerFilter{
+				Backend:   args.Backend,
+				Type:      args.IssueType,
+				Component: args.ComponentsStr,
+				Status:    args.Status,
+				Limit:     int(args.Limit),
+			}
+			records, err := svc.LedgerList(ctx, filter)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(records)
+
+		case "ledger_get":
+			if args.Ref == "" {
+				return "", errRefRequired
+			}
+			record, err := svc.LedgerGet(ctx, args.Ref)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(record)
+
+		case "ledger_stats":
+			stats, err := svc.LedgerStats(ctx)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(stats)
 
 		default:
 			return "", fmt.Errorf("%w %q", errUnknownAction, args.Action)

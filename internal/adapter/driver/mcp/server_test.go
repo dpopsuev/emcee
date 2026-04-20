@@ -159,6 +159,17 @@ func newTestServer(t *testing.T) (*sdkmcp.ClientSession, *drivertest.StubEmceeSe
 			{From: "test:T-1", To: "github:org/repo#42", Type: "mentions", Confidence: 0.9, Source: "description"},
 		},
 	}
+	svc.StubLedgerService.Record = &domain.ArtifactRecord{
+		Ref: "jira:BUG-1", Backend: "jira", Type: "issue", Title: "Bug One", Status: "open",
+	}
+	svc.StubLedgerService.Records = []domain.ArtifactRecord{
+		{Ref: "jira:BUG-1", Backend: "jira", Type: "issue", Title: "Bug One", Status: "open"},
+		{Ref: "github:org/repo#1", Backend: "github", Type: "issue", Title: "Fix stuff", Status: "closed"},
+	}
+	svc.StubLedgerService.StatsResult = &domain.LedgerStats{
+		Total:     2,
+		ByBackend: map[string]int{"jira": 1, "github": 1},
+	}
 	svc.StubBackendManager.RemoveResult = true
 	svc.StubBackendManager.ReloadAdded = []string{"jenkins-ci"}
 	svc.StubBackendManager.ReloadRemoved = []string{"old-backend"}
@@ -1296,4 +1307,78 @@ func TestToolsList(t *testing.T) {
 		}
 	}
 	_ = "" // satisfy import
+}
+
+// --- ledger action tests ---
+
+func TestEmceeLedgerList(t *testing.T) {
+	session, svc := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "ledger_list", "backend": "jira"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var records []domain.ArtifactRecord
+	if err := json.Unmarshal([]byte(resultText(t, result)), &records); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(records) != 2 {
+		t.Errorf("got %d records, want 2", len(records))
+	}
+	if len(svc.StubLedgerService.LedgerListCalls) != 1 {
+		t.Fatalf("LedgerListCalls = %d, want 1", len(svc.StubLedgerService.LedgerListCalls))
+	}
+	got := svc.StubLedgerService.LedgerListCalls[0]
+	if got.Filter.Backend != "jira" {
+		t.Errorf("filter.Backend = %q, want %q", got.Filter.Backend, "jira")
+	}
+}
+
+func TestEmceeLedgerGet(t *testing.T) {
+	session, svc := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "ledger_get", "ref": "jira:BUG-1"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var record domain.ArtifactRecord
+	if err := json.Unmarshal([]byte(resultText(t, result)), &record); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if record.Title != "Bug One" {
+		t.Errorf("title = %q, want %q", record.Title, "Bug One")
+	}
+	if len(svc.StubLedgerService.LedgerGetCalls) != 1 {
+		t.Fatalf("LedgerGetCalls = %d, want 1", len(svc.StubLedgerService.LedgerGetCalls))
+	}
+	if svc.StubLedgerService.LedgerGetCalls[0].Ref != "jira:BUG-1" {
+		t.Errorf("ref = %q, want %q", svc.StubLedgerService.LedgerGetCalls[0].Ref, "jira:BUG-1")
+	}
+}
+
+func TestEmceeLedgerGetMissingRef(t *testing.T) {
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "ledger_get"})
+	if !result.IsError {
+		t.Fatal("expected error for missing ref")
+	}
+}
+
+func TestEmceeLedgerStats(t *testing.T) {
+	session, svc := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "ledger_stats"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var stats domain.LedgerStats
+	if err := json.Unmarshal([]byte(resultText(t, result)), &stats); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if stats.Total != 2 {
+		t.Errorf("total = %d, want 2", stats.Total)
+	}
+	if stats.ByBackend["jira"] != 1 {
+		t.Errorf("by_backend[jira] = %d, want 1", stats.ByBackend["jira"])
+	}
+	if svc.StubLedgerService.LedgerStatsCalls != 1 {
+		t.Errorf("LedgerStatsCalls = %d, want 1", svc.StubLedgerService.LedgerStatsCalls)
+	}
 }

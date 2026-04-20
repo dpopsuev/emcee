@@ -1,0 +1,64 @@
+package driventest
+
+import (
+	"context"
+	"sync"
+
+	"github.com/DanyPops/emcee/internal/domain"
+	"github.com/DanyPops/emcee/internal/port/driven"
+)
+
+var _ driven.Ledger = (*StubLedger)(nil)
+
+type LedgerPutCall struct {
+	Record domain.ArtifactRecord
+}
+
+type LedgerGetCall struct {
+	Ref string
+}
+
+type LedgerListCall struct {
+	Filter domain.LedgerFilter
+}
+
+type StubLedger struct {
+	Record      *domain.ArtifactRecord
+	Records     []domain.ArtifactRecord
+	StatsResult *domain.LedgerStats
+	Err         error
+
+	mu         sync.Mutex
+	PutCalls   []LedgerPutCall
+	GetCalls   []LedgerGetCall
+	ListCalls  []LedgerListCall
+	StatsCalls int
+}
+
+func (s *StubLedger) Put(_ context.Context, record domain.ArtifactRecord) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.PutCalls = append(s.PutCalls, LedgerPutCall{Record: record})
+	return s.Err
+}
+
+func (s *StubLedger) Get(_ context.Context, ref string) (*domain.ArtifactRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.GetCalls = append(s.GetCalls, LedgerGetCall{Ref: ref})
+	return s.Record, s.Err
+}
+
+func (s *StubLedger) List(_ context.Context, filter domain.LedgerFilter) ([]domain.ArtifactRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ListCalls = append(s.ListCalls, LedgerListCall{Filter: filter})
+	return s.Records, s.Err
+}
+
+func (s *StubLedger) Stats(_ context.Context) (*domain.LedgerStats, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.StatsCalls++
+	return s.StatsResult, s.Err
+}

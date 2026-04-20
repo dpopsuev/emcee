@@ -88,6 +88,7 @@ func injectTriage(svc *app.Service) {
 		app.WithLinkExtractor(triage.NewRegexLinkExtractor(nil)),
 		app.WithGraphStore(triage.NewInMemoryGraphStore()),
 		app.WithCrawlRateLimit(5), // 5 req/s — be polite
+		app.WithLedger(triage.NewInMemoryLedger()),
 	)
 }
 
