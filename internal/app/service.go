@@ -931,6 +931,24 @@ func WithCrawlAllowList(backends ...string) ServiceOption {
 	return func(s *Service) { s.crawlAllowList = backends }
 }
 
+// GetTriageConfig returns the current triage crawl settings.
+func (s *Service) GetTriageConfig() driver.TriageConfig {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return driver.TriageConfig{
+		RateLimit: s.crawlRateLimit,
+		AllowList: s.crawlAllowList,
+	}
+}
+
+// SetTriageConfig updates triage crawl settings at runtime.
+func (s *Service) SetTriageConfig(cfg driver.TriageConfig) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.crawlRateLimit = cfg.RateLimit
+	s.crawlAllowList = cfg.AllowList
+}
+
 // Apply applies options to the service. Used to inject optional dependencies after construction.
 func (s *Service) Apply(opts ...ServiceOption) {
 	for _, o := range opts {

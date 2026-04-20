@@ -146,6 +146,10 @@ func newTestServer(t *testing.T) (*sdkmcp.ClientSession, *drivertest.StubEmceeSe
 	svc.StubPipelineService.PipelineInputs = []domain.PipelineInput{
 		{ID: "input-1", Message: "Proceed to deploy?"},
 	}
+	svc.StubTriageService.Config = driver.TriageConfig{
+		RateLimit: 5,
+		AllowList: []string{"jira", "jenkins-ci"},
+	}
 	svc.StubTriageService.Graph = &domain.TriageGraph{
 		Seed: "test:T-1",
 		Nodes: []domain.TriageNode{
@@ -1066,6 +1070,44 @@ func TestEmceeTriageMissingRef(t *testing.T) {
 	result := callTool(t, session, "emcee", map[string]any{"action": "triage"})
 	if !result.IsError {
 		t.Fatal("expected error for missing ref")
+	}
+}
+
+// --- triage config tests ---
+
+func TestEmceeTriageConfig(t *testing.T) {
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "triage_config"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var cfg driver.TriageConfig
+	if err := json.Unmarshal([]byte(resultText(t, result)), &cfg); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if cfg.RateLimit != 5 {
+		t.Errorf("rate_limit = %f, want 5", cfg.RateLimit)
+	}
+	if len(cfg.AllowList) != 2 {
+		t.Errorf("allow_list = %v, want [jira jenkins-ci]", cfg.AllowList)
+	}
+}
+
+func TestEmceeTriageConfigSet(t *testing.T) {
+	session, svc := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{
+		"action": "triage_config_set",
+		"limit":  float64(20),
+		"issues": `["jira","gitlab"]`,
+	})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	if svc.StubTriageService.Config.RateLimit != 20 {
+		t.Errorf("rate_limit = %f, want 20", svc.StubTriageService.Config.RateLimit)
+	}
+	if len(svc.StubTriageService.Config.AllowList) != 2 {
+		t.Errorf("allow_list = %v, want [jira gitlab]", svc.StubTriageService.Config.AllowList)
 	}
 }
 

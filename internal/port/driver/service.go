@@ -133,6 +133,14 @@ type StageService interface {
 // TriageService is the inbound port for defect lifecycle triage.
 type TriageService interface {
 	Triage(ctx context.Context, ref string, maxDepth int) (*domain.TriageGraph, error)
+	GetTriageConfig() TriageConfig
+	SetTriageConfig(cfg TriageConfig)
+}
+
+// TriageConfig holds runtime-configurable triage crawl settings.
+type TriageConfig struct {
+	RateLimit float64  `json:"rate_limit"` // requests per second (0 = unlimited)
+	AllowList []string `json:"allow_list"` // backends to recurse into (empty = all configured)
 }
 
 // BackendManager is the inbound port for runtime backend management.

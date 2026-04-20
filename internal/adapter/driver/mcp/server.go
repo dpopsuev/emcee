@@ -128,6 +128,8 @@ Jenkins Pipelines:
 
 Triage (Defect Lifecycle):
   triage       — ref (seed artifact, e.g. jira:OCPBUGS-123), [limit (max depth, default 3)] → cross-backend correlation graph
+  triage_config — (no params) → current crawl settings (rate_limit, allow_list)
+  triage_config_set — [limit (rate limit req/s), issues (JSON array of allowed backend names)] → update crawl settings
 
 Pull Requests / Merge Requests:
   prs         — backend, [author, status, merged_after (YYYY-MM-DD), merged_before (YYYY-MM-DD), repo (override: owner/repo or namespace/project), limit]
@@ -201,7 +203,7 @@ func RegisterTools(srv *mcpserver.Server, svc EmceeService) {
 var emceeSchema = json.RawMessage(`{
 	"type": "object",
 	"properties": {
-		"action":      {"type": "string", "enum": ["list","get","create","update","search","children","bulk_create","bulk_update","comments","comment_add","stage","stage_list","stage_show","stage_patch","stage_drop","push","push_all","launches","launch_get","test_items","test_item_get","defect_update","jobs","job_get","build_trigger","build_get","build_log","test_results","queue","builds","build_last","build_last_failed","build_last_successful","build_stop","job_params","folder_jobs","job_upstream","job_downstream","build_artifacts","build_revision","build_causes","nodes","node_get","views","view_jobs","pipeline_runs","pipeline_run_get","pipeline_inputs","pipeline_input_approve","pipeline_input_abort","triage","fields","jql","prs"], "description": "Action to perform"},
+		"action":      {"type": "string", "enum": ["list","get","create","update","search","children","bulk_create","bulk_update","comments","comment_add","stage","stage_list","stage_show","stage_patch","stage_drop","push","push_all","launches","launch_get","test_items","test_item_get","defect_update","jobs","job_get","build_trigger","build_get","build_log","test_results","queue","builds","build_last","build_last_failed","build_last_successful","build_stop","job_params","folder_jobs","job_upstream","job_downstream","build_artifacts","build_revision","build_causes","nodes","node_get","views","view_jobs","pipeline_runs","pipeline_run_get","pipeline_inputs","pipeline_input_approve","pipeline_input_abort","triage","triage_config","triage_config_set","fields","jql","prs"], "description": "Action to perform"},
 		"backend":     {"type": "string", "description": "Backend name (required for list/create/search)"},
 		"ref":         {"type": "string", "description": "Issue ref for get/update/children (e.g. linear:PROJ-42)"},
 		"title":       {"type": "string", "description": "Issue title (create)"},
@@ -978,6 +980,21 @@ func emceeHandler(svc EmceeService) server.Handler {
 				return "", err
 			}
 			return server.JSONResult(graph)
+
+		case "triage_config":
+			cfg := svc.GetTriageConfig()
+			return server.JSONResult(cfg)
+
+		case "triage_config_set":
+			var cfg driver.TriageConfig
+			cfg.RateLimit = args.Limit
+			if args.Issues != "" {
+				if err := json.Unmarshal([]byte(args.Issues), &cfg.AllowList); err != nil {
+					return "", fmt.Errorf("invalid allow_list JSON: %w", err)
+				}
+			}
+			svc.SetTriageConfig(cfg)
+			return server.JSONResult(cfg)
 
 		// --- Field discovery + JQL ---
 
