@@ -14,9 +14,6 @@ func init() {
 		if token == "" {
 			token = os.Getenv("GITHUB_TOKEN")
 		}
-		if token == "" {
-			return nil, nil
-		}
 		owner := backend.Owner
 		if owner == "" {
 			owner = os.Getenv("GITHUB_OWNER")
@@ -27,9 +24,6 @@ func init() {
 		repoName := backend.Team
 		if repoName == "" {
 			repoName = os.Getenv("GITHUB_REPO")
-		}
-		if repoName == "" {
-			return nil, nil
 		}
 		return New(name, token, owner, repoName)
 	})

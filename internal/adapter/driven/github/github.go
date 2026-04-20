@@ -31,7 +31,8 @@ const (
 var (
 	ErrIssueNotFound = errors.New("issue not found")
 	ErrCreateFailed  = errors.New("issue creation failed")
-	ErrRepoEmpty     = errors.New("repository owner/name is required")
+	ErrOwnerRequired = errors.New("repository owner is required")
+	ErrRepoRequired  = errors.New("repo not set — set GITHUB_REPO, use config.yaml, or pass repo filter")
 	ErrAPIError      = errors.New("github API error")
 	ErrNotAnIssue    = errors.New("not an issue")
 	ErrProjectCreate = errors.New("project creation not yet supported (requires GitHub Projects v2 GraphQL API)")
@@ -63,9 +64,11 @@ func New(name, token, owner, repo string) (*Repository, error) {
 }
 
 // NewWithURL creates a GitHub repository with a custom API URL (for testing).
+// Token is optional (public repos allow unauthenticated reads at 60 req/hr).
+// Repo is optional (per-call repo override via ref or filter).
 func NewWithURL(name, token, owner, repo, url string) (*Repository, error) {
-	if owner == "" || repo == "" {
-		return nil, ErrRepoEmpty
+	if owner == "" {
+		return nil, ErrOwnerRequired
 	}
 	return &Repository{
 		name:    name,
@@ -79,7 +82,15 @@ func NewWithURL(name, token, owner, repo, url string) (*Repository, error) {
 
 func (r *Repository) Name() string { return r.name }
 
-// api makes an authenticated request to the GitHub REST API.
+// repoPath returns "/repos/{owner}/{repo}" or an error if repo is not set.
+func (r *Repository) repoPath() (string, error) {
+	if r.repo == "" {
+		return "", ErrRepoRequired
+	}
+	return fmt.Sprintf("/repos/%s/%s", r.owner, r.repo), nil
+}
+
+// api makes a request to the GitHub REST API (authenticated if token is set).
 func (r *Repository) api(ctx context.Context, method, path string, body, result any) error {
 	var bodyReader io.Reader
 	if body != nil {
@@ -94,7 +105,9 @@ func (r *Repository) api(ctx context.Context, method, path string, body, result 
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Authorization", "token "+r.token)
+	if r.token != "" {
+		req.Header.Set("Authorization", "token "+r.token)
+	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
 
@@ -144,11 +157,15 @@ func (r *Repository) api(ctx context.Context, method, path string, body, result 
 
 func (r *Repository) List(ctx context.Context, filter domain.ListFilter) ([]domain.Issue, error) {
 	adapterdriven.LogOp(ctx, BackendName, "list")
-	path := fmt.Sprintf("/repos/%s/%s/issues?per_page=%d&state=all", r.owner, r.repo, defaultLimit)
-
-	if filter.Limit > 0 && filter.Limit < defaultLimit {
-		path = fmt.Sprintf("/repos/%s/%s/issues?per_page=%d&state=all", r.owner, r.repo, filter.Limit)
+	rp, err := r.repoPath()
+	if err != nil {
+		return nil, err
 	}
+	limit := defaultLimit
+	if filter.Limit > 0 && filter.Limit < defaultLimit {
+		limit = filter.Limit
+	}
+	path := fmt.Sprintf("%s/issues?per_page=%d&state=all", rp, limit)
 
 	// Add state filter
 	if filter.Status != "" {
@@ -184,11 +201,14 @@ func (r *Repository) List(ctx context.Context, filter domain.ListFilter) ([]doma
 
 func (r *Repository) Get(ctx context.Context, key string) (*domain.Issue, error) {
 	adapterdriven.LogOp(ctx, BackendName, "get", slog.String(adapterdriven.LogKeyIssueKey, key))
-	// key can be either issue number or "owner/repo#number" format
+	rp, err := r.repoPath()
+	if err != nil {
+		return nil, err
+	}
 	number := r.parseIssueNumber(key)
 
 	var raw githubIssue
-	path := fmt.Sprintf("/repos/%s/%s/issues/%s", r.owner, r.repo, number)
+	path := fmt.Sprintf("%s/issues/%s", rp, number)
 	if err := r.api(ctx, "GET", path, nil, &raw); err != nil {
 		return nil, err
 	}
@@ -203,6 +223,10 @@ func (r *Repository) Get(ctx context.Context, key string) (*domain.Issue, error)
 
 func (r *Repository) Create(ctx context.Context, input domain.CreateInput) (*domain.Issue, error) {
 	adapterdriven.LogWrite(ctx, BackendName, "create", slog.String(adapterdriven.LogKeyTitle, input.Title))
+	rp, err := r.repoPath()
+	if err != nil {
+		return nil, err
+	}
 	body := map[string]any{
 		"title": input.Title,
 		"body":  input.Description,
@@ -217,7 +241,7 @@ func (r *Repository) Create(ctx context.Context, input domain.CreateInput) (*dom
 	}
 
 	var result githubIssue
-	path := fmt.Sprintf("/repos/%s/%s/issues", r.owner, r.repo)
+	path := fmt.Sprintf("%s/issues", rp)
 	if err := r.api(ctx, "POST", path, body, &result); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrCreateFailed, err)
 	}
@@ -228,6 +252,10 @@ func (r *Repository) Create(ctx context.Context, input domain.CreateInput) (*dom
 
 func (r *Repository) Update(ctx context.Context, key string, input domain.UpdateInput) (*domain.Issue, error) {
 	adapterdriven.LogWrite(ctx, BackendName, "update", slog.String(adapterdriven.LogKeyIssueKey, key))
+	rp, err := r.repoPath()
+	if err != nil {
+		return nil, err
+	}
 	number := r.parseIssueNumber(key)
 	body := map[string]any{}
 
@@ -252,7 +280,7 @@ func (r *Repository) Update(ctx context.Context, key string, input domain.Update
 	}
 
 	var result githubIssue
-	path := fmt.Sprintf("/repos/%s/%s/issues/%s", r.owner, r.repo, number)
+	path := fmt.Sprintf("%s/issues/%s", rp, number)
 	if err := r.api(ctx, "PATCH", path, body, &result); err != nil {
 		return nil, err
 	}
@@ -267,8 +295,12 @@ func (r *Repository) Search(ctx context.Context, query string, limit int) ([]dom
 		limit = defaultLimit
 	}
 
-	// GitHub search API requires a different format
-	searchQuery := fmt.Sprintf("repo:%s/%s %s", r.owner, r.repo, query)
+	var searchQuery string
+	if r.repo != "" {
+		searchQuery = fmt.Sprintf("repo:%s/%s %s", r.owner, r.repo, query)
+	} else {
+		searchQuery = fmt.Sprintf("org:%s %s", r.owner, query)
+	}
 	path := fmt.Sprintf("/search/issues?q=%s&per_page=%d", searchQuery, limit)
 
 	var result struct {
@@ -299,7 +331,11 @@ func (r *Repository) ListChildren(ctx context.Context, key string) ([]domain.Iss
 
 func (r *Repository) ListProjects(ctx context.Context, filter domain.ProjectListFilter) ([]domain.Project, error) {
 	adapterdriven.LogOp(ctx, BackendName, "list_projects")
-	path := fmt.Sprintf("/repos/%s/%s/projects", r.owner, r.repo)
+	rp, err := r.repoPath()
+	if err != nil {
+		return nil, err
+	}
+	path := fmt.Sprintf("%s/projects", rp)
 
 	var raw []githubProject
 	if err := r.api(ctx, "GET", path, nil, &raw); err != nil {
@@ -337,7 +373,11 @@ func (r *Repository) UpdateProject(_ context.Context, _ string, _ domain.Project
 
 func (r *Repository) ListLabels(ctx context.Context) ([]domain.Label, error) {
 	adapterdriven.LogOp(ctx, BackendName, "list_labels")
-	path := fmt.Sprintf("/repos/%s/%s/labels", r.owner, r.repo)
+	rp, err := r.repoPath()
+	if err != nil {
+		return nil, err
+	}
+	path := fmt.Sprintf("%s/labels", rp)
 
 	var raw []githubLabel
 	if err := r.api(ctx, "GET", path, nil, &raw); err != nil {
@@ -362,7 +402,11 @@ func (r *Repository) CreateLabel(ctx context.Context, input domain.LabelCreateIn
 	}
 
 	var result githubLabel
-	path := fmt.Sprintf("/repos/%s/%s/labels", r.owner, r.repo)
+	rp, err := r.repoPath()
+	if err != nil {
+		return nil, err
+	}
+	path := fmt.Sprintf("%s/labels", rp)
 	if err := r.api(ctx, "POST", path, body, &result); err != nil {
 		return nil, err
 	}
@@ -508,8 +552,12 @@ func (gc githubComment) toDomain() domain.Comment {
 
 func (r *Repository) ListComments(ctx context.Context, key string) ([]domain.Comment, error) {
 	adapterdriven.LogOp(ctx, BackendName, "list_comments", slog.String(adapterdriven.LogKeyIssueKey, key))
+	rp, err := r.repoPath()
+	if err != nil {
+		return nil, err
+	}
 	number := r.parseIssueNumber(key)
-	path := fmt.Sprintf("/repos/%s/%s/issues/%s/comments", r.owner, r.repo, number)
+	path := fmt.Sprintf("%s/issues/%s/comments", rp, number)
 	var raw []githubComment
 	if err := r.api(ctx, "GET", path, nil, &raw); err != nil {
 		return nil, err
@@ -523,8 +571,12 @@ func (r *Repository) ListComments(ctx context.Context, key string) ([]domain.Com
 
 func (r *Repository) AddComment(ctx context.Context, key string, input domain.CommentCreateInput) (*domain.Comment, error) {
 	adapterdriven.LogWrite(ctx, BackendName, "add_comment", slog.String(adapterdriven.LogKeyIssueKey, key))
+	rp, err := r.repoPath()
+	if err != nil {
+		return nil, err
+	}
 	number := r.parseIssueNumber(key)
-	path := fmt.Sprintf("/repos/%s/%s/issues/%s/comments", r.owner, r.repo, number)
+	path := fmt.Sprintf("%s/issues/%s/comments", rp, number)
 	body := map[string]string{"body": input.Body}
 	var raw githubComment
 	if err := r.api(ctx, "POST", path, body, &raw); err != nil {
@@ -599,7 +651,12 @@ func (r *Repository) ListPRs(ctx context.Context, filter domain.PRFilter) ([]dom
 			owner, repo = parts[0], parts[1]
 		}
 	}
-	q := fmt.Sprintf("repo:%s/%s is:pr", owner, repo)
+	var q string
+	if repo != "" {
+		q = fmt.Sprintf("repo:%s/%s is:pr", owner, repo)
+	} else {
+		q = fmt.Sprintf("org:%s is:pr", owner)
+	}
 	if filter.Author != "" {
 		q += " author:" + filter.Author
 	}
