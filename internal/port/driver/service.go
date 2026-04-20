@@ -130,6 +130,11 @@ type StageService interface {
 	StagePopAll() []domain.StagedItem
 }
 
+// TriageService is the inbound port for defect lifecycle triage.
+type TriageService interface {
+	Triage(ctx context.Context, ref string, maxDepth int) (*domain.TriageGraph, error)
+}
+
 // BackendManager is the inbound port for runtime backend management.
 type BackendManager interface {
 	AddBackend(repo driven.IssueRepository)

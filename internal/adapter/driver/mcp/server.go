@@ -52,6 +52,7 @@ type EmceeService interface {
 	driver.BuildService
 	driver.PipelineService
 	driver.BackendManager
+	driver.TriageService
 	driver.FieldService
 	driver.JQLService
 	driver.PRService
@@ -125,6 +126,9 @@ Jenkins Pipelines:
   pipeline_input_approve — backend=jenkins, query (job name), ref (run ID) → approve pending input
   pipeline_input_abort — backend=jenkins, query (job name), ref (run ID) → abort pending input
 
+Triage (Defect Lifecycle):
+  triage       — ref (seed artifact, e.g. jira:OCPBUGS-123), [limit (max depth, default 3)] → cross-backend correlation graph
+
 Pull Requests / Merge Requests:
   prs         — backend, [author, status, merged_after (YYYY-MM-DD), merged_before (YYYY-MM-DD), repo (override: owner/repo or namespace/project), limit]
 
@@ -197,7 +201,7 @@ func RegisterTools(srv *mcpserver.Server, svc EmceeService) {
 var emceeSchema = json.RawMessage(`{
 	"type": "object",
 	"properties": {
-		"action":      {"type": "string", "enum": ["list","get","create","update","search","children","bulk_create","bulk_update","comments","comment_add","stage","stage_list","stage_show","stage_patch","stage_drop","push","push_all","launches","launch_get","test_items","test_item_get","defect_update","jobs","job_get","build_trigger","build_get","build_log","test_results","queue","builds","build_last","build_last_failed","build_last_successful","build_stop","job_params","folder_jobs","job_upstream","job_downstream","build_artifacts","build_revision","build_causes","nodes","node_get","views","view_jobs","pipeline_runs","pipeline_run_get","pipeline_inputs","pipeline_input_approve","pipeline_input_abort","fields","jql","prs"], "description": "Action to perform"},
+		"action":      {"type": "string", "enum": ["list","get","create","update","search","children","bulk_create","bulk_update","comments","comment_add","stage","stage_list","stage_show","stage_patch","stage_drop","push","push_all","launches","launch_get","test_items","test_item_get","defect_update","jobs","job_get","build_trigger","build_get","build_log","test_results","queue","builds","build_last","build_last_failed","build_last_successful","build_stop","job_params","folder_jobs","job_upstream","job_downstream","build_artifacts","build_revision","build_causes","nodes","node_get","views","view_jobs","pipeline_runs","pipeline_run_get","pipeline_inputs","pipeline_input_approve","pipeline_input_abort","triage","fields","jql","prs"], "description": "Action to perform"},
 		"backend":     {"type": "string", "description": "Backend name (required for list/create/search)"},
 		"ref":         {"type": "string", "description": "Issue ref for get/update/children (e.g. linear:PROJ-42)"},
 		"title":       {"type": "string", "description": "Issue title (create)"},
@@ -958,6 +962,22 @@ func emceeHandler(svc EmceeService) server.Handler {
 				return "", err
 			}
 			return server.JSONResult(map[string]any{"aborted": true, "job": args.Query, "run_id": args.Ref})
+
+		// --- Triage ---
+
+		case "triage":
+			if args.Ref == "" {
+				return "", errRefRequired
+			}
+			depth := int(args.Limit)
+			if depth == 0 {
+				depth = 3
+			}
+			graph, err := svc.Triage(ctx, args.Ref, depth)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(graph)
 
 		// --- Field discovery + JQL ---
 

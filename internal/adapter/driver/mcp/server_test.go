@@ -146,6 +146,15 @@ func newTestServer(t *testing.T) (*sdkmcp.ClientSession, *drivertest.StubEmceeSe
 	svc.StubPipelineService.PipelineInputs = []domain.PipelineInput{
 		{ID: "input-1", Message: "Proceed to deploy?"},
 	}
+	svc.StubTriageService.Graph = &domain.TriageGraph{
+		Seed: "test:T-1",
+		Nodes: []domain.TriageNode{
+			{Ref: "test:T-1", Type: "issue", Phase: "stored", Title: "First Issue", Status: "todo"},
+		},
+		Edges: []domain.TriageEdge{
+			{From: "test:T-1", To: "github:org/repo#42", Type: "mentions", Confidence: 0.9, Source: "description"},
+		},
+	}
 	svc.StubBackendManager.RemoveResult = true
 	svc.StubBackendManager.ReloadAdded = []string{"jenkins-ci"}
 	svc.StubBackendManager.ReloadRemoved = []string{"old-backend"}
@@ -1016,6 +1025,47 @@ func TestEmceeJobParams(t *testing.T) {
 	}
 	if params[0].Name != "BRANCH" {
 		t.Errorf("name = %q, want %q", params[0].Name, "BRANCH")
+	}
+}
+
+// --- triage tests ---
+
+func TestEmceeTriage(t *testing.T) {
+	session, svc := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "triage", "ref": "test:T-1"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var graph domain.TriageGraph
+	if err := json.Unmarshal([]byte(resultText(t, result)), &graph); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if graph.Seed != "test:T-1" {
+		t.Errorf("seed = %q, want %q", graph.Seed, "test:T-1")
+	}
+	if len(graph.Nodes) != 1 {
+		t.Errorf("got %d nodes, want 1", len(graph.Nodes))
+	}
+	if len(graph.Edges) != 1 {
+		t.Errorf("got %d edges, want 1", len(graph.Edges))
+	}
+	if len(svc.StubTriageService.TriageCalls) != 1 {
+		t.Fatalf("TriageCalls = %d, want 1", len(svc.StubTriageService.TriageCalls))
+	}
+	got := svc.StubTriageService.TriageCalls[0]
+	if got.Ref != "test:T-1" {
+		t.Errorf("ref = %q, want %q", got.Ref, "test:T-1")
+	}
+	if got.MaxDepth != 3 {
+		t.Errorf("maxDepth = %d, want 3 (default)", got.MaxDepth)
+	}
+}
+
+func TestEmceeTriageMissingRef(t *testing.T) {
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "triage"})
+	if !result.IsError {
+		t.Fatal("expected error for missing ref")
 	}
 }
 

@@ -21,7 +21,8 @@ const batchSize = 50
 var (
 	ErrUnknownBackend = errors.New("unknown backend")
 	ErrInvalidRef     = errors.New("invalid ref")
-	ErrNotSupported   = errors.New("operation not supported by backend")
+	ErrNotSupported      = errors.New("operation not supported by backend")
+	ErrTriageNotConfigured = errors.New("triage not configured: missing graph store")
 )
 
 // Service implements all driver port interfaces by routing to the appropriate repository.
@@ -39,6 +40,8 @@ type Service struct {
 	prRepos      map[string]driven.PRRepository
 	buildRepos    map[string]driven.BuildRepository
 	pipelineRepos map[string]driven.PipelineRepository
+	extractor     driven.LinkExtractor
+	graphStore    driven.GraphStore
 	stage         *StageStore
 	mu            sync.RWMutex
 }
@@ -897,4 +900,84 @@ func (s *Service) BulkUpdateIssues(ctx context.Context, backend string, inputs [
 		result.Updated = append(result.Updated, *issue)
 	}
 	return result, nil
+}
+
+// --- Service options ---
+
+// ServiceOption configures optional dependencies on the Service.
+type ServiceOption func(*Service)
+
+// WithLinkExtractor injects a LinkExtractor for triage.
+func WithLinkExtractor(e driven.LinkExtractor) ServiceOption {
+	return func(s *Service) { s.extractor = e }
+}
+
+// WithGraphStore injects a GraphStore for triage.
+func WithGraphStore(g driven.GraphStore) ServiceOption {
+	return func(s *Service) { s.graphStore = g }
+}
+
+// Apply applies options to the service. Used to inject optional dependencies after construction.
+func (s *Service) Apply(opts ...ServiceOption) {
+	for _, o := range opts {
+		o(s)
+	}
+}
+
+// --- Triage ---
+
+// Triage returns the defect lifecycle graph reachable from a seed artifact.
+func (s *Service) Triage(ctx context.Context, ref string, maxDepth int) (*domain.TriageGraph, error) {
+	if s.graphStore == nil {
+		return nil, ErrTriageNotConfigured
+	}
+
+	backend, key, err := ParseRef(ref)
+	if err != nil {
+		return nil, err
+	}
+
+	r, err := s.repo(backend)
+	if err != nil {
+		return nil, err
+	}
+
+	issue, err := r.Get(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+
+	seed := domain.TriageNode{
+		Ref:    ref,
+		Type:   "issue",
+		Phase:  "stored",
+		Title:  issue.Title,
+		URL:    issue.URL,
+		Status: string(issue.Status),
+	}
+
+	if err := s.graphStore.PutNode(ctx, seed); err != nil {
+		return nil, err
+	}
+
+	// Extract cross-refs from description + comments if extractor is available
+	if s.extractor != nil {
+		text := issue.Description
+		for _, c := range issue.Comments {
+			text += "\n" + c.Body
+		}
+		refs, _ := s.extractor.Extract(ctx, text)
+		for _, cr := range refs {
+			edge := domain.TriageEdge{
+				From:       ref,
+				To:         cr.Ref,
+				Type:       "mentions",
+				Confidence: cr.Confidence,
+				Source:     cr.Source,
+			}
+			_ = s.graphStore.PutEdge(ctx, edge)
+		}
+	}
+
+	return s.graphStore.GetGraph(ctx, ref, maxDepth)
 }
