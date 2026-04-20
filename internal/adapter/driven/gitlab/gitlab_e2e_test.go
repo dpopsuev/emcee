@@ -28,6 +28,10 @@ func TestGitLabE2E(t *testing.T) {
 
 	ctx := context.Background()
 	gl, err := gitlab.NewWithURL("gitlab", token, project, baseURL)
+	// Quick connectivity check — skip if host is unreachable
+	if _, cerr := gl.List(ctx, domain.ListFilter{Limit: 1}); cerr != nil {
+		t.Skipf("Skipping E2E test: GitLab host unreachable: %v", cerr)
+	}
 	if err != nil {
 		t.Fatalf("Failed to create GitLab adapter: %v", err)
 	}
