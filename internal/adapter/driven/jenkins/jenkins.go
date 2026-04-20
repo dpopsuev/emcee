@@ -27,8 +27,9 @@ var (
 
 // Compile-time interface compliance checks.
 var (
-	_ driven.IssueRepository = (*Repository)(nil)
-	_ driven.BuildRepository = (*Repository)(nil)
+	_ driven.IssueRepository    = (*Repository)(nil)
+	_ driven.BuildRepository    = (*Repository)(nil)
+	_ driven.PipelineRepository = (*Repository)(nil)
 )
 
 // Repository implements driven.BuildRepository for Jenkins.
@@ -419,4 +420,161 @@ func (r *Repository) GetDownstreamJobs(ctx context.Context, jobName string) ([]d
 		return nil, err
 	}
 	return r.getJobDeps(ctx, jobName, "get_downstream_jobs", j.GetDownstreamJobsMetadata)
+}
+
+// --- PipelineRepository implementation ---
+
+func (r *Repository) ListPipelineRuns(ctx context.Context, jobName string) ([]domain.PipelineRun, error) {
+	start := time.Now()
+	adapterdriven.LogOp(ctx, BackendName, "list_pipeline_runs", slog.String(adapterdriven.LogKeyID, jobName))
+	j, err := r.getJob(ctx, jobName)
+	if err != nil {
+		r.logErr(ctx, "list_pipeline_runs", err)
+		return nil, err
+	}
+	raw, err := j.GetPipelineRuns(ctx)
+	if err != nil {
+		r.logErr(ctx, "list_pipeline_runs", err)
+		return nil, err
+	}
+	runs := make([]domain.PipelineRun, 0, len(raw))
+	for i := range raw {
+		runs = append(runs, r.mapPipelineRun(&raw[i]))
+	}
+	adapterdriven.LogOpDone(ctx, BackendName, "list_pipeline_runs", slog.Duration(adapterdriven.LogKeyElapsed, time.Since(start)), slog.Int(adapterdriven.LogKeyCount, len(runs)))
+	return runs, nil
+}
+
+func (r *Repository) GetPipelineRun(ctx context.Context, jobName, runID string) (*domain.PipelineRun, error) {
+	start := time.Now()
+	adapterdriven.LogOp(ctx, BackendName, "get_pipeline_run", slog.String(adapterdriven.LogKeyID, jobName), slog.String("run_id", runID))
+	j, err := r.getJob(ctx, jobName)
+	if err != nil {
+		r.logErr(ctx, "get_pipeline_run", err)
+		return nil, err
+	}
+	raw, err := j.GetPipelineRun(ctx, runID)
+	if err != nil {
+		r.logErr(ctx, "get_pipeline_run", err)
+		return nil, err
+	}
+	run := r.mapPipelineRun(raw)
+	adapterdriven.LogOpDone(ctx, BackendName, "get_pipeline_run", slog.Duration(adapterdriven.LogKeyElapsed, time.Since(start)))
+	return &run, nil
+}
+
+func (r *Repository) GetPendingInputs(ctx context.Context, jobName, runID string) ([]domain.PipelineInput, error) {
+	start := time.Now()
+	adapterdriven.LogOp(ctx, BackendName, "get_pending_inputs", slog.String(adapterdriven.LogKeyID, jobName), slog.String("run_id", runID))
+	j, err := r.getJob(ctx, jobName)
+	if err != nil {
+		r.logErr(ctx, "get_pending_inputs", err)
+		return nil, err
+	}
+	raw, err := j.GetPipelineRun(ctx, runID)
+	if err != nil {
+		r.logErr(ctx, "get_pending_inputs", err)
+		return nil, err
+	}
+	actions, err := raw.GetPendingInputActions(ctx)
+	if err != nil {
+		r.logErr(ctx, "get_pending_inputs", err)
+		return nil, err
+	}
+	inputs := make([]domain.PipelineInput, 0, len(actions))
+	for i := range actions {
+		inputs = append(inputs, domain.PipelineInput{
+			ID:      actions[i].ID,
+			Message: actions[i].Message,
+		})
+	}
+	adapterdriven.LogOpDone(ctx, BackendName, "get_pending_inputs", slog.Duration(adapterdriven.LogKeyElapsed, time.Since(start)), slog.Int(adapterdriven.LogKeyCount, len(inputs)))
+	return inputs, nil
+}
+
+func (r *Repository) pipelineInputAction(ctx context.Context, jobName, runID, op string, action func(context.Context) (bool, error)) error {
+	start := time.Now()
+	adapterdriven.LogWrite(ctx, BackendName, op, slog.String(adapterdriven.LogKeyID, jobName), slog.String("run_id", runID))
+	if _, err := action(ctx); err != nil {
+		r.logErr(ctx, op, err)
+		return err
+	}
+	adapterdriven.LogOpDone(ctx, BackendName, op, slog.Duration(adapterdriven.LogKeyElapsed, time.Since(start)))
+	return nil
+}
+
+func (r *Repository) getPipelineRun(ctx context.Context, jobName, runID string) (*gojenkins.PipelineRun, error) {
+	j, err := r.getJob(ctx, jobName)
+	if err != nil {
+		return nil, err
+	}
+	run, err := j.GetPipelineRun(ctx, runID)
+	if err != nil {
+		return nil, err
+	}
+	return run, nil
+}
+
+func (r *Repository) ApproveInput(ctx context.Context, jobName, runID string) error {
+	run, err := r.getPipelineRun(ctx, jobName, runID)
+	if err != nil {
+		return err
+	}
+	return r.pipelineInputAction(ctx, jobName, runID, "approve_input", run.ProceedInput)
+}
+
+func (r *Repository) AbortInput(ctx context.Context, jobName, runID string) error {
+	run, err := r.getPipelineRun(ctx, jobName, runID)
+	if err != nil {
+		return err
+	}
+	return r.pipelineInputAction(ctx, jobName, runID, "abort_input", run.AbortInput)
+}
+
+func (r *Repository) GetStageLog(ctx context.Context, jobName, runID, nodeID string) (string, error) {
+	start := time.Now()
+	adapterdriven.LogOp(ctx, BackendName, "get_stage_log", slog.String(adapterdriven.LogKeyID, jobName), slog.String("run_id", runID), slog.String("node_id", nodeID))
+	j, err := r.getJob(ctx, jobName)
+	if err != nil {
+		r.logErr(ctx, "get_stage_log", err)
+		return "", err
+	}
+	raw, err := j.GetPipelineRun(ctx, runID)
+	if err != nil {
+		r.logErr(ctx, "get_stage_log", err)
+		return "", err
+	}
+	node, err := raw.GetNode(ctx, nodeID)
+	if err != nil {
+		r.logErr(ctx, "get_stage_log", err)
+		return "", err
+	}
+	log, err := node.GetLog(ctx)
+	if err != nil {
+		r.logErr(ctx, "get_stage_log", err)
+		return "", err
+	}
+	adapterdriven.LogOpDone(ctx, BackendName, "get_stage_log", slog.Duration(adapterdriven.LogKeyElapsed, time.Since(start)))
+	return log.Text, nil
+}
+
+func (r *Repository) mapPipelineRun(raw *gojenkins.PipelineRun) domain.PipelineRun {
+	run := domain.PipelineRun{
+		ID:        raw.ID,
+		Name:      raw.Name,
+		Status:    raw.Status,
+		StartTime: time.UnixMilli(raw.StartTime),
+		EndTime:   time.UnixMilli(raw.EndTime),
+		Duration:  raw.Duration,
+	}
+	for i := range raw.Stages {
+		run.Stages = append(run.Stages, domain.PipelineStage{
+			ID:        raw.Stages[i].ID,
+			Name:      raw.Stages[i].Name,
+			Status:    raw.Stages[i].Status,
+			StartTime: time.UnixMilli(raw.Stages[i].StartTime),
+			Duration:  raw.Stages[i].Duration,
+		})
+	}
+	return run
 }

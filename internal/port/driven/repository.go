@@ -97,6 +97,17 @@ type BuildRepository interface {
 	GetDownstreamJobs(ctx context.Context, jobName string) ([]domain.Job, error)
 }
 
+// PipelineRepository is the outbound port for Jenkins pipeline operations (ISP).
+type PipelineRepository interface {
+	Name() string
+	ListPipelineRuns(ctx context.Context, jobName string) ([]domain.PipelineRun, error)
+	GetPipelineRun(ctx context.Context, jobName, runID string) (*domain.PipelineRun, error)
+	GetPendingInputs(ctx context.Context, jobName, runID string) ([]domain.PipelineInput, error)
+	ApproveInput(ctx context.Context, jobName, runID string) error
+	AbortInput(ctx context.Context, jobName, runID string) error
+	GetStageLog(ctx context.Context, jobName, runID, nodeID string) (string, error)
+}
+
 // FieldRepository is the outbound port for field metadata discovery.
 type FieldRepository interface {
 	Name() string

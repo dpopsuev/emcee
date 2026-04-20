@@ -37,9 +37,10 @@ type Service struct {
 	fieldRepos   map[string]driven.FieldRepository
 	jqlRepos     map[string]driven.JQLRepository
 	prRepos      map[string]driven.PRRepository
-	buildRepos   map[string]driven.BuildRepository
-	stage        *StageStore
-	mu           sync.RWMutex
+	buildRepos    map[string]driven.BuildRepository
+	pipelineRepos map[string]driven.PipelineRepository
+	stage         *StageStore
+	mu            sync.RWMutex
 }
 
 // NewService creates the application service with the given repositories.
@@ -58,8 +59,9 @@ func NewService(repos ...driven.IssueRepository) *Service {
 		fieldRepos:   make(map[string]driven.FieldRepository),
 		jqlRepos:     make(map[string]driven.JQLRepository),
 		prRepos:      make(map[string]driven.PRRepository),
-		buildRepos:   make(map[string]driven.BuildRepository),
-		stage:        NewStageStore(),
+		buildRepos:    make(map[string]driven.BuildRepository),
+		pipelineRepos: make(map[string]driven.PipelineRepository),
+		stage:         NewStageStore(),
 	}
 	for _, r := range repos {
 		name := r.Name()
@@ -96,6 +98,9 @@ func NewService(repos ...driven.IssueRepository) *Service {
 		}
 		if br, ok := r.(driven.BuildRepository); ok {
 			s.buildRepos[name] = br
+		}
+		if pr, ok := r.(driven.PipelineRepository); ok {
+			s.pipelineRepos[name] = pr
 		}
 	}
 	return s
@@ -140,6 +145,9 @@ func (s *Service) AddBackend(r driven.IssueRepository) {
 	if br, ok := r.(driven.BuildRepository); ok {
 		s.buildRepos[name] = br
 	}
+	if pr, ok := r.(driven.PipelineRepository); ok {
+		s.pipelineRepos[name] = pr
+	}
 }
 
 // RemoveBackend removes a backend by name at runtime. Thread-safe.
@@ -161,6 +169,7 @@ func (s *Service) RemoveBackend(name string) bool {
 	delete(s.jqlRepos, name)
 	delete(s.prRepos, name)
 	delete(s.buildRepos, name)
+	delete(s.pipelineRepos, name)
 	return true
 }
 
@@ -369,6 +378,9 @@ func (s *Service) Health() *driver.HealthStatus {
 		}
 		if _, ok := s.buildRepos[name]; ok {
 			caps = append(caps, "builds")
+		}
+		if _, ok := s.pipelineRepos[name]; ok {
+			caps = append(caps, "pipelines")
 		}
 		status.Backends = append(status.Backends, driver.BackendHealth{
 			Name:         name,
@@ -720,6 +732,56 @@ func (s *Service) GetDownstreamJobs(ctx context.Context, backend, jobName string
 		return nil, s.notSupportedErr(backend, "builds")
 	}
 	return r.GetDownstreamJobs(ctx, jobName)
+}
+
+// --- Pipeline operations (Jenkins) ---
+
+func (s *Service) ListPipelineRuns(ctx context.Context, backend, jobName string) ([]domain.PipelineRun, error) {
+	r, ok := s.pipelineRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "pipelines")
+	}
+	return r.ListPipelineRuns(ctx, jobName)
+}
+
+func (s *Service) GetPipelineRun(ctx context.Context, backend, jobName, runID string) (*domain.PipelineRun, error) {
+	r, ok := s.pipelineRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "pipelines")
+	}
+	return r.GetPipelineRun(ctx, jobName, runID)
+}
+
+func (s *Service) GetPendingInputs(ctx context.Context, backend, jobName, runID string) ([]domain.PipelineInput, error) {
+	r, ok := s.pipelineRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "pipelines")
+	}
+	return r.GetPendingInputs(ctx, jobName, runID)
+}
+
+func (s *Service) ApproveInput(ctx context.Context, backend, jobName, runID string) error {
+	r, ok := s.pipelineRepos[backend]
+	if !ok {
+		return s.notSupportedErr(backend, "pipelines")
+	}
+	return r.ApproveInput(ctx, jobName, runID)
+}
+
+func (s *Service) AbortInput(ctx context.Context, backend, jobName, runID string) error {
+	r, ok := s.pipelineRepos[backend]
+	if !ok {
+		return s.notSupportedErr(backend, "pipelines")
+	}
+	return r.AbortInput(ctx, jobName, runID)
+}
+
+func (s *Service) GetStageLog(ctx context.Context, backend, jobName, runID, nodeID string) (string, error) {
+	r, ok := s.pipelineRepos[backend]
+	if !ok {
+		return "", s.notSupportedErr(backend, "pipelines")
+	}
+	return r.GetStageLog(ctx, jobName, runID, nodeID)
 }
 
 // --- Stage operations ---

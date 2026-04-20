@@ -59,6 +59,7 @@ type Repository struct {
 	bulk        driven.BulkIssueRepository
 	prs         driven.PRRepository
 	builds      driven.BuildRepository
+	pipelines   driven.PipelineRepository
 	caps        []string
 
 	mu       sync.Mutex
@@ -131,6 +132,10 @@ func New(inner driven.IssueRepository, opts ...Option) *Repository {
 	if v, ok := inner.(driven.BuildRepository); ok {
 		r.builds = v
 		r.caps = append(r.caps, "builds")
+	}
+	if v, ok := inner.(driven.PipelineRepository); ok {
+		r.pipelines = v
+		r.caps = append(r.caps, "pipelines")
 	}
 	for _, o := range opts {
 		o(r)
@@ -626,4 +631,48 @@ func (r *Repository) GetDownstreamJobs(ctx context.Context, jobName string) ([]d
 		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
 	}
 	return r.builds.GetDownstreamJobs(ctx, jobName)
+}
+
+// --- Passthrough: PipelineRepository ---
+
+func (r *Repository) ListPipelineRuns(ctx context.Context, jobName string) ([]domain.PipelineRun, error) {
+	if r.pipelines == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.pipelines.ListPipelineRuns(ctx, jobName)
+}
+
+func (r *Repository) GetPipelineRun(ctx context.Context, jobName, runID string) (*domain.PipelineRun, error) {
+	if r.pipelines == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.pipelines.GetPipelineRun(ctx, jobName, runID)
+}
+
+func (r *Repository) GetPendingInputs(ctx context.Context, jobName, runID string) ([]domain.PipelineInput, error) {
+	if r.pipelines == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.pipelines.GetPendingInputs(ctx, jobName, runID)
+}
+
+func (r *Repository) ApproveInput(ctx context.Context, jobName, runID string) error {
+	if r.pipelines == nil {
+		return fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.pipelines.ApproveInput(ctx, jobName, runID)
+}
+
+func (r *Repository) AbortInput(ctx context.Context, jobName, runID string) error {
+	if r.pipelines == nil {
+		return fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.pipelines.AbortInput(ctx, jobName, runID)
+}
+
+func (r *Repository) GetStageLog(ctx context.Context, jobName, runID, nodeID string) (string, error) {
+	if r.pipelines == nil {
+		return "", fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.pipelines.GetStageLog(ctx, jobName, runID, nodeID)
 }

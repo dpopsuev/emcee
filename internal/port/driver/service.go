@@ -81,6 +81,16 @@ type BuildService interface {
 	GetDownstreamJobs(ctx context.Context, backend, jobName string) ([]domain.Job, error)
 }
 
+// PipelineService is the inbound port for Jenkins pipeline operations.
+type PipelineService interface {
+	ListPipelineRuns(ctx context.Context, backend, jobName string) ([]domain.PipelineRun, error)
+	GetPipelineRun(ctx context.Context, backend, jobName, runID string) (*domain.PipelineRun, error)
+	GetPendingInputs(ctx context.Context, backend, jobName, runID string) ([]domain.PipelineInput, error)
+	ApproveInput(ctx context.Context, backend, jobName, runID string) error
+	AbortInput(ctx context.Context, backend, jobName, runID string) error
+	GetStageLog(ctx context.Context, backend, jobName, runID, nodeID string) (string, error)
+}
+
 // FieldService is the inbound port for field metadata discovery.
 type FieldService interface {
 	ListFields(ctx context.Context, backend string) ([]domain.Field, error)

@@ -114,6 +114,19 @@ func newTestServer(t *testing.T) (*sdkmcp.ClientSession, *drivertest.StubEmceeSe
 	}
 	svc.StubBuildService.UpstreamJobs = []domain.Job{{Name: "trigger-job"}}
 	svc.StubBuildService.DownstreamJobs = []domain.Job{{Name: "deploy-job"}}
+	svc.StubPipelineService.PipelineRuns = []domain.PipelineRun{
+		{ID: "1", Name: "#1", Status: "SUCCESS", Duration: 12345, Stages: []domain.PipelineStage{
+			{ID: "10", Name: "Build", Status: "SUCCESS", Duration: 5000},
+		}},
+		{ID: "2", Name: "#2", Status: "IN_PROGRESS", Duration: 0},
+	}
+	svc.StubPipelineService.PipelineRun = &domain.PipelineRun{
+		ID: "1", Name: "#1", Status: "SUCCESS", Duration: 12345,
+		Stages: []domain.PipelineStage{{ID: "10", Name: "Build", Status: "SUCCESS", Duration: 5000}},
+	}
+	svc.StubPipelineService.PipelineInputs = []domain.PipelineInput{
+		{ID: "input-1", Message: "Proceed to deploy?"},
+	}
 	svc.StubBackendManager.RemoveResult = true
 	svc.StubBackendManager.ReloadAdded = []string{"jenkins-ci"}
 	svc.StubBackendManager.ReloadRemoved = []string{"old-backend"}
@@ -887,6 +900,102 @@ func TestManageBackendRemoveMissingName(t *testing.T) {
 	result := callTool(t, session, "emcee_manage", map[string]any{"action": "backend_remove"})
 	if !result.IsError {
 		t.Fatal("expected error for missing name")
+	}
+}
+
+// --- pipeline action tests ---
+
+func TestEmceePipelineRuns(t *testing.T) {
+	session, svc := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "pipeline_runs", "backend": "jenkins", "query": "my-pipeline"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var runs []domain.PipelineRun
+	if err := json.Unmarshal([]byte(resultText(t, result)), &runs); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(runs) != 2 {
+		t.Errorf("got %d runs, want 2", len(runs))
+	}
+	if len(svc.StubPipelineService.ListPipelineRunsCalls) != 1 {
+		t.Fatalf("ListPipelineRunsCalls = %d, want 1", len(svc.StubPipelineService.ListPipelineRunsCalls))
+	}
+	got := svc.StubPipelineService.ListPipelineRunsCalls[0]
+	if got.JobName != "my-pipeline" {
+		t.Errorf("job = %q, want %q", got.JobName, "my-pipeline")
+	}
+}
+
+func TestEmceePipelineRunGet(t *testing.T) {
+	session, svc := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "pipeline_run_get", "backend": "jenkins", "query": "my-pipeline", "ref": "1"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var run domain.PipelineRun
+	if err := json.Unmarshal([]byte(resultText(t, result)), &run); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if run.ID != "1" {
+		t.Errorf("id = %q, want %q", run.ID, "1")
+	}
+	if len(run.Stages) != 1 {
+		t.Errorf("got %d stages, want 1", len(run.Stages))
+	}
+	if len(svc.StubPipelineService.GetPipelineRunCalls) != 1 {
+		t.Fatalf("GetPipelineRunCalls = %d, want 1", len(svc.StubPipelineService.GetPipelineRunCalls))
+	}
+}
+
+func TestEmceePipelineInputs(t *testing.T) {
+	session, svc := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "pipeline_inputs", "backend": "jenkins", "query": "my-pipeline", "ref": "1"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var inputs []domain.PipelineInput
+	if err := json.Unmarshal([]byte(resultText(t, result)), &inputs); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(inputs) != 1 {
+		t.Errorf("got %d inputs, want 1", len(inputs))
+	}
+	if inputs[0].Message != "Proceed to deploy?" {
+		t.Errorf("message = %q, want %q", inputs[0].Message, "Proceed to deploy?")
+	}
+	if len(svc.StubPipelineService.GetPendingInputsCalls) != 1 {
+		t.Fatalf("GetPendingInputsCalls = %d, want 1", len(svc.StubPipelineService.GetPendingInputsCalls))
+	}
+}
+
+func TestEmceePipelineInputApprove(t *testing.T) {
+	session, svc := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "pipeline_input_approve", "backend": "jenkins", "query": "my-pipeline", "ref": "1"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	if len(svc.StubPipelineService.ApproveInputCalls) != 1 {
+		t.Fatalf("ApproveInputCalls = %d, want 1", len(svc.StubPipelineService.ApproveInputCalls))
+	}
+	got := svc.StubPipelineService.ApproveInputCalls[0]
+	if got.JobName != "my-pipeline" || got.RunID != "1" {
+		t.Errorf("got %+v, want job=my-pipeline run_id=1", got)
+	}
+}
+
+func TestEmceePipelineInputAbort(t *testing.T) {
+	session, svc := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "pipeline_input_abort", "backend": "jenkins", "query": "my-pipeline", "ref": "1"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	if len(svc.StubPipelineService.AbortInputCalls) != 1 {
+		t.Fatalf("AbortInputCalls = %d, want 1", len(svc.StubPipelineService.AbortInputCalls))
+	}
+	got := svc.StubPipelineService.AbortInputCalls[0]
+	if got.JobName != "my-pipeline" || got.RunID != "1" {
+		t.Errorf("got %+v, want job=my-pipeline run_id=1", got)
 	}
 }
 

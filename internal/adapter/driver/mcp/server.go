@@ -50,6 +50,7 @@ type EmceeService interface {
 	driver.StageService
 	driver.LaunchService
 	driver.BuildService
+	driver.PipelineService
 	driver.BackendManager
 	driver.FieldService
 	driver.JQLService
@@ -110,6 +111,13 @@ Jenkins CI:
   job_upstream — backend=jenkins, query (job name) → upstream dependencies
   job_downstream — backend=jenkins, query (job name) → downstream dependencies
 
+Jenkins Pipelines:
+  pipeline_runs — backend=jenkins, query (job name) → list pipeline runs
+  pipeline_run_get — backend=jenkins, query (job name), ref (run ID) → get pipeline run details
+  pipeline_inputs — backend=jenkins, query (job name), ref (run ID) → list pending input actions
+  pipeline_input_approve — backend=jenkins, query (job name), ref (run ID) → approve pending input
+  pipeline_input_abort — backend=jenkins, query (job name), ref (run ID) → abort pending input
+
 Pull Requests / Merge Requests:
   prs         — backend, [author, status, merged_after (YYYY-MM-DD), merged_before (YYYY-MM-DD), repo (override: owner/repo or namespace/project), limit]
 
@@ -149,7 +157,7 @@ func RegisterTools(srv *mcpserver.Server, svc EmceeService) {
 	srv.ToolWithSchema(
 		server.ToolMeta{
 			Name:        "emcee",
-			Description: "Issue management across all backends. Actions: list, get, create, update, search, children, bulk_create, bulk_update, comments, comment_add, stage, stage_list, stage_show, stage_patch, stage_drop, push, push_all, launches, launch_get, test_items, test_item_get, defect_update, jobs, job_get, build_trigger, build_get, build_log, test_results, queue, fields, jql, prs.",
+			Description: "Issue management across all backends. Actions: list, get, create, update, search, children, bulk_create, bulk_update, comments, comment_add, stage, stage_list, stage_show, stage_patch, stage_drop, push, push_all, launches, launch_get, test_items, test_item_get, defect_update, jobs, job_get, build_trigger, build_get, build_log, test_results, queue, pipeline_runs, pipeline_run_get, pipeline_inputs, pipeline_input_approve, pipeline_input_abort, fields, jql, prs.",
 			Keywords:    []string{"issue", "ticket", "bug", "task", "comment", "stage", "push", "linear", "github", "jira", "gitlab"},
 			Categories:  []string{"issue-management"},
 		},
@@ -182,7 +190,7 @@ func RegisterTools(srv *mcpserver.Server, svc EmceeService) {
 var emceeSchema = json.RawMessage(`{
 	"type": "object",
 	"properties": {
-		"action":      {"type": "string", "enum": ["list","get","create","update","search","children","bulk_create","bulk_update","comments","comment_add","stage","stage_list","stage_show","stage_patch","stage_drop","push","push_all","launches","launch_get","test_items","test_item_get","defect_update","jobs","job_get","build_trigger","build_get","build_log","test_results","queue","builds","build_last","build_last_failed","build_last_successful","build_stop","job_params","folder_jobs","job_upstream","job_downstream","fields","jql","prs"], "description": "Action to perform"},
+		"action":      {"type": "string", "enum": ["list","get","create","update","search","children","bulk_create","bulk_update","comments","comment_add","stage","stage_list","stage_show","stage_patch","stage_drop","push","push_all","launches","launch_get","test_items","test_item_get","defect_update","jobs","job_get","build_trigger","build_get","build_log","test_results","queue","builds","build_last","build_last_failed","build_last_successful","build_stop","job_params","folder_jobs","job_upstream","job_downstream","pipeline_runs","pipeline_run_get","pipeline_inputs","pipeline_input_approve","pipeline_input_abort","fields","jql","prs"], "description": "Action to perform"},
 		"backend":     {"type": "string", "description": "Backend name (required for list/create/search)"},
 		"ref":         {"type": "string", "description": "Issue ref for get/update/children (e.g. linear:PROJ-42)"},
 		"title":       {"type": "string", "description": "Issue title (create)"},
@@ -796,6 +804,68 @@ func emceeHandler(svc EmceeService) server.Handler {
 				return "", err
 			}
 			return server.JSONResult(items)
+
+		// --- Pipeline actions ---
+
+		case "pipeline_runs":
+			if args.Query == "" {
+				return "", errQueryRequired
+			}
+			runs, err := svc.ListPipelineRuns(ctx, args.Backend, args.Query)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(runs)
+
+		case "pipeline_run_get":
+			if args.Query == "" {
+				return "", errQueryRequired
+			}
+			if args.Ref == "" {
+				return "", errRefRequired
+			}
+			run, err := svc.GetPipelineRun(ctx, args.Backend, args.Query, args.Ref)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(run)
+
+		case "pipeline_inputs":
+			if args.Query == "" {
+				return "", errQueryRequired
+			}
+			if args.Ref == "" {
+				return "", errRefRequired
+			}
+			inputs, err := svc.GetPendingInputs(ctx, args.Backend, args.Query, args.Ref)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(inputs)
+
+		case "pipeline_input_approve":
+			if args.Query == "" {
+				return "", errQueryRequired
+			}
+			if args.Ref == "" {
+				return "", errRefRequired
+			}
+			if err := svc.ApproveInput(ctx, args.Backend, args.Query, args.Ref); err != nil {
+				return "", err
+			}
+			return server.JSONResult(map[string]any{"approved": true, "job": args.Query, "run_id": args.Ref})
+
+		case "pipeline_input_abort":
+			if args.Query == "" {
+				return "", errQueryRequired
+			}
+			if args.Ref == "" {
+				return "", errRefRequired
+			}
+			if err := svc.AbortInput(ctx, args.Backend, args.Query, args.Ref); err != nil {
+				return "", err
+			}
+			return server.JSONResult(map[string]any{"aborted": true, "job": args.Query, "run_id": args.Ref})
 
 		// --- Field discovery + JQL ---
 

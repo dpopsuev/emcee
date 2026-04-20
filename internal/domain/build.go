@@ -78,6 +78,32 @@ type BuildSummary struct {
 	URL    string `json:"url"`
 }
 
+// PipelineRun represents a single execution of a Jenkins pipeline job.
+type PipelineRun struct {
+	ID        string          `json:"id"`
+	Name      string          `json:"name"`
+	Status    string          `json:"status"`
+	StartTime time.Time       `json:"start_time"`
+	EndTime   time.Time       `json:"end_time,omitempty"`
+	Duration  int64           `json:"duration_ms"`
+	Stages    []PipelineStage `json:"stages,omitempty"`
+}
+
+// PipelineStage represents a stage within a pipeline run.
+type PipelineStage struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	Status    string    `json:"status"`
+	StartTime time.Time `json:"start_time"`
+	Duration  int64     `json:"duration_ms"`
+}
+
+// PipelineInput represents a pending input action in a pipeline.
+type PipelineInput struct {
+	ID      string `json:"id"`
+	Message string `json:"message"`
+}
+
 // JobFilter controls which jobs to list.
 type JobFilter struct {
 	Limit int `json:"limit,omitempty"`
