@@ -27,8 +27,10 @@ const (
 
 // Log message constants for sloglint compliance.
 const (
-	logMsgOp    = "op"
-	logMsgWrite = "write"
+	logMsgOp     = "op"
+	logMsgOpDone = "op.done"
+	logMsgWrite  = "write"
+	logMsgError  = "op.error"
 )
 
 // LogOp logs a debug-level operation start.
@@ -47,6 +49,25 @@ func LogWrite(ctx context.Context, backend, op string, attrs ...slog.Attr) {
 		slog.String(LogKeyOperation, op),
 	}, attrs...)
 	slog.LogAttrs(ctx, slog.LevelInfo, logMsgWrite, attrs...)
+}
+
+// LogError logs a warning-level adapter error (for adapters using client libraries, not raw HTTP).
+func LogError(ctx context.Context, backend, op string, err error, attrs ...slog.Attr) {
+	attrs = append([]slog.Attr{
+		slog.String(LogKeyBackend, backend),
+		slog.String(LogKeyOperation, op),
+		slog.String(LogKeyError, err.Error()),
+	}, attrs...)
+	slog.LogAttrs(ctx, slog.LevelWarn, logMsgError, attrs...)
+}
+
+// LogOpDone logs a debug-level operation completion with duration.
+func LogOpDone(ctx context.Context, backend, op string, attrs ...slog.Attr) {
+	attrs = append([]slog.Attr{
+		slog.String(LogKeyBackend, backend),
+		slog.String(LogKeyOperation, op),
+	}, attrs...)
+	slog.LogAttrs(ctx, slog.LevelDebug, logMsgOpDone, attrs...)
 }
 
 // LogAPIError logs a warning-level API error with status code and message.

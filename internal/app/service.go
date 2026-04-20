@@ -650,6 +650,38 @@ func (s *Service) GetQueue(ctx context.Context, backend string) ([]domain.QueueI
 	return r.GetQueue(ctx)
 }
 
+func (s *Service) ListBuilds(ctx context.Context, backend, jobName string, limit int) ([]domain.BuildSummary, error) {
+	r, ok := s.buildRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "builds")
+	}
+	return r.ListBuilds(ctx, jobName, limit)
+}
+
+func (s *Service) GetLastBuild(ctx context.Context, backend, jobName string) (*domain.Build, error) {
+	r, ok := s.buildRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "builds")
+	}
+	return r.GetLastBuild(ctx, jobName)
+}
+
+func (s *Service) GetLastSuccessfulBuild(ctx context.Context, backend, jobName string) (*domain.Build, error) {
+	r, ok := s.buildRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "builds")
+	}
+	return r.GetLastSuccessfulBuild(ctx, jobName)
+}
+
+func (s *Service) GetLastFailedBuild(ctx context.Context, backend, jobName string) (*domain.Build, error) {
+	r, ok := s.buildRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "builds")
+	}
+	return r.GetLastFailedBuild(ctx, jobName)
+}
+
 // --- Stage operations ---
 
 func (s *Service) StageItem(backend string, input domain.CreateInput, reason string) string {

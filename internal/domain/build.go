@@ -64,6 +64,12 @@ type QueueItem struct {
 	TaskName  string `json:"task_name"`
 }
 
+// BuildSummary is a lightweight build reference (number + URL).
+type BuildSummary struct {
+	Number int64  `json:"number"`
+	URL    string `json:"url"`
+}
+
 // JobFilter controls which jobs to list.
 type JobFilter struct {
 	Limit int `json:"limit,omitempty"`

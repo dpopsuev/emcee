@@ -86,6 +86,10 @@ type BuildRepository interface {
 	GetBuildLog(ctx context.Context, jobName string, number int64) (string, error)
 	GetTestResults(ctx context.Context, jobName string, number int64) (*domain.TestResult, error)
 	GetQueue(ctx context.Context) ([]domain.QueueItem, error)
+	ListBuilds(ctx context.Context, jobName string, limit int) ([]domain.BuildSummary, error)
+	GetLastBuild(ctx context.Context, jobName string) (*domain.Build, error)
+	GetLastSuccessfulBuild(ctx context.Context, jobName string) (*domain.Build, error)
+	GetLastFailedBuild(ctx context.Context, jobName string) (*domain.Build, error)
 }
 
 // FieldRepository is the outbound port for field metadata discovery.

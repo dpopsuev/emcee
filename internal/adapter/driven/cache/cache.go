@@ -564,3 +564,31 @@ func (r *Repository) GetQueue(ctx context.Context) ([]domain.QueueItem, error) {
 	}
 	return r.builds.GetQueue(ctx)
 }
+
+func (r *Repository) ListBuilds(ctx context.Context, jobName string, limit int) ([]domain.BuildSummary, error) {
+	if r.builds == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.builds.ListBuilds(ctx, jobName, limit)
+}
+
+func (r *Repository) GetLastBuild(ctx context.Context, jobName string) (*domain.Build, error) {
+	if r.builds == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.builds.GetLastBuild(ctx, jobName)
+}
+
+func (r *Repository) GetLastSuccessfulBuild(ctx context.Context, jobName string) (*domain.Build, error) {
+	if r.builds == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.builds.GetLastSuccessfulBuild(ctx, jobName)
+}
+
+func (r *Repository) GetLastFailedBuild(ctx context.Context, jobName string) (*domain.Build, error) {
+	if r.builds == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.builds.GetLastFailedBuild(ctx, jobName)
+}

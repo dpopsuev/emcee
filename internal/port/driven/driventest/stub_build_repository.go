@@ -47,7 +47,11 @@ type StubBuildRepository struct {
 	BuildLog    string
 	TestResult  *domain.TestResult
 	QueueItems  []domain.QueueItem
-	Err         error
+	BuildSummaries []domain.BuildSummary
+	LastBuild      *domain.Build
+	LastSuccessful *domain.Build
+	LastFailed     *domain.Build
+	Err            error
 
 	mu                 sync.Mutex
 	ListJobsCalls      []ListJobsCall
@@ -56,7 +60,20 @@ type StubBuildRepository struct {
 	GetBuildCalls      []GetBuildCall
 	GetBuildLogCalls   []GetBuildLogCall
 	GetTestResultCalls []GetTestResultsCall
-	GetQueueCalls      int
+	GetQueueCalls           int
+	ListBuildsCalls         []ListBuildsCall
+	GetLastBuildCalls       []GetLastBuildCall
+	GetLastSuccessfulCalls  []GetLastBuildCall
+	GetLastFailedCalls      []GetLastBuildCall
+}
+
+type ListBuildsCall struct {
+	JobName string
+	Limit   int
+}
+
+type GetLastBuildCall struct {
+	JobName string
 }
 
 func (s *StubBuildRepository) Name() string { return s.NameVal }
@@ -108,4 +125,32 @@ func (s *StubBuildRepository) GetQueue(_ context.Context) ([]domain.QueueItem, e
 	defer s.mu.Unlock()
 	s.GetQueueCalls++
 	return s.QueueItems, s.Err
+}
+
+func (s *StubBuildRepository) ListBuilds(_ context.Context, jobName string, limit int) ([]domain.BuildSummary, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ListBuildsCalls = append(s.ListBuildsCalls, ListBuildsCall{JobName: jobName, Limit: limit})
+	return s.BuildSummaries, s.Err
+}
+
+func (s *StubBuildRepository) GetLastBuild(_ context.Context, jobName string) (*domain.Build, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.GetLastBuildCalls = append(s.GetLastBuildCalls, GetLastBuildCall{JobName: jobName})
+	return s.LastBuild, s.Err
+}
+
+func (s *StubBuildRepository) GetLastSuccessfulBuild(_ context.Context, jobName string) (*domain.Build, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.GetLastSuccessfulCalls = append(s.GetLastSuccessfulCalls, GetLastBuildCall{JobName: jobName})
+	return s.LastSuccessful, s.Err
+}
+
+func (s *StubBuildRepository) GetLastFailedBuild(_ context.Context, jobName string) (*domain.Build, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.GetLastFailedCalls = append(s.GetLastFailedCalls, GetLastBuildCall{JobName: jobName})
+	return s.LastFailed, s.Err
 }

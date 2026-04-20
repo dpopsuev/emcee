@@ -98,6 +98,13 @@ func newTestServer(t *testing.T) (*sdkmcp.ClientSession, *drivertest.StubEmceeSe
 	svc.StubBuildService.QueueItems = []domain.QueueItem{
 		{ID: 1, TaskName: "my-pipeline", Blocked: false, Buildable: true},
 	}
+	svc.StubBuildService.BuildSummaries = []domain.BuildSummary{
+		{Number: 99, URL: "https://jenkins.example.com/job/my-pipeline/99/"},
+		{Number: 98, URL: "https://jenkins.example.com/job/my-pipeline/98/"},
+	}
+	svc.StubBuildService.LastBuild = &domain.Build{Number: 99, Result: domain.BuildSuccess}
+	svc.StubBuildService.LastSuccessful = &domain.Build{Number: 97, Result: domain.BuildSuccess}
+	svc.StubBuildService.LastFailed = &domain.Build{Number: 96, Result: domain.BuildFailure}
 	svc.StubBackendManager.RemoveResult = true
 	svc.StubBackendManager.ReloadAdded = []string{"jenkins-ci"}
 	svc.StubBackendManager.ReloadRemoved = []string{"old-backend"}
@@ -681,6 +688,75 @@ func TestEmceeQueue(t *testing.T) {
 	}
 	if len(items) != 1 {
 		t.Errorf("got %d items, want 1", len(items))
+	}
+}
+
+// --- build history tests ---
+
+func TestEmceeBuilds(t *testing.T) {
+	session, svc := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "builds", "backend": "jenkins", "query": "my-pipeline", "limit": float64(10)})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var builds []domain.BuildSummary
+	if err := json.Unmarshal([]byte(resultText(t, result)), &builds); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(builds) != 2 {
+		t.Errorf("got %d builds, want 2", len(builds))
+	}
+	if len(svc.StubBuildService.ListBuildsCalls) != 1 {
+		t.Fatalf("ListBuildsCalls = %d, want 1", len(svc.StubBuildService.ListBuildsCalls))
+	}
+	got := svc.StubBuildService.ListBuildsCalls[0]
+	if got.JobName != "my-pipeline" {
+		t.Errorf("job = %q, want %q", got.JobName, "my-pipeline")
+	}
+}
+
+func TestEmceeBuildLast(t *testing.T) {
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "build_last", "backend": "jenkins", "query": "my-pipeline"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var build domain.Build
+	if err := json.Unmarshal([]byte(resultText(t, result)), &build); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if build.Number != 99 {
+		t.Errorf("number = %d, want 99", build.Number)
+	}
+}
+
+func TestEmceeBuildLastFailed(t *testing.T) {
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "build_last_failed", "backend": "jenkins", "query": "my-pipeline"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var build domain.Build
+	if err := json.Unmarshal([]byte(resultText(t, result)), &build); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if build.Result != domain.BuildFailure {
+		t.Errorf("result = %q, want %q", build.Result, domain.BuildFailure)
+	}
+}
+
+func TestEmceeBuildLastSuccessful(t *testing.T) {
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "build_last_successful", "backend": "jenkins", "query": "my-pipeline"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var build domain.Build
+	if err := json.Unmarshal([]byte(resultText(t, result)), &build); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if build.Result != domain.BuildSuccess {
+		t.Errorf("result = %q, want %q", build.Result, domain.BuildSuccess)
 	}
 }
 

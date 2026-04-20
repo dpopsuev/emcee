@@ -55,8 +55,12 @@ type StubBuildService struct {
 	Build       *domain.Build
 	BuildLog    string
 	TestResult  *domain.TestResult
-	QueueItems  []domain.QueueItem
-	Err         error
+	QueueItems     []domain.QueueItem
+	BuildSummaries []domain.BuildSummary
+	LastBuild      *domain.Build
+	LastSuccessful *domain.Build
+	LastFailed     *domain.Build
+	Err            error
 
 	mu                  sync.Mutex
 	ListJobsCalls       []JobListCall
@@ -65,7 +69,22 @@ type StubBuildService struct {
 	GetBuildCalls       []BuildGetCall
 	GetBuildLogCalls    []BuildLogCall
 	GetTestResultsCalls []BuildTestResultsCall
-	GetQueueCalls       []QueueGetCall
+	GetQueueCalls          []QueueGetCall
+	ListBuildsCalls        []BuildListCall
+	GetLastBuildCalls      []BuildLastCall
+	GetLastSuccessfulCalls []BuildLastCall
+	GetLastFailedCalls     []BuildLastCall
+}
+
+type BuildListCall struct {
+	Backend string
+	JobName string
+	Limit   int
+}
+
+type BuildLastCall struct {
+	Backend string
+	JobName string
 }
 
 func (s *StubBuildService) ListJobs(_ context.Context, backend string, filter domain.JobFilter) ([]domain.Job, error) {
@@ -115,4 +134,32 @@ func (s *StubBuildService) GetQueue(_ context.Context, backend string) ([]domain
 	defer s.mu.Unlock()
 	s.GetQueueCalls = append(s.GetQueueCalls, QueueGetCall{Backend: backend})
 	return s.QueueItems, s.Err
+}
+
+func (s *StubBuildService) ListBuilds(_ context.Context, backend, jobName string, limit int) ([]domain.BuildSummary, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ListBuildsCalls = append(s.ListBuildsCalls, BuildListCall{Backend: backend, JobName: jobName, Limit: limit})
+	return s.BuildSummaries, s.Err
+}
+
+func (s *StubBuildService) GetLastBuild(_ context.Context, backend, jobName string) (*domain.Build, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.GetLastBuildCalls = append(s.GetLastBuildCalls, BuildLastCall{Backend: backend, JobName: jobName})
+	return s.LastBuild, s.Err
+}
+
+func (s *StubBuildService) GetLastSuccessfulBuild(_ context.Context, backend, jobName string) (*domain.Build, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.GetLastSuccessfulCalls = append(s.GetLastSuccessfulCalls, BuildLastCall{Backend: backend, JobName: jobName})
+	return s.LastSuccessful, s.Err
+}
+
+func (s *StubBuildService) GetLastFailedBuild(_ context.Context, backend, jobName string) (*domain.Build, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.GetLastFailedCalls = append(s.GetLastFailedCalls, BuildLastCall{Backend: backend, JobName: jobName})
+	return s.LastFailed, s.Err
 }
