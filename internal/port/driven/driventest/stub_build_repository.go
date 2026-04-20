@@ -51,6 +51,7 @@ type StubBuildRepository struct {
 	LastBuild      *domain.Build
 	LastSuccessful *domain.Build
 	LastFailed     *domain.Build
+	JobParameters  []domain.JobParameter
 	Err            error
 
 	mu                 sync.Mutex
@@ -65,6 +66,17 @@ type StubBuildRepository struct {
 	GetLastBuildCalls       []GetLastBuildCall
 	GetLastSuccessfulCalls  []GetLastBuildCall
 	GetLastFailedCalls      []GetLastBuildCall
+	StopBuildCalls          []StopBuildCall
+	GetJobParametersCalls   []GetJobParamsCall
+}
+
+type StopBuildCall struct {
+	JobName string
+	Number  int64
+}
+
+type GetJobParamsCall struct {
+	JobName string
 }
 
 type ListBuildsCall struct {
@@ -153,4 +165,18 @@ func (s *StubBuildRepository) GetLastFailedBuild(_ context.Context, jobName stri
 	defer s.mu.Unlock()
 	s.GetLastFailedCalls = append(s.GetLastFailedCalls, GetLastBuildCall{JobName: jobName})
 	return s.LastFailed, s.Err
+}
+
+func (s *StubBuildRepository) StopBuild(_ context.Context, jobName string, number int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.StopBuildCalls = append(s.StopBuildCalls, StopBuildCall{JobName: jobName, Number: number})
+	return s.Err
+}
+
+func (s *StubBuildRepository) GetJobParameters(_ context.Context, jobName string) ([]domain.JobParameter, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.GetJobParametersCalls = append(s.GetJobParametersCalls, GetJobParamsCall{JobName: jobName})
+	return s.JobParameters, s.Err
 }

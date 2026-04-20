@@ -325,3 +325,47 @@ func (r *Repository) GetLastFailedBuild(ctx context.Context, jobName string) (*d
 	}
 	return r.getLastBuildByType(ctx, jobName, "get_last_failed_build", "last failed", j.GetLastFailedBuild)
 }
+
+// --- Build control ---
+
+func (r *Repository) StopBuild(ctx context.Context, jobName string, number int64) error {
+	start := time.Now()
+	adapterdriven.LogWrite(ctx, BackendName, "stop_build", slog.String(adapterdriven.LogKeyID, jobName), slog.Int64("number", number))
+	b, err := r.getBuild(ctx, jobName, number)
+	if err != nil {
+		r.logErr(ctx, "stop_build", err)
+		return err
+	}
+	if _, err := b.Stop(ctx); err != nil {
+		r.logErr(ctx, "stop_build", err)
+		return err
+	}
+	adapterdriven.LogOpDone(ctx, BackendName, "stop_build", slog.Duration(adapterdriven.LogKeyElapsed, time.Since(start)))
+	return nil
+}
+
+func (r *Repository) GetJobParameters(ctx context.Context, jobName string) ([]domain.JobParameter, error) {
+	start := time.Now()
+	adapterdriven.LogOp(ctx, BackendName, "get_job_params", slog.String(adapterdriven.LogKeyID, jobName))
+	j, err := r.getJob(ctx, jobName)
+	if err != nil {
+		r.logErr(ctx, "get_job_params", err)
+		return nil, err
+	}
+	defs, err := j.GetParameters(ctx)
+	if err != nil {
+		r.logErr(ctx, "get_job_params", err)
+		return nil, err
+	}
+	params := make([]domain.JobParameter, 0, len(defs))
+	for i := range defs {
+		params = append(params, domain.JobParameter{
+			Name:         defs[i].Name,
+			Type:         defs[i].Type,
+			DefaultValue: fmt.Sprintf("%v", defs[i].DefaultParameterValue.Value),
+			Description:  defs[i].Description,
+		})
+	}
+	adapterdriven.LogOpDone(ctx, BackendName, "get_job_params", slog.Duration(adapterdriven.LogKeyElapsed, time.Since(start)), slog.Int(adapterdriven.LogKeyCount, len(params)))
+	return params, nil
+}

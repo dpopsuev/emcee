@@ -682,6 +682,22 @@ func (s *Service) GetLastFailedBuild(ctx context.Context, backend, jobName strin
 	return r.GetLastFailedBuild(ctx, jobName)
 }
 
+func (s *Service) StopBuild(ctx context.Context, backend, jobName string, number int64) error {
+	r, ok := s.buildRepos[backend]
+	if !ok {
+		return s.notSupportedErr(backend, "builds")
+	}
+	return r.StopBuild(ctx, jobName, number)
+}
+
+func (s *Service) GetJobParameters(ctx context.Context, backend, jobName string) ([]domain.JobParameter, error) {
+	r, ok := s.buildRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "builds")
+	}
+	return r.GetJobParameters(ctx, jobName)
+}
+
 // --- Stage operations ---
 
 func (s *Service) StageItem(backend string, input domain.CreateInput, reason string) string {

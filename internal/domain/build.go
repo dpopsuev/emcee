@@ -64,6 +64,14 @@ type QueueItem struct {
 	TaskName  string `json:"task_name"`
 }
 
+// JobParameter describes a build parameter definition on a Jenkins job.
+type JobParameter struct {
+	Name         string `json:"name"`
+	Type         string `json:"type"`
+	DefaultValue string `json:"default_value,omitempty"`
+	Description  string `json:"description,omitempty"`
+}
+
 // BuildSummary is a lightweight build reference (number + URL).
 type BuildSummary struct {
 	Number int64  `json:"number"`

@@ -104,6 +104,8 @@ Jenkins CI:
   build_last   — backend=jenkins, query (job name)
   build_last_failed — backend=jenkins, query (job name)
   build_last_successful — backend=jenkins, query (job name)
+  build_stop   — backend=jenkins, query (job name), ref (build number)
+  job_params   — backend=jenkins, query (job name) → list parameter definitions
 
 Pull Requests / Merge Requests:
   prs         — backend, [author, status, merged_after (YYYY-MM-DD), merged_before (YYYY-MM-DD), repo (override: owner/repo or namespace/project), limit]
@@ -177,7 +179,7 @@ func RegisterTools(srv *mcpserver.Server, svc EmceeService) {
 var emceeSchema = json.RawMessage(`{
 	"type": "object",
 	"properties": {
-		"action":      {"type": "string", "enum": ["list","get","create","update","search","children","bulk_create","bulk_update","comments","comment_add","stage","stage_list","stage_show","stage_patch","stage_drop","push","push_all","launches","launch_get","test_items","test_item_get","defect_update","jobs","job_get","build_trigger","build_get","build_log","test_results","queue","builds","build_last","build_last_failed","build_last_successful","fields","jql","prs"], "description": "Action to perform"},
+		"action":      {"type": "string", "enum": ["list","get","create","update","search","children","bulk_create","bulk_update","comments","comment_add","stage","stage_list","stage_show","stage_patch","stage_drop","push","push_all","launches","launch_get","test_items","test_item_get","defect_update","jobs","job_get","build_trigger","build_get","build_log","test_results","queue","builds","build_last","build_last_failed","build_last_successful","build_stop","job_params","fields","jql","prs"], "description": "Action to perform"},
 		"backend":     {"type": "string", "description": "Backend name (required for list/create/search)"},
 		"ref":         {"type": "string", "description": "Issue ref for get/update/children (e.g. linear:PROJ-42)"},
 		"title":       {"type": "string", "description": "Issue title (create)"},
@@ -728,6 +730,32 @@ func emceeHandler(svc EmceeService) server.Handler {
 				return "", err
 			}
 			return server.JSONResult(build)
+
+		case "build_stop":
+			if args.Query == "" {
+				return "", errQueryRequired
+			}
+			if args.Ref == "" {
+				return "", errRefRequired
+			}
+			number, err := strconv.ParseInt(args.Ref, 10, 64)
+			if err != nil {
+				return "", fmt.Errorf("invalid build number %q: %w", args.Ref, err)
+			}
+			if err := svc.StopBuild(ctx, args.Backend, args.Query, number); err != nil {
+				return "", err
+			}
+			return server.JSONResult(map[string]any{"stopped": true, "job": args.Query, "number": number})
+
+		case "job_params":
+			if args.Query == "" {
+				return "", errQueryRequired
+			}
+			params, err := svc.GetJobParameters(ctx, args.Backend, args.Query)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(params)
 
 		case "queue":
 			items, err := svc.GetQueue(ctx, args.Backend)

@@ -105,6 +105,9 @@ func newTestServer(t *testing.T) (*sdkmcp.ClientSession, *drivertest.StubEmceeSe
 	svc.StubBuildService.LastBuild = &domain.Build{Number: 99, Result: domain.BuildSuccess}
 	svc.StubBuildService.LastSuccessful = &domain.Build{Number: 97, Result: domain.BuildSuccess}
 	svc.StubBuildService.LastFailed = &domain.Build{Number: 96, Result: domain.BuildFailure}
+	svc.StubBuildService.JobParameters = []domain.JobParameter{
+		{Name: "BRANCH", Type: "StringParameterDefinition", DefaultValue: "main", Description: "Branch to build"},
+	}
 	svc.StubBackendManager.RemoveResult = true
 	svc.StubBackendManager.ReloadAdded = []string{"jenkins-ci"}
 	svc.StubBackendManager.ReloadRemoved = []string{"old-backend"}
@@ -757,6 +760,41 @@ func TestEmceeBuildLastSuccessful(t *testing.T) {
 	}
 	if build.Result != domain.BuildSuccess {
 		t.Errorf("result = %q, want %q", build.Result, domain.BuildSuccess)
+	}
+}
+
+// --- build control tests ---
+
+func TestEmceeBuildStop(t *testing.T) {
+	session, svc := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "build_stop", "backend": "jenkins", "query": "my-pipeline", "ref": "99"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	if len(svc.StubBuildService.StopBuildCalls) != 1 {
+		t.Fatalf("StopBuildCalls = %d, want 1", len(svc.StubBuildService.StopBuildCalls))
+	}
+	got := svc.StubBuildService.StopBuildCalls[0]
+	if got.JobName != "my-pipeline" || got.Number != 99 {
+		t.Errorf("got %+v, want job=my-pipeline number=99", got)
+	}
+}
+
+func TestEmceeJobParams(t *testing.T) {
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "job_params", "backend": "jenkins", "query": "my-pipeline"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var params []domain.JobParameter
+	if err := json.Unmarshal([]byte(resultText(t, result)), &params); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(params) != 1 {
+		t.Errorf("got %d params, want 1", len(params))
+	}
+	if params[0].Name != "BRANCH" {
+		t.Errorf("name = %q, want %q", params[0].Name, "BRANCH")
 	}
 }
 

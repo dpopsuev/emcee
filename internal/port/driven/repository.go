@@ -90,6 +90,8 @@ type BuildRepository interface {
 	GetLastBuild(ctx context.Context, jobName string) (*domain.Build, error)
 	GetLastSuccessfulBuild(ctx context.Context, jobName string) (*domain.Build, error)
 	GetLastFailedBuild(ctx context.Context, jobName string) (*domain.Build, error)
+	StopBuild(ctx context.Context, jobName string, number int64) error
+	GetJobParameters(ctx context.Context, jobName string) ([]domain.JobParameter, error)
 }
 
 // FieldRepository is the outbound port for field metadata discovery.

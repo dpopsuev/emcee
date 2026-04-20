@@ -592,3 +592,17 @@ func (r *Repository) GetLastFailedBuild(ctx context.Context, jobName string) (*d
 	}
 	return r.builds.GetLastFailedBuild(ctx, jobName)
 }
+
+func (r *Repository) StopBuild(ctx context.Context, jobName string, number int64) error {
+	if r.builds == nil {
+		return fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.builds.StopBuild(ctx, jobName, number)
+}
+
+func (r *Repository) GetJobParameters(ctx context.Context, jobName string) ([]domain.JobParameter, error) {
+	if r.builds == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.builds.GetJobParameters(ctx, jobName)
+}

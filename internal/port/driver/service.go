@@ -74,6 +74,8 @@ type BuildService interface {
 	GetLastBuild(ctx context.Context, backend, jobName string) (*domain.Build, error)
 	GetLastSuccessfulBuild(ctx context.Context, backend, jobName string) (*domain.Build, error)
 	GetLastFailedBuild(ctx context.Context, backend, jobName string) (*domain.Build, error)
+	StopBuild(ctx context.Context, backend, jobName string, number int64) error
+	GetJobParameters(ctx context.Context, backend, jobName string) ([]domain.JobParameter, error)
 }
 
 // FieldService is the inbound port for field metadata discovery.

@@ -60,6 +60,7 @@ type StubBuildService struct {
 	LastBuild      *domain.Build
 	LastSuccessful *domain.Build
 	LastFailed     *domain.Build
+	JobParameters  []domain.JobParameter
 	Err            error
 
 	mu                  sync.Mutex
@@ -74,6 +75,19 @@ type StubBuildService struct {
 	GetLastBuildCalls      []BuildLastCall
 	GetLastSuccessfulCalls []BuildLastCall
 	GetLastFailedCalls     []BuildLastCall
+	StopBuildCalls         []BuildStopCall
+	GetJobParametersCalls  []JobParamsCall
+}
+
+type BuildStopCall struct {
+	Backend string
+	JobName string
+	Number  int64
+}
+
+type JobParamsCall struct {
+	Backend string
+	JobName string
 }
 
 type BuildListCall struct {
@@ -162,4 +176,18 @@ func (s *StubBuildService) GetLastFailedBuild(_ context.Context, backend, jobNam
 	defer s.mu.Unlock()
 	s.GetLastFailedCalls = append(s.GetLastFailedCalls, BuildLastCall{Backend: backend, JobName: jobName})
 	return s.LastFailed, s.Err
+}
+
+func (s *StubBuildService) StopBuild(_ context.Context, backend, jobName string, number int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.StopBuildCalls = append(s.StopBuildCalls, BuildStopCall{Backend: backend, JobName: jobName, Number: number})
+	return s.Err
+}
+
+func (s *StubBuildService) GetJobParameters(_ context.Context, backend, jobName string) ([]domain.JobParameter, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.GetJobParametersCalls = append(s.GetJobParametersCalls, JobParamsCall{Backend: backend, JobName: jobName})
+	return s.JobParameters, s.Err
 }
