@@ -23,23 +23,30 @@ type LedgerSearchCall struct {
 	Limit int
 }
 
+type LedgerSimilarCall struct {
+	Ref   string
+	Limit int
+}
+
 type LedgerIngestCall struct {
 	Record domain.ArtifactRecord
 }
 
 type StubLedgerService struct {
-	Record        *domain.ArtifactRecord
-	Records       []domain.ArtifactRecord
-	SearchRecords []domain.ArtifactRecord
-	StatsResult   *domain.LedgerStats
-	Err           error
+	Record         *domain.ArtifactRecord
+	Records        []domain.ArtifactRecord
+	SearchRecords  []domain.ArtifactRecord
+	SimilarRecords []domain.ArtifactRecord
+	StatsResult    *domain.LedgerStats
+	Err            error
 
-	mu                sync.Mutex
-	LedgerGetCalls    []LedgerGetCall
-	LedgerListCalls   []LedgerListCall
-	LedgerSearchCalls []LedgerSearchCall
-	LedgerIngestCalls []LedgerIngestCall
-	LedgerStatsCalls  int
+	mu                 sync.Mutex
+	LedgerGetCalls     []LedgerGetCall
+	LedgerListCalls    []LedgerListCall
+	LedgerSearchCalls  []LedgerSearchCall
+	LedgerSimilarCalls []LedgerSimilarCall
+	LedgerIngestCalls  []LedgerIngestCall
+	LedgerStatsCalls   int
 }
 
 func (s *StubLedgerService) LedgerGet(_ context.Context, ref string) (*domain.ArtifactRecord, error) {
@@ -61,6 +68,13 @@ func (s *StubLedgerService) LedgerSearch(_ context.Context, query string, limit 
 	defer s.mu.Unlock()
 	s.LedgerSearchCalls = append(s.LedgerSearchCalls, LedgerSearchCall{Query: query, Limit: limit})
 	return s.SearchRecords, s.Err
+}
+
+func (s *StubLedgerService) LedgerSimilar(_ context.Context, ref string, limit int) ([]domain.ArtifactRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.LedgerSimilarCalls = append(s.LedgerSimilarCalls, LedgerSimilarCall{Ref: ref, Limit: limit})
+	return s.SimilarRecords, s.Err
 }
 
 func (s *StubLedgerService) LedgerIngest(_ context.Context, record domain.ArtifactRecord) error {

@@ -150,6 +150,35 @@ func (l *Ledger) Search(ctx context.Context, query string, limit int) ([]domain.
 	return scanRecords(rows)
 }
 
+// Similar finds artifacts similar to the given ref using FTS5 BM25 ranking.
+// It extracts key terms from the seed artifact's title and text, then searches.
+func (l *Ledger) Similar(ctx context.Context, ref string, limit int) ([]domain.ArtifactRecord, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+	seed, err := l.Get(ctx, ref)
+	if err != nil {
+		return nil, err
+	}
+	terms := extractTerms(seed.Title + " " + seed.Text)
+	if terms == "" {
+		return nil, nil
+	}
+	rows, err := l.db.QueryContext(ctx, `
+		SELECT a.ref, a.backend, a.type, a.title, a.url, a.status,
+		       a.labels, a.components, a.text, a.seen_at, a.updated_at
+		FROM artifacts_fts f
+		JOIN artifacts a ON a.ref = f.ref
+		WHERE artifacts_fts MATCH ? AND a.ref != ?
+		ORDER BY rank
+		LIMIT ?`, terms, ref, limit)
+	if err != nil {
+		return nil, fmt.Errorf("sqlite ledger similar: %w", err)
+	}
+	defer rows.Close()
+	return scanRecords(rows)
+}
+
 // Stats returns aggregate counts.
 func (l *Ledger) Stats(ctx context.Context) (*domain.LedgerStats, error) {
 	rows, err := l.db.QueryContext(ctx, `SELECT backend, COUNT(*) FROM artifacts GROUP BY backend`)
@@ -254,4 +283,45 @@ func scanRecords(rows *sql.Rows) ([]domain.ArtifactRecord, error) {
 		results = append(results, *r)
 	}
 	return results, rows.Err()
+}
+
+// stopWords are common English words filtered out for similarity queries.
+var stopWords = map[string]bool{
+	"the": true, "a": true, "an": true, "is": true, "are": true, "was": true,
+	"were": true, "be": true, "been": true, "being": true, "have": true,
+	"has": true, "had": true, "do": true, "does": true, "did": true,
+	"will": true, "would": true, "could": true, "should": true, "may": true,
+	"might": true, "shall": true, "can": true, "need": true, "to": true,
+	"of": true, "in": true, "for": true, "on": true, "with": true, "at": true,
+	"by": true, "from": true, "as": true, "into": true, "through": true,
+	"and": true, "but": true, "or": true, "nor": true, "not": true, "so": true,
+	"it": true, "its": true, "this": true, "that": true, "these": true,
+	"those": true, "i": true, "we": true, "you": true, "he": true, "she": true,
+	"they": true, "me": true, "him": true, "her": true, "us": true, "them": true,
+	"my": true, "our": true, "your": true, "his": true, "their": true,
+	"when": true, "where": true, "how": true, "what": true, "which": true,
+	"who": true, "whom": true, "if": true, "then": true, "than": true,
+}
+
+// extractTerms pulls significant words from text for FTS5 OR queries.
+func extractTerms(text string) string {
+	words := strings.Fields(strings.ToLower(text))
+	seen := make(map[string]bool, len(words))
+	terms := make([]string, 0, len(words))
+	for _, w := range words {
+		// Strip non-alphanumeric edges
+		w = strings.Trim(w, ".,;:!?\"'()[]{}#@")
+		if len(w) < 3 || stopWords[w] || seen[w] {
+			continue
+		}
+		seen[w] = true
+		terms = append(terms, w)
+		if len(terms) >= 20 {
+			break
+		}
+	}
+	if len(terms) == 0 {
+		return ""
+	}
+	return strings.Join(terms, " OR ")
 }

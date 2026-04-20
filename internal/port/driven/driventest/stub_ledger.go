@@ -27,19 +27,26 @@ type LedgerSearchCall struct {
 	Limit int
 }
 
-type StubLedger struct {
-	Record        *domain.ArtifactRecord
-	Records       []domain.ArtifactRecord
-	SearchRecords []domain.ArtifactRecord
-	StatsResult   *domain.LedgerStats
-	Err           error
+type LedgerSimilarCall struct {
+	Ref   string
+	Limit int
+}
 
-	mu          sync.Mutex
-	PutCalls    []LedgerPutCall
-	GetCalls    []LedgerGetCall
-	ListCalls   []LedgerListCall
-	SearchCalls []LedgerSearchCall
-	StatsCalls  int
+type StubLedger struct {
+	Record         *domain.ArtifactRecord
+	Records        []domain.ArtifactRecord
+	SearchRecords  []domain.ArtifactRecord
+	SimilarRecords []domain.ArtifactRecord
+	StatsResult    *domain.LedgerStats
+	Err            error
+
+	mu           sync.Mutex
+	PutCalls     []LedgerPutCall
+	GetCalls     []LedgerGetCall
+	ListCalls    []LedgerListCall
+	SearchCalls  []LedgerSearchCall
+	SimilarCalls []LedgerSimilarCall
+	StatsCalls   int
 }
 
 func (s *StubLedger) Put(_ context.Context, record domain.ArtifactRecord) error {
@@ -68,6 +75,13 @@ func (s *StubLedger) Search(_ context.Context, query string, limit int) ([]domai
 	defer s.mu.Unlock()
 	s.SearchCalls = append(s.SearchCalls, LedgerSearchCall{Query: query, Limit: limit})
 	return s.SearchRecords, s.Err
+}
+
+func (s *StubLedger) Similar(_ context.Context, ref string, limit int) ([]domain.ArtifactRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.SimilarCalls = append(s.SimilarCalls, LedgerSimilarCall{Ref: ref, Limit: limit})
+	return s.SimilarRecords, s.Err
 }
 
 func (s *StubLedger) Stats(_ context.Context) (*domain.LedgerStats, error) {

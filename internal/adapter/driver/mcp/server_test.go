@@ -146,6 +146,26 @@ func newTestServer(t *testing.T) (*sdkmcp.ClientSession, *drivertest.StubEmceeSe
 	svc.StubPipelineService.PipelineInputs = []domain.PipelineInput{
 		{ID: "input-1", Message: "Proceed to deploy?"},
 	}
+	svc.StubCIService.Pipelines = []domain.CIPipeline{
+		{ID: 500, Status: "success", Ref: "main"},
+		{ID: 501, Status: "failed", Ref: "feat"},
+	}
+	svc.StubCIService.Pipeline = &domain.CIPipeline{ID: 500, Status: "success", Ref: "main"}
+	svc.StubCIService.PipelineJobs = []domain.CIJob{
+		{ID: 600, PipelineID: 500, Name: "build", Stage: "build", Status: "success"},
+		{ID: 601, PipelineID: 500, Name: "test", Stage: "test", Status: "success"},
+	}
+	svc.StubCIService.JobLogText = "Job succeeded\nAll tests passed"
+	svc.StubActionsService.WorkflowRuns = []domain.WorkflowRun{
+		{ID: 100, Name: "CI", Status: "completed", Conclusion: "success", Branch: "main"},
+		{ID: 101, Name: "CI", Status: "completed", Conclusion: "failure", Branch: "feat"},
+	}
+	svc.StubActionsService.WorkflowRun = &domain.WorkflowRun{ID: 100, Name: "CI", Status: "completed", Conclusion: "success"}
+	svc.StubActionsService.RunJobs = []domain.WorkflowJob{
+		{ID: 200, RunID: 100, Name: "build", Status: "completed", Conclusion: "success"},
+		{ID: 201, RunID: 100, Name: "test", Status: "completed", Conclusion: "success"},
+	}
+	svc.StubActionsService.RunLogs = "Build succeeded\nAll tests passed"
 	svc.StubTriageService.Config = driver.TriageConfig{
 		RateLimit: 5,
 		AllowList: []string{"jira", "jenkins-ci"},
@@ -168,6 +188,9 @@ func newTestServer(t *testing.T) (*sdkmcp.ClientSession, *drivertest.StubEmceeSe
 	}
 	svc.StubLedgerService.SearchRecords = []domain.ArtifactRecord{
 		{Ref: "jira:BUG-1", Backend: "jira", Type: "issue", Title: "Bug One", Status: "open"},
+	}
+	svc.StubLedgerService.SimilarRecords = []domain.ArtifactRecord{
+		{Ref: "github:org/repo#1", Backend: "github", Type: "issue", Title: "Fix stuff", Status: "closed"},
 	}
 	svc.StubLedgerService.StatsResult = &domain.LedgerStats{
 		Total:     2,
@@ -1456,5 +1479,176 @@ func TestEmceeLedgerIngestMissingRef(t *testing.T) {
 	result := callTool(t, session, "emcee", map[string]any{"action": "ledger_ingest", "title": "No ref"})
 	if !result.IsError {
 		t.Fatal("expected error for missing ref")
+	}
+}
+
+func TestEmceeLedgerSimilar(t *testing.T) {
+	session, svc := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{
+		"action": "ledger_similar",
+		"ref":    "jira:BUG-1",
+		"limit":  float64(5),
+	})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var records []domain.ArtifactRecord
+	if err := json.Unmarshal([]byte(resultText(t, result)), &records); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("len = %d, want 1", len(records))
+	}
+	if len(svc.StubLedgerService.LedgerSimilarCalls) != 1 {
+		t.Fatalf("LedgerSimilarCalls = %d, want 1", len(svc.StubLedgerService.LedgerSimilarCalls))
+	}
+	if svc.StubLedgerService.LedgerSimilarCalls[0].Ref != "jira:BUG-1" {
+		t.Errorf("ref = %q, want jira:BUG-1", svc.StubLedgerService.LedgerSimilarCalls[0].Ref)
+	}
+}
+
+func TestEmceeLedgerSimilarMissingRef(t *testing.T) {
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "ledger_similar"})
+	if !result.IsError {
+		t.Fatal("expected error for missing ref")
+	}
+}
+
+// --- GitHub Actions tests ---
+
+func TestEmceeRuns(t *testing.T) {
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "runs", "backend": "github"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var runs []domain.WorkflowRun
+	if err := json.Unmarshal([]byte(resultText(t, result)), &runs); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(runs) != 2 {
+		t.Errorf("len = %d, want 2", len(runs))
+	}
+}
+
+func TestEmceeRunGet(t *testing.T) {
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "run_get", "backend": "github", "ref": "100"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var run domain.WorkflowRun
+	if err := json.Unmarshal([]byte(resultText(t, result)), &run); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if run.ID != 100 {
+		t.Errorf("id = %d, want 100", run.ID)
+	}
+}
+
+func TestEmceeRunJobs(t *testing.T) {
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "run_jobs", "backend": "github", "ref": "100"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var jobs []domain.WorkflowJob
+	if err := json.Unmarshal([]byte(resultText(t, result)), &jobs); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(jobs) != 2 {
+		t.Errorf("len = %d, want 2", len(jobs))
+	}
+}
+
+func TestEmceeRunLogs(t *testing.T) {
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "run_logs", "backend": "github", "ref": "100"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	if !strings.Contains(resultText(t, result), "Build succeeded") {
+		t.Errorf("logs missing expected content")
+	}
+}
+
+func TestEmceeRunRerun(t *testing.T) {
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "run_rerun", "backend": "github", "ref": "100"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	if !strings.Contains(resultText(t, result), "true") {
+		t.Errorf("expected rerun confirmation")
+	}
+}
+
+// --- GitLab CI tests ---
+
+func TestEmceeCIPipelines(t *testing.T) {
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "ci_pipelines", "backend": "gitlab"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var pipelines []domain.CIPipeline
+	if err := json.Unmarshal([]byte(resultText(t, result)), &pipelines); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(pipelines) != 2 {
+		t.Errorf("len = %d, want 2", len(pipelines))
+	}
+}
+
+func TestEmceeCIPipeline(t *testing.T) {
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "ci_pipeline", "backend": "gitlab", "ref": "500"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var pipeline domain.CIPipeline
+	if err := json.Unmarshal([]byte(resultText(t, result)), &pipeline); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if pipeline.ID != 500 {
+		t.Errorf("id = %d, want 500", pipeline.ID)
+	}
+}
+
+func TestEmceeCIJobs(t *testing.T) {
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "ci_jobs", "backend": "gitlab", "ref": "500"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var jobs []domain.CIJob
+	if err := json.Unmarshal([]byte(resultText(t, result)), &jobs); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(jobs) != 2 {
+		t.Errorf("len = %d, want 2", len(jobs))
+	}
+}
+
+func TestEmceeCIJobLog(t *testing.T) {
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "ci_job_log", "backend": "gitlab", "ref": "600"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	if !strings.Contains(resultText(t, result), "Job succeeded") {
+		t.Errorf("log missing expected content")
+	}
+}
+
+func TestEmceeCIRetry(t *testing.T) {
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "ci_retry", "backend": "gitlab", "ref": "500"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	if !strings.Contains(resultText(t, result), "true") {
+		t.Errorf("expected retry confirmation")
 	}
 }

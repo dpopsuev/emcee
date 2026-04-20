@@ -127,6 +127,44 @@ func TestSearch(t *testing.T) {
 	}
 }
 
+func TestSimilar(t *testing.T) {
+	l := newTestLedger(t)
+	ctx := context.Background()
+
+	_ = l.Put(ctx, domain.ArtifactRecord{
+		Ref: "jira:SIM-1", Backend: "jira", Title: "Authentication failure on login page",
+		Text: "Users report 401 errors when using SSO", SeenAt: time.Now(), UpdatedAt: time.Now(),
+	})
+	_ = l.Put(ctx, domain.ArtifactRecord{
+		Ref: "jira:SIM-2", Backend: "jira", Title: "SSO authentication broken after upgrade",
+		Text: "OAuth tokens expire immediately", SeenAt: time.Now(), UpdatedAt: time.Now(),
+	})
+	_ = l.Put(ctx, domain.ArtifactRecord{
+		Ref: "jira:SIM-3", Backend: "jira", Title: "Database connection pool exhaustion",
+		Text: "Pool runs out under high load", SeenAt: time.Now(), UpdatedAt: time.Now(),
+	})
+
+	recs, err := l.Similar(ctx, "jira:SIM-1", 10)
+	if err != nil {
+		t.Fatalf("Similar: %v", err)
+	}
+	if len(recs) == 0 {
+		t.Fatal("Similar returned no results")
+	}
+	// SIM-2 should be most similar (shares "authentication", "SSO")
+	if recs[0].Ref != "jira:SIM-2" {
+		t.Errorf("Most similar ref = %q, want jira:SIM-2", recs[0].Ref)
+	}
+}
+
+func TestSimilarNotFound(t *testing.T) {
+	l := newTestLedger(t)
+	_, err := l.Similar(context.Background(), "nope:X", 10)
+	if err == nil {
+		t.Fatal("expected error for missing seed ref")
+	}
+}
+
 func TestStats(t *testing.T) {
 	l := newTestLedger(t)
 	ctx := context.Background()

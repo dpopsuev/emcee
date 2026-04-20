@@ -43,6 +43,8 @@ type Service struct {
 	prRepos        map[string]driven.PRRepository
 	buildRepos     map[string]driven.BuildRepository
 	pipelineRepos  map[string]driven.PipelineRepository
+	actionsRepos   map[string]driven.ActionsRepository
+	ciRepos        map[string]driven.CIRepository
 	extractor      driven.LinkExtractor
 	graphStore     driven.GraphStore
 	ledger         driven.Ledger
@@ -70,6 +72,8 @@ func NewService(repos ...driven.IssueRepository) *Service {
 		prRepos:       make(map[string]driven.PRRepository),
 		buildRepos:    make(map[string]driven.BuildRepository),
 		pipelineRepos: make(map[string]driven.PipelineRepository),
+		actionsRepos:  make(map[string]driven.ActionsRepository),
+		ciRepos:       make(map[string]driven.CIRepository),
 		stage:         NewStageStore(),
 	}
 	for _, r := range repos {
@@ -110,6 +114,12 @@ func NewService(repos ...driven.IssueRepository) *Service {
 		}
 		if pr, ok := r.(driven.PipelineRepository); ok {
 			s.pipelineRepos[name] = pr
+		}
+		if ar, ok := r.(driven.ActionsRepository); ok {
+			s.actionsRepos[name] = ar
+		}
+		if cr, ok := r.(driven.CIRepository); ok {
+			s.ciRepos[name] = cr
 		}
 	}
 	return s
@@ -157,6 +167,12 @@ func (s *Service) AddBackend(r driven.IssueRepository) {
 	if pr, ok := r.(driven.PipelineRepository); ok {
 		s.pipelineRepos[name] = pr
 	}
+	if ar, ok := r.(driven.ActionsRepository); ok {
+		s.actionsRepos[name] = ar
+	}
+	if cr, ok := r.(driven.CIRepository); ok {
+		s.ciRepos[name] = cr
+	}
 }
 
 // RemoveBackend removes a backend by name at runtime. Thread-safe.
@@ -179,6 +195,8 @@ func (s *Service) RemoveBackend(name string) bool {
 	delete(s.prRepos, name)
 	delete(s.buildRepos, name)
 	delete(s.pipelineRepos, name)
+	delete(s.actionsRepos, name)
+	delete(s.ciRepos, name)
 	return true
 }
 
@@ -405,6 +423,12 @@ func (s *Service) Health() *driver.HealthStatus {
 		}
 		if _, ok := s.pipelineRepos[name]; ok {
 			caps = append(caps, "pipelines")
+		}
+		if _, ok := s.actionsRepos[name]; ok {
+			caps = append(caps, "actions")
+		}
+		if _, ok := s.ciRepos[name]; ok {
+			caps = append(caps, "ci")
 		}
 		status.Backends = append(status.Backends, driver.BackendHealth{
 			Name:         name,
@@ -864,6 +888,90 @@ func (s *Service) GetStageLog(ctx context.Context, backend, jobName, runID, node
 	return r.GetStageLog(ctx, jobName, runID, nodeID)
 }
 
+// --- CI operations (GitLab CI) ---
+
+func (s *Service) ListPipelines(ctx context.Context, backend string, filter domain.CIPipelineFilter) ([]domain.CIPipeline, error) {
+	r, ok := s.ciRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "ci")
+	}
+	return r.ListPipelines(ctx, filter)
+}
+
+func (s *Service) GetPipeline(ctx context.Context, backend string, pipelineID int64) (*domain.CIPipeline, error) {
+	r, ok := s.ciRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "ci")
+	}
+	return r.GetPipeline(ctx, pipelineID)
+}
+
+func (s *Service) ListPipelineJobs(ctx context.Context, backend string, pipelineID int64) ([]domain.CIJob, error) {
+	r, ok := s.ciRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "ci")
+	}
+	return r.ListPipelineJobs(ctx, pipelineID)
+}
+
+func (s *Service) GetJobLog(ctx context.Context, backend string, jobID int64) (string, error) {
+	r, ok := s.ciRepos[backend]
+	if !ok {
+		return "", s.notSupportedErr(backend, "ci")
+	}
+	return r.GetJobLog(ctx, jobID)
+}
+
+func (s *Service) RetryPipeline(ctx context.Context, backend string, pipelineID int64) error {
+	r, ok := s.ciRepos[backend]
+	if !ok {
+		return s.notSupportedErr(backend, "ci")
+	}
+	return r.RetryPipeline(ctx, pipelineID)
+}
+
+// --- Actions operations (GitHub Actions) ---
+
+func (s *Service) ListWorkflowRuns(ctx context.Context, backend string, filter domain.WorkflowRunFilter) ([]domain.WorkflowRun, error) {
+	r, ok := s.actionsRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "actions")
+	}
+	return r.ListWorkflowRuns(ctx, filter)
+}
+
+func (s *Service) GetWorkflowRun(ctx context.Context, backend string, runID int64) (*domain.WorkflowRun, error) {
+	r, ok := s.actionsRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "actions")
+	}
+	return r.GetWorkflowRun(ctx, runID)
+}
+
+func (s *Service) ListRunJobs(ctx context.Context, backend string, runID int64) ([]domain.WorkflowJob, error) {
+	r, ok := s.actionsRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "actions")
+	}
+	return r.ListRunJobs(ctx, runID)
+}
+
+func (s *Service) GetRunLogs(ctx context.Context, backend string, runID int64) (string, error) {
+	r, ok := s.actionsRepos[backend]
+	if !ok {
+		return "", s.notSupportedErr(backend, "actions")
+	}
+	return r.GetRunLogs(ctx, runID)
+}
+
+func (s *Service) RerunFailedJobs(ctx context.Context, backend string, runID int64) error {
+	r, ok := s.actionsRepos[backend]
+	if !ok {
+		return s.notSupportedErr(backend, "actions")
+	}
+	return r.RerunFailedJobs(ctx, runID)
+}
+
 // --- Stage operations ---
 
 func (s *Service) StageItem(backend string, input domain.CreateInput, reason string) string {
@@ -1004,6 +1112,14 @@ func (s *Service) LedgerSearch(ctx context.Context, query string, limit int) ([]
 		return nil, ErrLedgerNotConfigured
 	}
 	return s.ledger.Search(ctx, query, limit)
+}
+
+// LedgerSimilar finds artifacts similar to the given ref.
+func (s *Service) LedgerSimilar(ctx context.Context, ref string, limit int) ([]domain.ArtifactRecord, error) {
+	if s.ledger == nil {
+		return nil, ErrLedgerNotConfigured
+	}
+	return s.ledger.Similar(ctx, ref, limit)
 }
 
 // LedgerIngest actively deposits an artifact record into the ledger.

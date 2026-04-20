@@ -97,6 +97,41 @@ func (l *InMemoryLedger) Search(_ context.Context, query string, limit int) ([]d
 	return results, nil
 }
 
+// Similar finds artifacts with overlapping terms in title/text.
+func (l *InMemoryLedger) Similar(_ context.Context, ref string, limit int) ([]domain.ArtifactRecord, error) {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+
+	seed, ok := l.records[ref]
+	if !ok {
+		return nil, ErrLedgerNotFound
+	}
+	if limit <= 0 {
+		limit = 10
+	}
+	seedText := strings.ToLower(seed.Title + " " + seed.Text)
+	words := strings.Fields(seedText)
+
+	var results []domain.ArtifactRecord
+	for r := range l.records {
+		rec := l.records[r]
+		if rec.Ref == ref {
+			continue
+		}
+		recText := strings.ToLower(rec.Title + " " + rec.Text)
+		for _, w := range words {
+			if len(w) >= 3 && strings.Contains(recText, w) {
+				results = append(results, rec)
+				break
+			}
+		}
+		if len(results) >= limit {
+			break
+		}
+	}
+	return results, nil
+}
+
 // Stats returns aggregate counts.
 func (l *InMemoryLedger) Stats(_ context.Context) (*domain.LedgerStats, error) {
 	l.mu.RLock()

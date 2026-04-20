@@ -115,6 +115,26 @@ type PipelineRepository interface {
 	GetStageLog(ctx context.Context, jobName, runID, nodeID string) (string, error)
 }
 
+//nolint:dupl // ISP: ActionsRepository and CIRepository are intentionally separate interfaces
+type ActionsRepository interface {
+	Name() string
+	ListWorkflowRuns(ctx context.Context, filter domain.WorkflowRunFilter) ([]domain.WorkflowRun, error)
+	GetWorkflowRun(ctx context.Context, runID int64) (*domain.WorkflowRun, error)
+	ListRunJobs(ctx context.Context, runID int64) ([]domain.WorkflowJob, error)
+	GetRunLogs(ctx context.Context, runID int64) (string, error)
+	RerunFailedJobs(ctx context.Context, runID int64) error
+}
+
+//nolint:dupl // ISP: CIRepository and ActionsRepository are intentionally separate interfaces
+type CIRepository interface {
+	Name() string
+	ListPipelines(ctx context.Context, filter domain.CIPipelineFilter) ([]domain.CIPipeline, error)
+	GetPipeline(ctx context.Context, pipelineID int64) (*domain.CIPipeline, error)
+	ListPipelineJobs(ctx context.Context, pipelineID int64) ([]domain.CIJob, error)
+	GetJobLog(ctx context.Context, jobID int64) (string, error)
+	RetryPipeline(ctx context.Context, pipelineID int64) error
+}
+
 // FieldRepository is the outbound port for field metadata discovery.
 type FieldRepository interface {
 	Name() string

@@ -19,7 +19,7 @@ import (
 
 const (
 	serverName    = "emcee"
-	serverVersion = "0.9.3"
+	serverVersion = "0.10.0"
 
 	defaultListMax   = 50
 	defaultSearchMax = 20
@@ -54,6 +54,8 @@ type EmceeService interface {
 	driver.PipelineService
 	driver.BackendManager
 	driver.TriageService
+	driver.ActionsService
+	driver.CIService
 	driver.FieldService
 	driver.JQLService
 	driver.PRService
@@ -128,6 +130,20 @@ Jenkins Pipelines:
   pipeline_input_approve — backend=jenkins, query (job name), ref (run ID) → approve pending input
   pipeline_input_abort — backend=jenkins, query (job name), ref (run ID) → abort pending input
 
+GitHub Actions:
+  runs        — backend=github, [status, query (branch), limit] → list workflow runs
+  run_get     — backend=github, ref (run ID) → get workflow run details
+  run_jobs    — backend=github, ref (run ID) → list jobs in a run
+  run_logs    — backend=github, ref (run ID) → download run logs
+  run_rerun   — backend=github, ref (run ID) → re-run failed jobs
+
+GitLab CI:
+  ci_pipelines  — backend=gitlab, [status, query (ref/branch), limit] → list pipelines
+  ci_pipeline   — backend=gitlab, ref (pipeline ID) → get pipeline details
+  ci_jobs       — backend=gitlab, ref (pipeline ID) → list jobs in pipeline
+  ci_job_log    — backend=gitlab, ref (job ID) → download job log
+  ci_retry      — backend=gitlab, ref (pipeline ID) → retry pipeline
+
 Triage (Defect Lifecycle):
   triage       — ref (seed artifact, e.g. jira:OCPBUGS-123), [limit (max depth, default 3)] → cross-backend correlation graph
   triage_config — (no params) → current crawl settings (rate_limit, allow_list)
@@ -140,6 +156,7 @@ Ledger (cross-backend artifact index, populated from get/list/search):
   ledger_list    — [backend, status, components (via components param), limit] → list seen artifacts
   ledger_get     — ref → get a single artifact record
   ledger_search  — query (full-text search across all fields), [limit] → ranked results
+  ledger_similar — ref (seed artifact), [limit] → find similar artifacts by content overlap
   ledger_ingest  — ref, backend, title, [description, status, components] → actively deposit an artifact
   ledger_stats   — (no params) → totals and by-backend counts
 
@@ -179,7 +196,7 @@ func RegisterTools(srv *mcpserver.Server, svc EmceeService) {
 	srv.ToolWithSchema(
 		server.ToolMeta{
 			Name:        "emcee",
-			Description: "Issue management across all backends. Actions: list, get, create, update, search, children, bulk_create, bulk_update, comments, comment_add, stage, stage_list, stage_show, stage_patch, stage_drop, push, push_all, launches, launch_get, test_items, test_item_get, defect_update, jobs, job_get, build_trigger, build_get, build_log, test_results, queue, build_artifacts, build_revision, build_causes, nodes, node_get, views, view_jobs, pipeline_runs, pipeline_run_get, pipeline_inputs, pipeline_input_approve, pipeline_input_abort, fields, jql, prs, ledger_list, ledger_get, ledger_search, ledger_ingest, ledger_stats.",
+			Description: "Issue management across all backends. Actions: list, get, create, update, search, children, bulk_create, bulk_update, comments, comment_add, stage, stage_list, stage_show, stage_patch, stage_drop, push, push_all, launches, launch_get, test_items, test_item_get, defect_update, jobs, job_get, build_trigger, build_get, build_log, test_results, queue, build_artifacts, build_revision, build_causes, nodes, node_get, views, view_jobs, pipeline_runs, pipeline_run_get, pipeline_inputs, pipeline_input_approve, pipeline_input_abort, runs, run_get, run_jobs, run_logs, run_rerun, ci_pipelines, ci_pipeline, ci_jobs, ci_job_log, ci_retry, fields, jql, prs, ledger_list, ledger_get, ledger_search, ledger_similar, ledger_ingest, ledger_stats.",
 			Keywords:    []string{"issue", "ticket", "bug", "task", "comment", "stage", "push", "linear", "github", "jira", "gitlab"},
 			Categories:  []string{"issue-management"},
 		},
@@ -212,7 +229,7 @@ func RegisterTools(srv *mcpserver.Server, svc EmceeService) {
 var emceeSchema = json.RawMessage(`{
 	"type": "object",
 	"properties": {
-		"action":      {"type": "string", "enum": ["list","get","create","update","search","children","bulk_create","bulk_update","comments","comment_add","stage","stage_list","stage_show","stage_patch","stage_drop","push","push_all","launches","launch_get","test_items","test_item_get","defect_update","jobs","job_get","build_trigger","build_get","build_log","test_results","queue","builds","build_last","build_last_failed","build_last_successful","build_stop","job_params","folder_jobs","job_upstream","job_downstream","build_artifacts","build_revision","build_causes","nodes","node_get","views","view_jobs","pipeline_runs","pipeline_run_get","pipeline_inputs","pipeline_input_approve","pipeline_input_abort","triage","triage_config","triage_config_set","fields","jql","prs","ledger_list","ledger_get","ledger_search","ledger_ingest","ledger_stats"], "description": "Action to perform"},
+		"action":      {"type": "string", "enum": ["list","get","create","update","search","children","bulk_create","bulk_update","comments","comment_add","stage","stage_list","stage_show","stage_patch","stage_drop","push","push_all","launches","launch_get","test_items","test_item_get","defect_update","jobs","job_get","build_trigger","build_get","build_log","test_results","queue","builds","build_last","build_last_failed","build_last_successful","build_stop","job_params","folder_jobs","job_upstream","job_downstream","build_artifacts","build_revision","build_causes","nodes","node_get","views","view_jobs","pipeline_runs","pipeline_run_get","pipeline_inputs","pipeline_input_approve","pipeline_input_abort","runs","run_get","run_jobs","run_logs","run_rerun","ci_pipelines","ci_pipeline","ci_jobs","ci_job_log","ci_retry","triage","triage_config","triage_config_set","fields","jql","prs","ledger_list","ledger_get","ledger_search","ledger_similar","ledger_ingest","ledger_stats"], "description": "Action to perform"},
 		"backend":     {"type": "string", "description": "Backend name (required for list/create/search)"},
 		"ref":         {"type": "string", "description": "Issue ref for get/update/children (e.g. linear:PROJ-42)"},
 		"title":       {"type": "string", "description": "Issue title (create)"},
@@ -974,6 +991,144 @@ func emceeHandler(svc EmceeService) server.Handler {
 			}
 			return server.JSONResult(map[string]any{"aborted": true, "job": args.Query, "run_id": args.Ref})
 
+		// --- GitHub Actions ---
+
+		case "runs":
+			filter := domain.WorkflowRunFilter{
+				Status: args.Status,
+				Branch: args.Query,
+				Limit:  int(args.Limit),
+			}
+			runs, err := svc.ListWorkflowRuns(ctx, args.Backend, filter)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(runs)
+
+		case "run_get":
+			if args.Ref == "" {
+				return "", errRefRequired
+			}
+			runID, err := strconv.ParseInt(args.Ref, 10, 64)
+			if err != nil {
+				return "", fmt.Errorf("invalid run ID %q: %w", args.Ref, err)
+			}
+			run, err := svc.GetWorkflowRun(ctx, args.Backend, runID)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(run)
+
+		case "run_jobs":
+			if args.Ref == "" {
+				return "", errRefRequired
+			}
+			runID, err := strconv.ParseInt(args.Ref, 10, 64)
+			if err != nil {
+				return "", fmt.Errorf("invalid run ID %q: %w", args.Ref, err)
+			}
+			jobs, err := svc.ListRunJobs(ctx, args.Backend, runID)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(jobs)
+
+		case "run_logs":
+			if args.Ref == "" {
+				return "", errRefRequired
+			}
+			runID, err := strconv.ParseInt(args.Ref, 10, 64)
+			if err != nil {
+				return "", fmt.Errorf("invalid run ID %q: %w", args.Ref, err)
+			}
+			logs, err := svc.GetRunLogs(ctx, args.Backend, runID)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(map[string]string{"logs": logs})
+
+		case "run_rerun":
+			if args.Ref == "" {
+				return "", errRefRequired
+			}
+			runID, err := strconv.ParseInt(args.Ref, 10, 64)
+			if err != nil {
+				return "", fmt.Errorf("invalid run ID %q: %w", args.Ref, err)
+			}
+			if err := svc.RerunFailedJobs(ctx, args.Backend, runID); err != nil {
+				return "", err
+			}
+			return server.JSONResult(map[string]any{"rerun": true, "run_id": runID})
+
+		// --- GitLab CI ---
+
+		case "ci_pipelines":
+			filter := domain.CIPipelineFilter{
+				Status: args.Status,
+				Ref:    args.Query,
+				Limit:  int(args.Limit),
+			}
+			pipelines, err := svc.ListPipelines(ctx, args.Backend, filter)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(pipelines)
+
+		case "ci_pipeline":
+			if args.Ref == "" {
+				return "", errRefRequired
+			}
+			pipelineID, err := strconv.ParseInt(args.Ref, 10, 64)
+			if err != nil {
+				return "", fmt.Errorf("invalid pipeline ID %q: %w", args.Ref, err)
+			}
+			pipeline, err := svc.GetPipeline(ctx, args.Backend, pipelineID)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(pipeline)
+
+		case "ci_jobs":
+			if args.Ref == "" {
+				return "", errRefRequired
+			}
+			pipelineID, err := strconv.ParseInt(args.Ref, 10, 64)
+			if err != nil {
+				return "", fmt.Errorf("invalid pipeline ID %q: %w", args.Ref, err)
+			}
+			jobs, err := svc.ListPipelineJobs(ctx, args.Backend, pipelineID)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(jobs)
+
+		case "ci_job_log":
+			if args.Ref == "" {
+				return "", errRefRequired
+			}
+			jobID, err := strconv.ParseInt(args.Ref, 10, 64)
+			if err != nil {
+				return "", fmt.Errorf("invalid job ID %q: %w", args.Ref, err)
+			}
+			log, err := svc.GetJobLog(ctx, args.Backend, jobID)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(map[string]string{"log": log})
+
+		case "ci_retry":
+			if args.Ref == "" {
+				return "", errRefRequired
+			}
+			pipelineID, err := strconv.ParseInt(args.Ref, 10, 64)
+			if err != nil {
+				return "", fmt.Errorf("invalid pipeline ID %q: %w", args.Ref, err)
+			}
+			if err := svc.RetryPipeline(ctx, args.Backend, pipelineID); err != nil {
+				return "", err
+			}
+			return server.JSONResult(map[string]any{"retried": true, "pipeline_id": pipelineID})
+
 		// --- Triage ---
 
 		case "triage":
@@ -1078,6 +1233,20 @@ func emceeHandler(svc EmceeService) server.Handler {
 				searchLimit = defaultSearchMax
 			}
 			records, err := svc.LedgerSearch(ctx, args.Query, searchLimit)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(records)
+
+		case "ledger_similar":
+			if args.Ref == "" {
+				return "", errRefRequired
+			}
+			simLimit := int(args.Limit)
+			if simLimit == 0 {
+				simLimit = 10
+			}
+			records, err := svc.LedgerSimilar(ctx, args.Ref, simLimit)
 			if err != nil {
 				return "", err
 			}

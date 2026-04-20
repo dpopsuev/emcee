@@ -98,6 +98,24 @@ type PipelineService interface {
 	GetStageLog(ctx context.Context, backend, jobName, runID, nodeID string) (string, error)
 }
 
+//nolint:dupl // ISP: ActionsService and CIService are intentionally separate interfaces
+type ActionsService interface {
+	ListWorkflowRuns(ctx context.Context, backend string, filter domain.WorkflowRunFilter) ([]domain.WorkflowRun, error)
+	GetWorkflowRun(ctx context.Context, backend string, runID int64) (*domain.WorkflowRun, error)
+	ListRunJobs(ctx context.Context, backend string, runID int64) ([]domain.WorkflowJob, error)
+	GetRunLogs(ctx context.Context, backend string, runID int64) (string, error)
+	RerunFailedJobs(ctx context.Context, backend string, runID int64) error
+}
+
+//nolint:dupl // ISP: CIService and ActionsService are intentionally separate interfaces
+type CIService interface {
+	ListPipelines(ctx context.Context, backend string, filter domain.CIPipelineFilter) ([]domain.CIPipeline, error)
+	GetPipeline(ctx context.Context, backend string, pipelineID int64) (*domain.CIPipeline, error)
+	ListPipelineJobs(ctx context.Context, backend string, pipelineID int64) ([]domain.CIJob, error)
+	GetJobLog(ctx context.Context, backend string, jobID int64) (string, error)
+	RetryPipeline(ctx context.Context, backend string, pipelineID int64) error
+}
+
 // FieldService is the inbound port for field metadata discovery.
 type FieldService interface {
 	ListFields(ctx context.Context, backend string) ([]domain.Field, error)
@@ -148,6 +166,7 @@ type LedgerService interface {
 	LedgerGet(ctx context.Context, ref string) (*domain.ArtifactRecord, error)
 	LedgerList(ctx context.Context, filter domain.LedgerFilter) ([]domain.ArtifactRecord, error)
 	LedgerSearch(ctx context.Context, query string, limit int) ([]domain.ArtifactRecord, error)
+	LedgerSimilar(ctx context.Context, ref string, limit int) ([]domain.ArtifactRecord, error)
 	LedgerIngest(ctx context.Context, record domain.ArtifactRecord) error
 	LedgerStats(ctx context.Context) (*domain.LedgerStats, error)
 }
