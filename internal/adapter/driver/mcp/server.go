@@ -18,7 +18,7 @@ import (
 
 const (
 	serverName    = "emcee"
-	serverVersion = "0.9.0"
+	serverVersion = "0.9.1"
 
 	defaultListMax   = 50
 	defaultSearchMax = 20
