@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	adapterdriven "github.com/DanyPops/emcee/internal/adapter/driven"
@@ -94,7 +95,16 @@ func (r *Repository) mapBuild(ctx context.Context, b *gojenkins.Build) *domain.B
 }
 
 func (r *Repository) getJob(ctx context.Context, name string) (*gojenkins.Job, error) {
-	j, err := r.jenkins.GetJob(ctx, name)
+	parts := strings.Split(name, "/")
+	// gojenkins.GetJob(ctx, id, parentIDs...) — last element is the job, rest are parents
+	id := parts[len(parts)-1]
+	var j *gojenkins.Job
+	var err error
+	if len(parts) > 1 {
+		j, err = r.jenkins.GetJob(ctx, id, parts[:len(parts)-1]...)
+	} else {
+		j, err = r.jenkins.GetJob(ctx, id)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("%w: %s", ErrJobNotFound, name)
 	}
@@ -102,7 +112,11 @@ func (r *Repository) getJob(ctx context.Context, name string) (*gojenkins.Job, e
 }
 
 func (r *Repository) getBuild(ctx context.Context, jobName string, number int64) (*gojenkins.Build, error) {
-	b, err := r.jenkins.GetBuild(ctx, jobName, number)
+	j, err := r.getJob(ctx, jobName)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %s #%d", ErrBuildNotFound, jobName, number)
+	}
+	b, err := j.GetBuild(ctx, number)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %s #%d", ErrBuildNotFound, jobName, number)
 	}
@@ -388,7 +402,15 @@ func mapInnerJobs(inner []gojenkins.InnerJob) []domain.Job {
 func (r *Repository) ListFolderJobs(ctx context.Context, folderPath string) ([]domain.Job, error) {
 	start := time.Now()
 	adapterdriven.LogOp(ctx, BackendName, "list_folder_jobs", slog.String(adapterdriven.LogKeyID, folderPath))
-	folder, err := r.jenkins.GetFolder(ctx, folderPath)
+	parts := strings.Split(folderPath, "/")
+	id := parts[len(parts)-1]
+	var folder *gojenkins.Folder
+	var err error
+	if len(parts) > 1 {
+		folder, err = r.jenkins.GetFolder(ctx, id, parts[:len(parts)-1]...)
+	} else {
+		folder, err = r.jenkins.GetFolder(ctx, id)
+	}
 	if err != nil {
 		r.logErr(ctx, "list_folder_jobs", err)
 		return nil, fmt.Errorf("%w: folder %s", ErrJobNotFound, folderPath)
