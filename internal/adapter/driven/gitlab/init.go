@@ -14,9 +14,6 @@ func init() {
 		if token == "" {
 			token = os.Getenv("GITLAB_TOKEN")
 		}
-		if token == "" {
-			return nil, nil
-		}
 		project := backend.Team
 		if project == "" {
 			project = os.Getenv("GITLAB_PROJECT")

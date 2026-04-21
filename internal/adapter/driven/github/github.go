@@ -33,6 +33,7 @@ var (
 	ErrCreateFailed  = errors.New("issue creation failed")
 	ErrOwnerRequired = errors.New("repository owner is required")
 	ErrRepoRequired  = errors.New("repo not set — set GITHUB_REPO, use config.yaml, or pass repo filter")
+	ErrAuthRequired  = errors.New("write operation requires GITHUB_TOKEN")
 	ErrAPIError      = errors.New("github API error")
 	ErrNotAnIssue    = errors.New("not an issue")
 	ErrProjectCreate = errors.New("project creation not yet supported (requires GitHub Projects v2 GraphQL API)")
@@ -50,12 +51,13 @@ var (
 
 // Repository implements driven.IssueRepository for GitHub.
 type Repository struct {
-	name    string
-	baseURL string
-	token   string
-	owner   string
-	repo    string
-	client  *http.Client
+	name     string
+	baseURL  string
+	token    string
+	owner    string
+	repo     string
+	readOnly bool
+	client   *http.Client
 }
 
 // New creates a GitHub repository.
@@ -71,16 +73,24 @@ func NewWithURL(name, token, owner, repo, url string) (*Repository, error) {
 		return nil, ErrOwnerRequired
 	}
 	return &Repository{
-		name:    name,
-		baseURL: strings.TrimRight(url, "/"),
-		token:   token,
-		owner:   owner,
-		repo:    repo,
-		client:  &http.Client{Timeout: defaultTimeout},
+		name:     name,
+		baseURL:  strings.TrimRight(url, "/"),
+		token:    token,
+		owner:    owner,
+		repo:     repo,
+		readOnly: token == "",
+		client:   &http.Client{Timeout: defaultTimeout},
 	}, nil
 }
 
 func (r *Repository) Name() string { return r.name }
+
+func (r *Repository) requireAuth() error {
+	if r.readOnly {
+		return ErrAuthRequired
+	}
+	return nil
+}
 
 // repoPath returns "/repos/{owner}/{repo}" or an error if repo is not set.
 func (r *Repository) repoPath() (string, error) {
@@ -222,6 +232,9 @@ func (r *Repository) Get(ctx context.Context, key string) (*domain.Issue, error)
 }
 
 func (r *Repository) Create(ctx context.Context, input domain.CreateInput) (*domain.Issue, error) {
+	if err := r.requireAuth(); err != nil {
+		return nil, err
+	}
 	adapterdriven.LogWrite(ctx, BackendName, "create", slog.String(adapterdriven.LogKeyTitle, input.Title))
 	rp, err := r.repoPath()
 	if err != nil {
@@ -251,6 +264,9 @@ func (r *Repository) Create(ctx context.Context, input domain.CreateInput) (*dom
 }
 
 func (r *Repository) Update(ctx context.Context, key string, input domain.UpdateInput) (*domain.Issue, error) {
+	if err := r.requireAuth(); err != nil {
+		return nil, err
+	}
 	adapterdriven.LogWrite(ctx, BackendName, "update", slog.String(adapterdriven.LogKeyIssueKey, key))
 	rp, err := r.repoPath()
 	if err != nil {
@@ -395,6 +411,9 @@ func (r *Repository) ListLabels(ctx context.Context) ([]domain.Label, error) {
 }
 
 func (r *Repository) CreateLabel(ctx context.Context, input domain.LabelCreateInput) (*domain.Label, error) {
+	if err := r.requireAuth(); err != nil {
+		return nil, err
+	}
 	adapterdriven.LogWrite(ctx, BackendName, "create_label", slog.String(adapterdriven.LogKeyName, input.Name))
 	body := map[string]any{
 		"name":  input.Name,
@@ -570,6 +589,9 @@ func (r *Repository) ListComments(ctx context.Context, key string) ([]domain.Com
 }
 
 func (r *Repository) AddComment(ctx context.Context, key string, input domain.CommentCreateInput) (*domain.Comment, error) {
+	if err := r.requireAuth(); err != nil {
+		return nil, err
+	}
 	adapterdriven.LogWrite(ctx, BackendName, "add_comment", slog.String(adapterdriven.LogKeyIssueKey, key))
 	rp, err := r.repoPath()
 	if err != nil {

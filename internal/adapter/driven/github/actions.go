@@ -135,6 +135,9 @@ func (r *Repository) GetRunLogs(ctx context.Context, runID int64) (string, error
 
 // RerunFailedJobs re-runs all failed jobs in a workflow run.
 func (r *Repository) RerunFailedJobs(ctx context.Context, runID int64) error {
+	if err := r.requireAuth(); err != nil {
+		return err
+	}
 	adapterdriven.LogOp(ctx, BackendName, "RerunFailedJobs")
 	start := time.Now()
 

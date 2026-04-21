@@ -47,6 +47,7 @@ var (
 	ErrCreateFailed  = errors.New("issue creation failed")
 	ErrProjectEmpty  = errors.New("project ID is required")
 	ErrInvalidURL    = errors.New("invalid GitLab URL")
+	ErrAuthRequired  = errors.New("write operation requires GITLAB_TOKEN")
 	ErrAPIError      = errors.New("gitlab API error")
 	ErrProjectCreate = errors.New("project creation not yet supported")
 	ErrProjectUpdate = errors.New("project update not yet supported")
@@ -66,7 +67,8 @@ type Repository struct {
 	name      string
 	baseURL   string
 	token     string
-	projectID string // numeric ID or "namespace/project" format
+	projectID string
+	readOnly  bool
 	client    *http.Client
 }
 
@@ -93,12 +95,20 @@ func NewWithURL(name, token, projectID, baseURL string) (*Repository, error) {
 		name:      name,
 		baseURL:   strings.TrimRight(baseURL, "/"),
 		token:     token,
-		projectID: url.PathEscape(projectID), // GitLab accepts URL-encoded project IDs
+		projectID: url.PathEscape(projectID),
+		readOnly:  token == "",
 		client:    &http.Client{Timeout: defaultTimeout},
 	}, nil
 }
 
 func (r *Repository) Name() string { return r.name }
+
+func (r *Repository) requireAuth() error {
+	if r.readOnly {
+		return ErrAuthRequired
+	}
+	return nil
+}
 
 // validateURL checks if the GitLab URL is safe to use (SSRF prevention).
 // Blocks private IP ranges and enforces HTTPS (except for localhost dev).
@@ -178,7 +188,9 @@ func (r *Repository) api(ctx context.Context, method, path string, body, result 
 	if err != nil {
 		return err
 	}
-	req.Header.Set("PRIVATE-TOKEN", r.token)
+	if r.token != "" {
+		req.Header.Set("PRIVATE-TOKEN", r.token)
+	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := r.client.Do(req)
@@ -277,6 +289,9 @@ func (r *Repository) Get(ctx context.Context, key string) (*domain.Issue, error)
 }
 
 func (r *Repository) Create(ctx context.Context, input domain.CreateInput) (*domain.Issue, error) {
+	if err := r.requireAuth(); err != nil {
+		return nil, err
+	}
 	adapterdriven.LogWrite(ctx, BackendName, "create", slog.String(adapterdriven.LogKeyTitle, input.Title))
 	body := map[string]any{
 		"title":       input.Title,
@@ -302,6 +317,9 @@ func (r *Repository) Create(ctx context.Context, input domain.CreateInput) (*dom
 }
 
 func (r *Repository) Update(ctx context.Context, key string, input domain.UpdateInput) (*domain.Issue, error) {
+	if err := r.requireAuth(); err != nil {
+		return nil, err
+	}
 	adapterdriven.LogWrite(ctx, BackendName, "update", slog.String(adapterdriven.LogKeyIssueKey, key))
 	iid := r.parseIssueIID(key)
 	body := map[string]any{}
@@ -418,6 +436,9 @@ func (r *Repository) ListLabels(ctx context.Context) ([]domain.Label, error) {
 }
 
 func (r *Repository) CreateLabel(ctx context.Context, input domain.LabelCreateInput) (*domain.Label, error) {
+	if err := r.requireAuth(); err != nil {
+		return nil, err
+	}
 	adapterdriven.LogWrite(ctx, BackendName, "create_label", slog.String(adapterdriven.LogKeyName, input.Name))
 	body := map[string]any{
 		"name":  input.Name,
@@ -606,6 +627,9 @@ func (r *Repository) ListComments(ctx context.Context, key string) ([]domain.Com
 }
 
 func (r *Repository) AddComment(ctx context.Context, key string, input domain.CommentCreateInput) (*domain.Comment, error) {
+	if err := r.requireAuth(); err != nil {
+		return nil, err
+	}
 	adapterdriven.LogWrite(ctx, BackendName, "add_comment", slog.String(adapterdriven.LogKeyIssueKey, key))
 	iid := r.parseIssueIID(key)
 	path := fmt.Sprintf("/api/v4/projects/%s/issues/%s/notes", r.projectID, iid)

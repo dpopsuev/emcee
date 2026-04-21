@@ -120,6 +120,9 @@ func (r *Repository) GetJobLog(ctx context.Context, jobID int64) (string, error)
 
 // RetryPipeline retries a pipeline.
 func (r *Repository) RetryPipeline(ctx context.Context, pipelineID int64) error {
+	if err := r.requireAuth(); err != nil {
+		return err
+	}
 	adapterdriven.LogOp(ctx, BackendName, "RetryPipeline")
 	start := time.Now()
 
