@@ -52,74 +52,9 @@ type BulkService interface {
 	BulkUpdateIssues(ctx context.Context, backend string, inputs []domain.BulkUpdateInput) (*domain.BulkUpdateResult, error)
 }
 
-// LaunchService is the inbound port for test launch operations (Report Portal).
-type LaunchService interface {
-	ListLaunches(ctx context.Context, backend string, filter domain.LaunchFilter) ([]domain.Launch, error)
-	GetLaunch(ctx context.Context, backend, id string) (*domain.Launch, error)
-	ListTestItems(ctx context.Context, backend, launchID string, filter domain.TestItemFilter) ([]domain.TestItem, error)
-	GetTestItem(ctx context.Context, backend, id string) (*domain.TestItem, error)
-	GetTestItems(ctx context.Context, backend string, ids []string) ([]domain.TestItem, error)
-	UpdateDefects(ctx context.Context, backend string, updates []domain.DefectUpdate) error
-}
-
-// BuildService is the inbound port for CI build operations (Jenkins).
-type BuildService interface {
-	ListJobs(ctx context.Context, backend string, filter domain.JobFilter) ([]domain.Job, error)
-	GetJob(ctx context.Context, backend, name string) (*domain.Job, error)
-	TriggerBuild(ctx context.Context, backend, jobName string, params map[string]string) (int64, error)
-	GetBuild(ctx context.Context, backend, jobName string, number int64) (*domain.Build, error)
-	GetBuildLog(ctx context.Context, backend, jobName string, number int64) (string, error)
-	GetTestResults(ctx context.Context, backend, jobName string, number int64) (*domain.TestResult, error)
-	GetQueue(ctx context.Context, backend string) ([]domain.QueueItem, error)
-	ListBuilds(ctx context.Context, backend, jobName string, limit int) ([]domain.BuildSummary, error)
-	GetLastBuild(ctx context.Context, backend, jobName string) (*domain.Build, error)
-	GetLastSuccessfulBuild(ctx context.Context, backend, jobName string) (*domain.Build, error)
-	GetLastFailedBuild(ctx context.Context, backend, jobName string) (*domain.Build, error)
-	StopBuild(ctx context.Context, backend, jobName string, number int64) error
-	GetJobParameters(ctx context.Context, backend, jobName string) ([]domain.JobParameter, error)
-	ListFolderJobs(ctx context.Context, backend, folderPath string) ([]domain.Job, error)
-	GetUpstreamJobs(ctx context.Context, backend, jobName string) ([]domain.Job, error)
-	GetDownstreamJobs(ctx context.Context, backend, jobName string) ([]domain.Job, error)
-	ListArtifacts(ctx context.Context, backend, jobName string, number int64) ([]domain.BuildArtifact, error)
-	GetBuildRevision(ctx context.Context, backend, jobName string, number int64) (string, error)
-	GetBuildCauses(ctx context.Context, backend, jobName string, number int64) ([]domain.BuildCause, error)
-	ListNodes(ctx context.Context, backend string) ([]domain.JenkinsNode, error)
-	GetNode(ctx context.Context, backend, name string) (*domain.JenkinsNode, error)
-	ListViews(ctx context.Context, backend string) ([]domain.JenkinsView, error)
-	GetViewJobs(ctx context.Context, backend, viewName string) ([]domain.Job, error)
-}
-
-// PipelineService is the inbound port for Jenkins pipeline operations.
-type PipelineService interface {
-	ListPipelineRuns(ctx context.Context, backend, jobName string) ([]domain.PipelineRun, error)
-	GetPipelineRun(ctx context.Context, backend, jobName, runID string) (*domain.PipelineRun, error)
-	GetPendingInputs(ctx context.Context, backend, jobName, runID string) ([]domain.PipelineInput, error)
-	ApproveInput(ctx context.Context, backend, jobName, runID string) error
-	AbortInput(ctx context.Context, backend, jobName, runID string) error
-	GetStageLog(ctx context.Context, backend, jobName, runID, nodeID string) (string, error)
-}
-
 // IssueLinkService is the inbound port for creating issue-to-issue links.
 type IssueLinkService interface {
 	LinkIssue(ctx context.Context, backend string, input domain.IssueLinkInput) error
-}
-
-//nolint:dupl // ISP: ActionsService and CIService are intentionally separate interfaces
-type ActionsService interface {
-	ListWorkflowRuns(ctx context.Context, backend string, filter domain.WorkflowRunFilter) ([]domain.WorkflowRun, error)
-	GetWorkflowRun(ctx context.Context, backend string, runID int64) (*domain.WorkflowRun, error)
-	ListRunJobs(ctx context.Context, backend string, runID int64) ([]domain.WorkflowJob, error)
-	GetRunLogs(ctx context.Context, backend string, runID int64) (string, error)
-	RerunFailedJobs(ctx context.Context, backend string, runID int64) error
-}
-
-//nolint:dupl // ISP: CIService and ActionsService are intentionally separate interfaces
-type CIService interface {
-	ListPipelines(ctx context.Context, backend string, filter domain.CIPipelineFilter) ([]domain.CIPipeline, error)
-	GetPipeline(ctx context.Context, backend string, pipelineID int64) (*domain.CIPipeline, error)
-	ListPipelineJobs(ctx context.Context, backend string, pipelineID int64) ([]domain.CIJob, error)
-	GetJobLog(ctx context.Context, backend string, jobID int64) (string, error)
-	RetryPipeline(ctx context.Context, backend string, pipelineID int64) error
 }
 
 // FieldService is the inbound port for field metadata discovery.

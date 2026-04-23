@@ -50,14 +50,6 @@ func TestReadOnlyCreateLabel(t *testing.T) {
 	}
 }
 
-func TestReadOnlyRerunFailed(t *testing.T) {
-	r := newReadOnlyRepo(t)
-	err := r.RerunFailedJobs(context.Background(), 1)
-	if !errors.Is(err, github.ErrAuthRequired) {
-		t.Errorf("RerunFailedJobs err = %v, want ErrAuthRequired", err)
-	}
-}
-
 func TestReadOnlyInitNoOwner(t *testing.T) {
 	_, err := github.NewWithURL("github", "", "", "", "https://api.github.com")
 	if !errors.Is(err, github.ErrOwnerRequired) {

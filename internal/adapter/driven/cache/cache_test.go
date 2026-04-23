@@ -13,41 +13,17 @@ import (
 // asIssueRepo casts to the interface that app.NewService uses for type assertions.
 func asIssueRepo(r *cache.Repository) driven.IssueRepository { return r }
 
-// multiRepo implements IssueRepository + LaunchRepository + FieldRepository + JQLRepository
-// to simulate Report Portal or Jira backends that support multiple interfaces.
+// multiRepo implements IssueRepository + FieldRepository + JQLRepository
+// to simulate Jira backends that support multiple interfaces.
 type multiRepo struct {
 	driventest.StubIssueRepository
-	driventest.StubLaunchRepository
 	driventest.StubFieldRepository
 	driventest.StubJQLRepository
-	driventest.StubBuildRepository
 }
 
 func (m *multiRepo) Name() string { return m.StubIssueRepository.NameVal }
 
 // --- BUG-7: Cache swallows interfaces ---
-
-func TestCachePassthroughLaunchRepository(t *testing.T) {
-	inner := &multiRepo{}
-	inner.StubIssueRepository.NameVal = "reportportal"
-	inner.StubLaunchRepository.Launches = []domain.Launch{{ID: "1", Name: "test-launch"}}
-
-	wrapped := asIssueRepo(cache.New(inner))
-
-	// The cache wrapper should pass through LaunchRepository
-	lr, ok := wrapped.(driven.LaunchRepository)
-	if !ok {
-		t.Fatal("cache.Repository does not implement LaunchRepository — inner capabilities swallowed by decorator")
-	}
-
-	launches, err := lr.ListLaunches(context.Background(), domain.LaunchFilter{})
-	if err != nil {
-		t.Fatalf("ListLaunches: %v", err)
-	}
-	if len(launches) != 1 || launches[0].Name != "test-launch" {
-		t.Errorf("got %v, want [{ID:1 Name:test-launch}]", launches)
-	}
-}
 
 func TestCachePassthroughFieldRepository(t *testing.T) {
 	inner := &multiRepo{}
@@ -104,55 +80,3 @@ func TestCachePassthroughCommentRepository(t *testing.T) {
 	}
 }
 
-func TestCachePassthroughBuildRepository(t *testing.T) {
-	inner := &multiRepo{}
-	inner.StubIssueRepository.NameVal = "jenkins"
-	inner.StubBuildRepository.Jobs = []domain.Job{{Name: "my-pipeline", Buildable: true}}
-
-	wrapped := asIssueRepo(cache.New(inner))
-
-	br, ok := wrapped.(driven.BuildRepository)
-	if !ok {
-		t.Fatal("cache.Repository does not implement BuildRepository — inner capabilities swallowed by decorator")
-	}
-
-	jobs, err := br.ListJobs(context.Background(), domain.JobFilter{})
-	if err != nil {
-		t.Fatalf("ListJobs: %v", err)
-	}
-	if len(jobs) != 1 || jobs[0].Name != "my-pipeline" {
-		t.Errorf("got %v, want [{Name:my-pipeline}]", jobs)
-	}
-}
-
-func TestCacheNoBuildWhenInnerLacks(t *testing.T) {
-	inner := driventest.NewStubIssueRepository("linear")
-
-	wrapped := asIssueRepo(cache.New(inner))
-
-	br, ok := wrapped.(driven.BuildRepository)
-	if !ok {
-		t.Fatal("cache should always implement BuildRepository (returns error if inner doesn't)")
-	}
-	_, err := br.ListJobs(context.Background(), domain.JobFilter{})
-	if err == nil {
-		t.Fatal("expected error when inner doesn't support builds")
-	}
-}
-
-func TestCacheNoLaunchWhenInnerLacks(t *testing.T) {
-	// Plain IssueRepository without LaunchRepository — cache has the methods
-	// but they return ErrNotSupported at runtime
-	inner := driventest.NewStubIssueRepository("linear")
-
-	wrapped := asIssueRepo(cache.New(inner))
-
-	lr, ok := wrapped.(driven.LaunchRepository)
-	if !ok {
-		t.Fatal("cache should always implement LaunchRepository (returns error if inner doesn't)")
-	}
-	_, err := lr.ListLaunches(context.Background(), domain.LaunchFilter{})
-	if err == nil {
-		t.Fatal("expected error when inner doesn't support launches")
-	}
-}

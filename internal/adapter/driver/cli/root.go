@@ -14,10 +14,8 @@ import (
 	// Blank imports trigger init() registration with the backend registry.
 	_ "github.com/DanyPops/emcee/internal/adapter/driven/github"
 	_ "github.com/DanyPops/emcee/internal/adapter/driven/gitlab"
-	_ "github.com/DanyPops/emcee/internal/adapter/driven/jenkins"
 	_ "github.com/DanyPops/emcee/internal/adapter/driven/jira"
 	_ "github.com/DanyPops/emcee/internal/adapter/driven/linear"
-	_ "github.com/DanyPops/emcee/internal/adapter/driven/reportportal"
 
 	adapterdriven "github.com/DanyPops/emcee/internal/adapter/driven"
 	adaptersqlite "github.com/DanyPops/emcee/internal/adapter/driven/sqlite"

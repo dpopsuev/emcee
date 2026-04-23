@@ -3,7 +3,6 @@ module github.com/DanyPops/emcee
 go 1.25.8
 
 require (
-	github.com/bndr/gojenkins v1.2.0
 	github.com/dpopsuev/battery v0.9.0
 	github.com/modelcontextprotocol/go-sdk v1.5.0
 	github.com/spf13/cobra v1.10.2
@@ -24,7 +23,6 @@ require (
 	github.com/segmentio/encoding v0.5.4 // indirect
 	github.com/spf13/pflag v1.0.9 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
-	golang.org/x/net v0.0.0-20210924151903-3ad01bbaa167 // indirect
 	golang.org/x/oauth2 v0.35.0 // indirect
 	golang.org/x/sys v0.42.0 // indirect
 	modernc.org/libc v1.72.0 // indirect

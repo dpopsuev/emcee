@@ -18,14 +18,9 @@ type StubEmceeService struct {
 	StubHealthService
 	StubCommentService
 	StubStageService
-	StubLaunchService
 	StubFieldService
 	StubJQLService
 	StubPRService
-	StubBuildService
-	StubPipelineService
-	StubActionsService
-	StubCIService
 	StubIssueLinkService
 	StubBackendManager
 	StubTriageService

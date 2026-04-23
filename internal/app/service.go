@@ -37,14 +37,9 @@ type Service struct {
 	labelRepos     map[string]driven.LabelRepository
 	bulkRepos      map[string]driven.BulkIssueRepository
 	commentRepos   map[string]driven.CommentRepository
-	launchRepos    map[string]driven.LaunchRepository
 	fieldRepos     map[string]driven.FieldRepository
 	jqlRepos       map[string]driven.JQLRepository
 	prRepos        map[string]driven.PRRepository
-	buildRepos     map[string]driven.BuildRepository
-	pipelineRepos  map[string]driven.PipelineRepository
-	actionsRepos   map[string]driven.ActionsRepository
-	ciRepos        map[string]driven.CIRepository
 	extLinkRepos   map[string]driven.ExternalLinkRepository
 	issueLinkRepos map[string]driven.IssueLinkRepository
 	extractor      driven.LinkExtractor
@@ -68,14 +63,9 @@ func NewService(repos ...driven.IssueRepository) *Service {
 		labelRepos:     make(map[string]driven.LabelRepository),
 		bulkRepos:      make(map[string]driven.BulkIssueRepository),
 		commentRepos:   make(map[string]driven.CommentRepository),
-		launchRepos:    make(map[string]driven.LaunchRepository),
 		fieldRepos:     make(map[string]driven.FieldRepository),
 		jqlRepos:       make(map[string]driven.JQLRepository),
 		prRepos:        make(map[string]driven.PRRepository),
-		buildRepos:     make(map[string]driven.BuildRepository),
-		pipelineRepos:  make(map[string]driven.PipelineRepository),
-		actionsRepos:   make(map[string]driven.ActionsRepository),
-		ciRepos:        make(map[string]driven.CIRepository),
 		extLinkRepos:   make(map[string]driven.ExternalLinkRepository),
 		issueLinkRepos: make(map[string]driven.IssueLinkRepository),
 		stage:          NewStageStore(),
@@ -101,9 +91,6 @@ func NewService(repos ...driven.IssueRepository) *Service {
 		if cr, ok := r.(driven.CommentRepository); ok {
 			s.commentRepos[name] = cr
 		}
-		if lr, ok := r.(driven.LaunchRepository); ok {
-			s.launchRepos[name] = lr
-		}
 		if fr, ok := r.(driven.FieldRepository); ok {
 			s.fieldRepos[name] = fr
 		}
@@ -112,18 +99,6 @@ func NewService(repos ...driven.IssueRepository) *Service {
 		}
 		if pr, ok := r.(driven.PRRepository); ok {
 			s.prRepos[name] = pr
-		}
-		if br, ok := r.(driven.BuildRepository); ok {
-			s.buildRepos[name] = br
-		}
-		if pr, ok := r.(driven.PipelineRepository); ok {
-			s.pipelineRepos[name] = pr
-		}
-		if ar, ok := r.(driven.ActionsRepository); ok {
-			s.actionsRepos[name] = ar
-		}
-		if cr, ok := r.(driven.CIRepository); ok {
-			s.ciRepos[name] = cr
 		}
 		if elr, ok := r.(driven.ExternalLinkRepository); ok {
 			s.extLinkRepos[name] = elr
@@ -159,9 +134,6 @@ func (s *Service) AddBackend(r driven.IssueRepository) {
 	if cr, ok := r.(driven.CommentRepository); ok {
 		s.commentRepos[name] = cr
 	}
-	if lr, ok := r.(driven.LaunchRepository); ok {
-		s.launchRepos[name] = lr
-	}
 	if fr, ok := r.(driven.FieldRepository); ok {
 		s.fieldRepos[name] = fr
 	}
@@ -170,18 +142,6 @@ func (s *Service) AddBackend(r driven.IssueRepository) {
 	}
 	if pr, ok := r.(driven.PRRepository); ok {
 		s.prRepos[name] = pr
-	}
-	if br, ok := r.(driven.BuildRepository); ok {
-		s.buildRepos[name] = br
-	}
-	if pr, ok := r.(driven.PipelineRepository); ok {
-		s.pipelineRepos[name] = pr
-	}
-	if ar, ok := r.(driven.ActionsRepository); ok {
-		s.actionsRepos[name] = ar
-	}
-	if cr, ok := r.(driven.CIRepository); ok {
-		s.ciRepos[name] = cr
 	}
 	if elr, ok := r.(driven.ExternalLinkRepository); ok {
 		s.extLinkRepos[name] = elr
@@ -205,14 +165,9 @@ func (s *Service) RemoveBackend(name string) bool {
 	delete(s.labelRepos, name)
 	delete(s.bulkRepos, name)
 	delete(s.commentRepos, name)
-	delete(s.launchRepos, name)
 	delete(s.fieldRepos, name)
 	delete(s.jqlRepos, name)
 	delete(s.prRepos, name)
-	delete(s.buildRepos, name)
-	delete(s.pipelineRepos, name)
-	delete(s.actionsRepos, name)
-	delete(s.ciRepos, name)
 	delete(s.extLinkRepos, name)
 	delete(s.issueLinkRepos, name)
 	return true
@@ -429,9 +384,6 @@ func (s *Service) Health() *driver.HealthStatus {
 		if _, ok := s.commentRepos[name]; ok {
 			caps = append(caps, "comments")
 		}
-		if _, ok := s.launchRepos[name]; ok {
-			caps = append(caps, "launches")
-		}
 		if _, ok := s.fieldRepos[name]; ok {
 			caps = append(caps, "fields")
 		}
@@ -440,18 +392,6 @@ func (s *Service) Health() *driver.HealthStatus {
 		}
 		if _, ok := s.prRepos[name]; ok {
 			caps = append(caps, "prs")
-		}
-		if _, ok := s.buildRepos[name]; ok {
-			caps = append(caps, "builds")
-		}
-		if _, ok := s.pipelineRepos[name]; ok {
-			caps = append(caps, "pipelines")
-		}
-		if _, ok := s.actionsRepos[name]; ok {
-			caps = append(caps, "actions")
-		}
-		if _, ok := s.ciRepos[name]; ok {
-			caps = append(caps, "ci")
 		}
 		if _, ok := s.extLinkRepos[name]; ok {
 			caps = append(caps, "external_links")
@@ -639,292 +579,6 @@ func (s *Service) ListPRs(ctx context.Context, backend string, filter domain.PRF
 	return r.ListPRs(ctx, filter)
 }
 
-// --- Launch operations (Report Portal) ---
-
-func (s *Service) ListLaunches(ctx context.Context, backend string, filter domain.LaunchFilter) ([]domain.Launch, error) {
-	r, ok := s.launchRepos[backend]
-	if !ok {
-		return nil, s.notSupportedErr(backend, "launches")
-	}
-	return r.ListLaunches(ctx, filter)
-}
-
-func (s *Service) GetLaunch(ctx context.Context, backend, id string) (*domain.Launch, error) {
-	r, ok := s.launchRepos[backend]
-	if !ok {
-		return nil, s.notSupportedErr(backend, "launches")
-	}
-	return r.GetLaunch(ctx, id)
-}
-
-func (s *Service) ListTestItems(ctx context.Context, backend, launchID string, filter domain.TestItemFilter) ([]domain.TestItem, error) {
-	r, ok := s.launchRepos[backend]
-	if !ok {
-		return nil, s.notSupportedErr(backend, "launches")
-	}
-	return r.ListTestItems(ctx, launchID, filter)
-}
-
-func (s *Service) GetTestItem(ctx context.Context, backend, id string) (*domain.TestItem, error) {
-	r, ok := s.launchRepos[backend]
-	if !ok {
-		return nil, s.notSupportedErr(backend, "launches")
-	}
-	return r.GetTestItem(ctx, id)
-}
-
-func (s *Service) GetTestItems(ctx context.Context, backend string, ids []string) ([]domain.TestItem, error) {
-	r, ok := s.launchRepos[backend]
-	if !ok {
-		return nil, s.notSupportedErr(backend, "launches")
-	}
-	return r.GetTestItems(ctx, ids)
-}
-
-func (s *Service) UpdateDefects(ctx context.Context, backend string, updates []domain.DefectUpdate) error {
-	r, ok := s.launchRepos[backend]
-	if !ok {
-		return s.notSupportedErr(backend, "launches")
-	}
-	return r.UpdateDefects(ctx, updates)
-}
-
-// --- Build operations (Jenkins) ---
-
-func (s *Service) ListJobs(ctx context.Context, backend string, filter domain.JobFilter) ([]domain.Job, error) {
-	r, ok := s.buildRepos[backend]
-	if !ok {
-		return nil, s.notSupportedErr(backend, "builds")
-	}
-	return r.ListJobs(ctx, filter)
-}
-
-func (s *Service) GetJob(ctx context.Context, backend, name string) (*domain.Job, error) {
-	r, ok := s.buildRepos[backend]
-	if !ok {
-		return nil, s.notSupportedErr(backend, "builds")
-	}
-	return r.GetJob(ctx, name)
-}
-
-func (s *Service) TriggerBuild(ctx context.Context, backend, jobName string, params map[string]string) (int64, error) {
-	r, ok := s.buildRepos[backend]
-	if !ok {
-		return 0, s.notSupportedErr(backend, "builds")
-	}
-	return r.TriggerBuild(ctx, jobName, params)
-}
-
-func (s *Service) GetBuild(ctx context.Context, backend, jobName string, number int64) (*domain.Build, error) {
-	r, ok := s.buildRepos[backend]
-	if !ok {
-		return nil, s.notSupportedErr(backend, "builds")
-	}
-	return r.GetBuild(ctx, jobName, number)
-}
-
-func (s *Service) GetBuildLog(ctx context.Context, backend, jobName string, number int64) (string, error) {
-	r, ok := s.buildRepos[backend]
-	if !ok {
-		return "", s.notSupportedErr(backend, "builds")
-	}
-	return r.GetBuildLog(ctx, jobName, number)
-}
-
-func (s *Service) GetTestResults(ctx context.Context, backend, jobName string, number int64) (*domain.TestResult, error) {
-	r, ok := s.buildRepos[backend]
-	if !ok {
-		return nil, s.notSupportedErr(backend, "builds")
-	}
-	return r.GetTestResults(ctx, jobName, number)
-}
-
-func (s *Service) GetQueue(ctx context.Context, backend string) ([]domain.QueueItem, error) {
-	r, ok := s.buildRepos[backend]
-	if !ok {
-		return nil, s.notSupportedErr(backend, "builds")
-	}
-	return r.GetQueue(ctx)
-}
-
-func (s *Service) ListBuilds(ctx context.Context, backend, jobName string, limit int) ([]domain.BuildSummary, error) {
-	r, ok := s.buildRepos[backend]
-	if !ok {
-		return nil, s.notSupportedErr(backend, "builds")
-	}
-	return r.ListBuilds(ctx, jobName, limit)
-}
-
-func (s *Service) GetLastBuild(ctx context.Context, backend, jobName string) (*domain.Build, error) {
-	r, ok := s.buildRepos[backend]
-	if !ok {
-		return nil, s.notSupportedErr(backend, "builds")
-	}
-	return r.GetLastBuild(ctx, jobName)
-}
-
-func (s *Service) GetLastSuccessfulBuild(ctx context.Context, backend, jobName string) (*domain.Build, error) {
-	r, ok := s.buildRepos[backend]
-	if !ok {
-		return nil, s.notSupportedErr(backend, "builds")
-	}
-	return r.GetLastSuccessfulBuild(ctx, jobName)
-}
-
-func (s *Service) GetLastFailedBuild(ctx context.Context, backend, jobName string) (*domain.Build, error) {
-	r, ok := s.buildRepos[backend]
-	if !ok {
-		return nil, s.notSupportedErr(backend, "builds")
-	}
-	return r.GetLastFailedBuild(ctx, jobName)
-}
-
-func (s *Service) StopBuild(ctx context.Context, backend, jobName string, number int64) error {
-	r, ok := s.buildRepos[backend]
-	if !ok {
-		return s.notSupportedErr(backend, "builds")
-	}
-	return r.StopBuild(ctx, jobName, number)
-}
-
-func (s *Service) GetJobParameters(ctx context.Context, backend, jobName string) ([]domain.JobParameter, error) {
-	r, ok := s.buildRepos[backend]
-	if !ok {
-		return nil, s.notSupportedErr(backend, "builds")
-	}
-	return r.GetJobParameters(ctx, jobName)
-}
-
-func (s *Service) ListFolderJobs(ctx context.Context, backend, folderPath string) ([]domain.Job, error) {
-	r, ok := s.buildRepos[backend]
-	if !ok {
-		return nil, s.notSupportedErr(backend, "builds")
-	}
-	return r.ListFolderJobs(ctx, folderPath)
-}
-
-func (s *Service) GetUpstreamJobs(ctx context.Context, backend, jobName string) ([]domain.Job, error) {
-	r, ok := s.buildRepos[backend]
-	if !ok {
-		return nil, s.notSupportedErr(backend, "builds")
-	}
-	return r.GetUpstreamJobs(ctx, jobName)
-}
-
-func (s *Service) GetDownstreamJobs(ctx context.Context, backend, jobName string) ([]domain.Job, error) {
-	r, ok := s.buildRepos[backend]
-	if !ok {
-		return nil, s.notSupportedErr(backend, "builds")
-	}
-	return r.GetDownstreamJobs(ctx, jobName)
-}
-
-func (s *Service) ListArtifacts(ctx context.Context, backend, jobName string, number int64) ([]domain.BuildArtifact, error) {
-	r, ok := s.buildRepos[backend]
-	if !ok {
-		return nil, s.notSupportedErr(backend, "builds")
-	}
-	return r.ListArtifacts(ctx, jobName, number)
-}
-
-func (s *Service) GetBuildRevision(ctx context.Context, backend, jobName string, number int64) (string, error) {
-	r, ok := s.buildRepos[backend]
-	if !ok {
-		return "", s.notSupportedErr(backend, "builds")
-	}
-	return r.GetBuildRevision(ctx, jobName, number)
-}
-
-func (s *Service) GetBuildCauses(ctx context.Context, backend, jobName string, number int64) ([]domain.BuildCause, error) {
-	r, ok := s.buildRepos[backend]
-	if !ok {
-		return nil, s.notSupportedErr(backend, "builds")
-	}
-	return r.GetBuildCauses(ctx, jobName, number)
-}
-
-func (s *Service) ListNodes(ctx context.Context, backend string) ([]domain.JenkinsNode, error) {
-	r, ok := s.buildRepos[backend]
-	if !ok {
-		return nil, s.notSupportedErr(backend, "builds")
-	}
-	return r.ListNodes(ctx)
-}
-
-func (s *Service) GetNode(ctx context.Context, backend, name string) (*domain.JenkinsNode, error) {
-	r, ok := s.buildRepos[backend]
-	if !ok {
-		return nil, s.notSupportedErr(backend, "builds")
-	}
-	return r.GetNode(ctx, name)
-}
-
-func (s *Service) ListViews(ctx context.Context, backend string) ([]domain.JenkinsView, error) {
-	r, ok := s.buildRepos[backend]
-	if !ok {
-		return nil, s.notSupportedErr(backend, "builds")
-	}
-	return r.ListViews(ctx)
-}
-
-func (s *Service) GetViewJobs(ctx context.Context, backend, viewName string) ([]domain.Job, error) {
-	r, ok := s.buildRepos[backend]
-	if !ok {
-		return nil, s.notSupportedErr(backend, "builds")
-	}
-	return r.GetViewJobs(ctx, viewName)
-}
-
-// --- Pipeline operations (Jenkins) ---
-
-func (s *Service) ListPipelineRuns(ctx context.Context, backend, jobName string) ([]domain.PipelineRun, error) {
-	r, ok := s.pipelineRepos[backend]
-	if !ok {
-		return nil, s.notSupportedErr(backend, "pipelines")
-	}
-	return r.ListPipelineRuns(ctx, jobName)
-}
-
-func (s *Service) GetPipelineRun(ctx context.Context, backend, jobName, runID string) (*domain.PipelineRun, error) {
-	r, ok := s.pipelineRepos[backend]
-	if !ok {
-		return nil, s.notSupportedErr(backend, "pipelines")
-	}
-	return r.GetPipelineRun(ctx, jobName, runID)
-}
-
-func (s *Service) GetPendingInputs(ctx context.Context, backend, jobName, runID string) ([]domain.PipelineInput, error) {
-	r, ok := s.pipelineRepos[backend]
-	if !ok {
-		return nil, s.notSupportedErr(backend, "pipelines")
-	}
-	return r.GetPendingInputs(ctx, jobName, runID)
-}
-
-func (s *Service) ApproveInput(ctx context.Context, backend, jobName, runID string) error {
-	r, ok := s.pipelineRepos[backend]
-	if !ok {
-		return s.notSupportedErr(backend, "pipelines")
-	}
-	return r.ApproveInput(ctx, jobName, runID)
-}
-
-func (s *Service) AbortInput(ctx context.Context, backend, jobName, runID string) error {
-	r, ok := s.pipelineRepos[backend]
-	if !ok {
-		return s.notSupportedErr(backend, "pipelines")
-	}
-	return r.AbortInput(ctx, jobName, runID)
-}
-
-func (s *Service) GetStageLog(ctx context.Context, backend, jobName, runID, nodeID string) (string, error) {
-	r, ok := s.pipelineRepos[backend]
-	if !ok {
-		return "", s.notSupportedErr(backend, "pipelines")
-	}
-	return r.GetStageLog(ctx, jobName, runID, nodeID)
-}
-
 // --- Issue link operations ---
 
 func (s *Service) LinkIssue(ctx context.Context, backend string, input domain.IssueLinkInput) error {
@@ -933,90 +587,6 @@ func (s *Service) LinkIssue(ctx context.Context, backend string, input domain.Is
 		return s.notSupportedErr(backend, "issue_links")
 	}
 	return r.CreateIssueLink(ctx, input)
-}
-
-// --- CI operations (GitLab CI) ---
-
-func (s *Service) ListPipelines(ctx context.Context, backend string, filter domain.CIPipelineFilter) ([]domain.CIPipeline, error) {
-	r, ok := s.ciRepos[backend]
-	if !ok {
-		return nil, s.notSupportedErr(backend, "ci")
-	}
-	return r.ListPipelines(ctx, filter)
-}
-
-func (s *Service) GetPipeline(ctx context.Context, backend string, pipelineID int64) (*domain.CIPipeline, error) {
-	r, ok := s.ciRepos[backend]
-	if !ok {
-		return nil, s.notSupportedErr(backend, "ci")
-	}
-	return r.GetPipeline(ctx, pipelineID)
-}
-
-func (s *Service) ListPipelineJobs(ctx context.Context, backend string, pipelineID int64) ([]domain.CIJob, error) {
-	r, ok := s.ciRepos[backend]
-	if !ok {
-		return nil, s.notSupportedErr(backend, "ci")
-	}
-	return r.ListPipelineJobs(ctx, pipelineID)
-}
-
-func (s *Service) GetJobLog(ctx context.Context, backend string, jobID int64) (string, error) {
-	r, ok := s.ciRepos[backend]
-	if !ok {
-		return "", s.notSupportedErr(backend, "ci")
-	}
-	return r.GetJobLog(ctx, jobID)
-}
-
-func (s *Service) RetryPipeline(ctx context.Context, backend string, pipelineID int64) error {
-	r, ok := s.ciRepos[backend]
-	if !ok {
-		return s.notSupportedErr(backend, "ci")
-	}
-	return r.RetryPipeline(ctx, pipelineID)
-}
-
-// --- Actions operations (GitHub Actions) ---
-
-func (s *Service) ListWorkflowRuns(ctx context.Context, backend string, filter domain.WorkflowRunFilter) ([]domain.WorkflowRun, error) {
-	r, ok := s.actionsRepos[backend]
-	if !ok {
-		return nil, s.notSupportedErr(backend, "actions")
-	}
-	return r.ListWorkflowRuns(ctx, filter)
-}
-
-func (s *Service) GetWorkflowRun(ctx context.Context, backend string, runID int64) (*domain.WorkflowRun, error) {
-	r, ok := s.actionsRepos[backend]
-	if !ok {
-		return nil, s.notSupportedErr(backend, "actions")
-	}
-	return r.GetWorkflowRun(ctx, runID)
-}
-
-func (s *Service) ListRunJobs(ctx context.Context, backend string, runID int64) ([]domain.WorkflowJob, error) {
-	r, ok := s.actionsRepos[backend]
-	if !ok {
-		return nil, s.notSupportedErr(backend, "actions")
-	}
-	return r.ListRunJobs(ctx, runID)
-}
-
-func (s *Service) GetRunLogs(ctx context.Context, backend string, runID int64) (string, error) {
-	r, ok := s.actionsRepos[backend]
-	if !ok {
-		return "", s.notSupportedErr(backend, "actions")
-	}
-	return r.GetRunLogs(ctx, runID)
-}
-
-func (s *Service) RerunFailedJobs(ctx context.Context, backend string, runID int64) error {
-	r, ok := s.actionsRepos[backend]
-	if !ok {
-		return s.notSupportedErr(backend, "actions")
-	}
-	return r.RerunFailedJobs(ctx, runID)
 }
 
 // --- Stage operations ---
@@ -1337,28 +907,6 @@ func (s *Service) triageFetchNode(ctx context.Context, ref string) (node *domain
 		}
 	}
 
-	// Try launch (reportportal:launch/N)
-	if lr, ok := s.launchRepos[backend]; ok && strings.HasPrefix(key, "launch/") {
-		launchID := strings.TrimPrefix(key, "launch/")
-		launch, launchErr := lr.GetLaunch(ctx, launchID)
-		if launchErr == nil {
-			return &domain.TriageNode{
-				Ref:       ref,
-				Type:      "launch",
-				Phase:     "detected",
-				Title:     launch.Name,
-				URL:       launch.URL,
-				Status:    launch.Status,
-				Timestamp: launch.StartTime,
-			}, launch.Description
-		}
-	}
-
-	// Try build (jenkins:jobName#buildNumber)
-	if n := s.triageFetchBuild(ctx, ref, backend, key); n != nil {
-		return n, ""
-	}
-
 	// Try PR (github:org/repo#N or gitlab:path!N)
 	if pr, ok := s.prRepos[backend]; ok {
 		prs, prErr := pr.ListPRs(ctx, domain.PRFilter{Limit: 1})
@@ -1378,30 +926,3 @@ func (s *Service) triageFetchNode(ctx context.Context, ref string) (node *domain
 	}, ""
 }
 
-func (s *Service) triageFetchBuild(ctx context.Context, ref, backend, key string) *domain.TriageNode {
-	br, ok := s.buildRepos[backend]
-	if !ok || !strings.Contains(key, "#") {
-		return nil
-	}
-	parts := strings.SplitN(key, "#", 2)
-	if len(parts) != 2 {
-		return nil
-	}
-	var buildNum int64
-	if _, err := fmt.Sscanf(parts[1], "%d", &buildNum); err != nil {
-		return nil
-	}
-	build, err := br.GetBuild(ctx, parts[0], buildNum)
-	if err != nil {
-		return nil
-	}
-	return &domain.TriageNode{
-		Ref:       ref,
-		Type:      "build",
-		Phase:     "detected",
-		Title:     fmt.Sprintf("%s #%d", parts[0], buildNum),
-		URL:       build.URL,
-		Status:    string(build.Result),
-		Timestamp: build.Timestamp,
-	}
-}

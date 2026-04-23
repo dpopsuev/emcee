@@ -49,7 +49,6 @@ type entry struct {
 type Repository struct {
 	inner       driven.IssueRepository
 	comments    driven.CommentRepository
-	launches    driven.LaunchRepository
 	fields      driven.FieldRepository
 	jql         driven.JQLRepository
 	docs        driven.DocumentRepository
@@ -58,8 +57,6 @@ type Repository struct {
 	labels      driven.LabelRepository
 	bulk        driven.BulkIssueRepository
 	prs         driven.PRRepository
-	builds      driven.BuildRepository
-	pipelines   driven.PipelineRepository
 	caps        []string
 
 	mu       sync.Mutex
@@ -93,10 +90,6 @@ func New(inner driven.IssueRepository, opts ...Option) *Repository {
 		r.comments = v
 		r.caps = append(r.caps, "comments")
 	}
-	if v, ok := inner.(driven.LaunchRepository); ok {
-		r.launches = v
-		r.caps = append(r.caps, "launches")
-	}
 	if v, ok := inner.(driven.FieldRepository); ok {
 		r.fields = v
 		r.caps = append(r.caps, "fields")
@@ -128,14 +121,6 @@ func New(inner driven.IssueRepository, opts ...Option) *Repository {
 	if v, ok := inner.(driven.PRRepository); ok {
 		r.prs = v
 		r.caps = append(r.caps, "prs")
-	}
-	if v, ok := inner.(driven.BuildRepository); ok {
-		r.builds = v
-		r.caps = append(r.caps, "builds")
-	}
-	if v, ok := inner.(driven.PipelineRepository); ok {
-		r.pipelines = v
-		r.caps = append(r.caps, "pipelines")
 	}
 	for _, o := range opts {
 		o(r)
@@ -375,50 +360,6 @@ func hashJSON(v any) string {
 	return fmt.Sprintf("%x", h[:8])
 }
 
-// --- Passthrough: LaunchRepository ---
-
-func (r *Repository) ListLaunches(ctx context.Context, filter domain.LaunchFilter) ([]domain.Launch, error) {
-	if r.launches == nil {
-		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
-	}
-	return r.launches.ListLaunches(ctx, filter)
-}
-
-func (r *Repository) GetLaunch(ctx context.Context, id string) (*domain.Launch, error) {
-	if r.launches == nil {
-		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
-	}
-	return r.launches.GetLaunch(ctx, id)
-}
-
-func (r *Repository) ListTestItems(ctx context.Context, launchID string, filter domain.TestItemFilter) ([]domain.TestItem, error) {
-	if r.launches == nil {
-		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
-	}
-	return r.launches.ListTestItems(ctx, launchID, filter)
-}
-
-func (r *Repository) GetTestItem(ctx context.Context, id string) (*domain.TestItem, error) {
-	if r.launches == nil {
-		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
-	}
-	return r.launches.GetTestItem(ctx, id)
-}
-
-func (r *Repository) GetTestItems(ctx context.Context, ids []string) ([]domain.TestItem, error) {
-	if r.launches == nil {
-		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
-	}
-	return r.launches.GetTestItems(ctx, ids)
-}
-
-func (r *Repository) UpdateDefects(ctx context.Context, updates []domain.DefectUpdate) error {
-	if r.launches == nil {
-		return fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
-	}
-	return r.launches.UpdateDefects(ctx, updates)
-}
-
 // --- Passthrough: FieldRepository ---
 
 func (r *Repository) ListFields(ctx context.Context) ([]domain.Field, error) {
@@ -526,209 +467,3 @@ func (r *Repository) ListPRs(ctx context.Context, filter domain.PRFilter) ([]dom
 	return r.prs.ListPRs(ctx, filter)
 }
 
-// --- Passthrough: BuildRepository ---
-
-func (r *Repository) ListJobs(ctx context.Context, filter domain.JobFilter) ([]domain.Job, error) {
-	if r.builds == nil {
-		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
-	}
-	return r.builds.ListJobs(ctx, filter)
-}
-
-func (r *Repository) GetJob(ctx context.Context, name string) (*domain.Job, error) {
-	if r.builds == nil {
-		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
-	}
-	return r.builds.GetJob(ctx, name)
-}
-
-func (r *Repository) TriggerBuild(ctx context.Context, jobName string, params map[string]string) (int64, error) {
-	if r.builds == nil {
-		return 0, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
-	}
-	return r.builds.TriggerBuild(ctx, jobName, params)
-}
-
-func (r *Repository) GetBuild(ctx context.Context, jobName string, number int64) (*domain.Build, error) {
-	if r.builds == nil {
-		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
-	}
-	return r.builds.GetBuild(ctx, jobName, number)
-}
-
-func (r *Repository) GetBuildLog(ctx context.Context, jobName string, number int64) (string, error) {
-	if r.builds == nil {
-		return "", fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
-	}
-	return r.builds.GetBuildLog(ctx, jobName, number)
-}
-
-func (r *Repository) GetTestResults(ctx context.Context, jobName string, number int64) (*domain.TestResult, error) {
-	if r.builds == nil {
-		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
-	}
-	return r.builds.GetTestResults(ctx, jobName, number)
-}
-
-func (r *Repository) GetQueue(ctx context.Context) ([]domain.QueueItem, error) {
-	if r.builds == nil {
-		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
-	}
-	return r.builds.GetQueue(ctx)
-}
-
-func (r *Repository) ListBuilds(ctx context.Context, jobName string, limit int) ([]domain.BuildSummary, error) {
-	if r.builds == nil {
-		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
-	}
-	return r.builds.ListBuilds(ctx, jobName, limit)
-}
-
-func (r *Repository) GetLastBuild(ctx context.Context, jobName string) (*domain.Build, error) {
-	if r.builds == nil {
-		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
-	}
-	return r.builds.GetLastBuild(ctx, jobName)
-}
-
-func (r *Repository) GetLastSuccessfulBuild(ctx context.Context, jobName string) (*domain.Build, error) {
-	if r.builds == nil {
-		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
-	}
-	return r.builds.GetLastSuccessfulBuild(ctx, jobName)
-}
-
-func (r *Repository) GetLastFailedBuild(ctx context.Context, jobName string) (*domain.Build, error) {
-	if r.builds == nil {
-		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
-	}
-	return r.builds.GetLastFailedBuild(ctx, jobName)
-}
-
-func (r *Repository) StopBuild(ctx context.Context, jobName string, number int64) error {
-	if r.builds == nil {
-		return fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
-	}
-	return r.builds.StopBuild(ctx, jobName, number)
-}
-
-func (r *Repository) GetJobParameters(ctx context.Context, jobName string) ([]domain.JobParameter, error) {
-	if r.builds == nil {
-		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
-	}
-	return r.builds.GetJobParameters(ctx, jobName)
-}
-
-func (r *Repository) ListFolderJobs(ctx context.Context, folderPath string) ([]domain.Job, error) {
-	if r.builds == nil {
-		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
-	}
-	return r.builds.ListFolderJobs(ctx, folderPath)
-}
-
-func (r *Repository) GetUpstreamJobs(ctx context.Context, jobName string) ([]domain.Job, error) {
-	if r.builds == nil {
-		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
-	}
-	return r.builds.GetUpstreamJobs(ctx, jobName)
-}
-
-func (r *Repository) GetDownstreamJobs(ctx context.Context, jobName string) ([]domain.Job, error) {
-	if r.builds == nil {
-		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
-	}
-	return r.builds.GetDownstreamJobs(ctx, jobName)
-}
-
-func (r *Repository) ListArtifacts(ctx context.Context, jobName string, number int64) ([]domain.BuildArtifact, error) {
-	if r.builds == nil {
-		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
-	}
-	return r.builds.ListArtifacts(ctx, jobName, number)
-}
-
-func (r *Repository) GetBuildRevision(ctx context.Context, jobName string, number int64) (string, error) {
-	if r.builds == nil {
-		return "", fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
-	}
-	return r.builds.GetBuildRevision(ctx, jobName, number)
-}
-
-func (r *Repository) GetBuildCauses(ctx context.Context, jobName string, number int64) ([]domain.BuildCause, error) {
-	if r.builds == nil {
-		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
-	}
-	return r.builds.GetBuildCauses(ctx, jobName, number)
-}
-
-func (r *Repository) ListNodes(ctx context.Context) ([]domain.JenkinsNode, error) {
-	if r.builds == nil {
-		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
-	}
-	return r.builds.ListNodes(ctx)
-}
-
-func (r *Repository) GetNode(ctx context.Context, name string) (*domain.JenkinsNode, error) {
-	if r.builds == nil {
-		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
-	}
-	return r.builds.GetNode(ctx, name)
-}
-
-func (r *Repository) ListViews(ctx context.Context) ([]domain.JenkinsView, error) {
-	if r.builds == nil {
-		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
-	}
-	return r.builds.ListViews(ctx)
-}
-
-func (r *Repository) GetViewJobs(ctx context.Context, viewName string) ([]domain.Job, error) {
-	if r.builds == nil {
-		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
-	}
-	return r.builds.GetViewJobs(ctx, viewName)
-}
-
-// --- Passthrough: PipelineRepository ---
-
-func (r *Repository) ListPipelineRuns(ctx context.Context, jobName string) ([]domain.PipelineRun, error) {
-	if r.pipelines == nil {
-		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
-	}
-	return r.pipelines.ListPipelineRuns(ctx, jobName)
-}
-
-func (r *Repository) GetPipelineRun(ctx context.Context, jobName, runID string) (*domain.PipelineRun, error) {
-	if r.pipelines == nil {
-		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
-	}
-	return r.pipelines.GetPipelineRun(ctx, jobName, runID)
-}
-
-func (r *Repository) GetPendingInputs(ctx context.Context, jobName, runID string) ([]domain.PipelineInput, error) {
-	if r.pipelines == nil {
-		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
-	}
-	return r.pipelines.GetPendingInputs(ctx, jobName, runID)
-}
-
-func (r *Repository) ApproveInput(ctx context.Context, jobName, runID string) error {
-	if r.pipelines == nil {
-		return fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
-	}
-	return r.pipelines.ApproveInput(ctx, jobName, runID)
-}
-
-func (r *Repository) AbortInput(ctx context.Context, jobName, runID string) error {
-	if r.pipelines == nil {
-		return fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
-	}
-	return r.pipelines.AbortInput(ctx, jobName, runID)
-}
-
-func (r *Repository) GetStageLog(ctx context.Context, jobName, runID, nodeID string) (string, error) {
-	if r.pipelines == nil {
-		return "", fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
-	}
-	return r.pipelines.GetStageLog(ctx, jobName, runID, nodeID)
-}

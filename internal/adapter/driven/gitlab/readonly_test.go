@@ -50,10 +50,3 @@ func TestReadOnlyCreateLabel(t *testing.T) {
 	}
 }
 
-func TestReadOnlyRetryPipeline(t *testing.T) {
-	r := newReadOnlyRepo(t)
-	err := r.RetryPipeline(context.Background(), 1)
-	if !errors.Is(err, gitlab.ErrAuthRequired) {
-		t.Errorf("RetryPipeline err = %v, want ErrAuthRequired", err)
-	}
-}
