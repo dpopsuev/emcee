@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/DanyPops/emcee/internal/domain"
-	"github.com/DanyPops/emcee/internal/port/driven/driventest"
-	"github.com/DanyPops/emcee/internal/triage"
+	"github.com/dpopsuev/emcee/internal/domain"
+	"github.com/dpopsuev/emcee/internal/port/driven/driventest"
+	"github.com/dpopsuev/emcee/internal/triage"
 )
 
 func TestTriage_CrawlsAndExtractsLinks(t *testing.T) {

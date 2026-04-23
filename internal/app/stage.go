@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/DanyPops/emcee/internal/domain"
+	"github.com/dpopsuev/emcee/internal/domain"
 )
 
 // ErrStageItemNotFound indicates a stage item was not found.

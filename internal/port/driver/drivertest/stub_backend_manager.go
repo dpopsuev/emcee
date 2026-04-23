@@ -3,8 +3,8 @@ package drivertest
 import (
 	"sync"
 
-	"github.com/DanyPops/emcee/internal/port/driven"
-	"github.com/DanyPops/emcee/internal/port/driver"
+	"github.com/dpopsuev/emcee/internal/port/driven"
+	"github.com/dpopsuev/emcee/internal/port/driver"
 )
 
 var _ driver.BackendManager = (*StubBackendManager)(nil)

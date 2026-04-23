@@ -3,9 +3,9 @@ package jira
 import (
 	"os"
 
-	adapterdriven "github.com/DanyPops/emcee/internal/adapter/driven"
-	"github.com/DanyPops/emcee/internal/config"
-	"github.com/DanyPops/emcee/internal/port/driven"
+	adapterdriven "github.com/dpopsuev/emcee/internal/adapter/driven"
+	"github.com/dpopsuev/emcee/internal/config"
+	"github.com/dpopsuev/emcee/internal/port/driven"
 )
 
 func init() {

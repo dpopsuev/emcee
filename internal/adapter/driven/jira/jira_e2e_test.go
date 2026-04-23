@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/DanyPops/emcee/internal/adapter/driven/jira"
-	"github.com/DanyPops/emcee/internal/domain"
+	"github.com/dpopsuev/emcee/internal/adapter/driven/jira"
+	"github.com/dpopsuev/emcee/internal/domain"
 )
 
 // fakeJira serves a mock Jira REST API.

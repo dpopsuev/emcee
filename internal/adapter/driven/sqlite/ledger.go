@@ -14,8 +14,8 @@ import (
 
 	_ "modernc.org/sqlite" // pure-Go SQLite driver
 
-	"github.com/DanyPops/emcee/internal/domain"
-	"github.com/DanyPops/emcee/internal/port/driven"
+	"github.com/dpopsuev/emcee/internal/domain"
+	"github.com/dpopsuev/emcee/internal/port/driven"
 )
 
 var _ driven.Ledger = (*Ledger)(nil)

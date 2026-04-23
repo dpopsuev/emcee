@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/DanyPops/emcee/internal/adapter/driven"
+	"github.com/dpopsuev/emcee/internal/adapter/driven"
 )
 
 func TestSanitizeError_TokenPatterns(t *testing.T) {

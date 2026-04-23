@@ -1,4 +1,4 @@
-module github.com/DanyPops/emcee
+module github.com/dpopsuev/emcee
 
 go 1.25.8
 

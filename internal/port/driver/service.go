@@ -5,8 +5,8 @@ package driver
 import (
 	"context"
 
-	"github.com/DanyPops/emcee/internal/domain"
-	"github.com/DanyPops/emcee/internal/port/driven"
+	"github.com/dpopsuev/emcee/internal/domain"
+	"github.com/dpopsuev/emcee/internal/port/driven"
 )
 
 // IssueService is the inbound port for issue operations.

@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/DanyPops/emcee/internal/port/driven"
+	"github.com/dpopsuev/emcee/internal/port/driven"
 )
 
 var _ driven.UserResolver = (*StubUserResolver)(nil)

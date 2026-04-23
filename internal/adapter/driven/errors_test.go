@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DanyPops/emcee/internal/adapter/driven"
+	"github.com/dpopsuev/emcee/internal/adapter/driven"
 )
 
 func TestRateLimitError_Error(t *testing.T) {

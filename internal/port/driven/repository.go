@@ -6,7 +6,7 @@ package driven
 import (
 	"context"
 
-	"github.com/DanyPops/emcee/internal/domain"
+	"github.com/dpopsuev/emcee/internal/domain"
 )
 
 // IssueRepository is the outbound port for issue persistence/retrieval.

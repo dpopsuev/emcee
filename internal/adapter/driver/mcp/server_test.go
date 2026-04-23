@@ -7,13 +7,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DanyPops/emcee/internal/domain"
-	"github.com/DanyPops/emcee/internal/port/driver"
-	"github.com/DanyPops/emcee/internal/port/driver/drivertest"
+	"github.com/dpopsuev/emcee/internal/domain"
+	"github.com/dpopsuev/emcee/internal/port/driver"
+	"github.com/dpopsuev/emcee/internal/port/driver/drivertest"
 	"github.com/dpopsuev/battery/mcpserver"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
-	mcpdriver "github.com/DanyPops/emcee/internal/adapter/driver/mcp"
+	mcpdriver "github.com/dpopsuev/emcee/internal/adapter/driver/mcp"
 )
 
 func connectClient(t *testing.T, srv *mcpserver.Server) *sdkmcp.ClientSession {

@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/DanyPops/emcee/internal/domain"
+	"github.com/dpopsuev/emcee/internal/domain"
 )
 
 func TestParsePriority(t *testing.T) {

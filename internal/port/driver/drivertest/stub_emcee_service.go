@@ -1,7 +1,7 @@
 package drivertest
 
 import (
-	mcpdriver "github.com/DanyPops/emcee/internal/adapter/driver/mcp"
+	mcpdriver "github.com/dpopsuev/emcee/internal/adapter/driver/mcp"
 )
 
 var _ mcpdriver.EmceeService = (*StubEmceeService)(nil)

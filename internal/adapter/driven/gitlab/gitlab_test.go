@@ -5,10 +5,10 @@ import (
 	"os"
 	"testing"
 
-	"github.com/DanyPops/emcee/internal/adapter/driven/gitlab"
-	"github.com/DanyPops/emcee/internal/domain"
-	"github.com/DanyPops/emcee/internal/port/driven"
-	"github.com/DanyPops/emcee/internal/port/driven/driventest"
+	"github.com/dpopsuev/emcee/internal/adapter/driven/gitlab"
+	"github.com/dpopsuev/emcee/internal/domain"
+	"github.com/dpopsuev/emcee/internal/port/driven"
+	"github.com/dpopsuev/emcee/internal/port/driven/driventest"
 )
 
 func TestGitLabContractCompliance(t *testing.T) {

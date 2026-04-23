@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/DanyPops/emcee/internal/app"
-	"github.com/DanyPops/emcee/internal/domain"
-	"github.com/DanyPops/emcee/internal/port/driven"
-	"github.com/DanyPops/emcee/internal/port/driven/driventest"
+	"github.com/dpopsuev/emcee/internal/app"
+	"github.com/dpopsuev/emcee/internal/domain"
+	"github.com/dpopsuev/emcee/internal/port/driven"
+	"github.com/dpopsuev/emcee/internal/port/driven/driventest"
 )
 
 // mockRepo implements all driven repository interfaces for testing.

@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DanyPops/emcee/internal/adapter/driven/gitlab"
-	"github.com/DanyPops/emcee/internal/domain"
+	"github.com/dpopsuev/emcee/internal/adapter/driven/gitlab"
+	"github.com/dpopsuev/emcee/internal/domain"
 )
 
 //nolint:gocyclo // e2e test exercising many code paths

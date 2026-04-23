@@ -4,9 +4,9 @@ import (
 	"os"
 	"testing"
 
-	"github.com/DanyPops/emcee/internal/adapter/driven/github"
-	"github.com/DanyPops/emcee/internal/port/driven"
-	"github.com/DanyPops/emcee/internal/port/driven/driventest"
+	"github.com/dpopsuev/emcee/internal/adapter/driven/github"
+	"github.com/dpopsuev/emcee/internal/port/driven"
+	"github.com/dpopsuev/emcee/internal/port/driven/driventest"
 )
 
 func TestGitHubContractCompliance(t *testing.T) {

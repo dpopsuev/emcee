@@ -3,7 +3,7 @@ package drivertest
 import (
 	"sync"
 
-	"github.com/DanyPops/emcee/internal/port/driver"
+	"github.com/dpopsuev/emcee/internal/port/driver"
 )
 
 var _ driver.HealthService = (*StubHealthService)(nil)

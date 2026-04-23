@@ -4,8 +4,8 @@ import (
 	"context"
 	"sync"
 
-	"github.com/DanyPops/emcee/internal/domain"
-	"github.com/DanyPops/emcee/internal/port/driver"
+	"github.com/dpopsuev/emcee/internal/domain"
+	"github.com/dpopsuev/emcee/internal/port/driver"
 )
 
 var _ driver.IssueLinkService = (*StubIssueLinkService)(nil)

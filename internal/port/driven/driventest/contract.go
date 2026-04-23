@@ -6,8 +6,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/DanyPops/emcee/internal/domain"
-	"github.com/DanyPops/emcee/internal/port/driven"
+	"github.com/dpopsuev/emcee/internal/domain"
+	"github.com/dpopsuev/emcee/internal/port/driven"
 )
 
 // RunContractTests exercises the IssueRepository contract against any implementation.

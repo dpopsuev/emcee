@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/DanyPops/emcee/internal/adapter/driven/github"
-	"github.com/DanyPops/emcee/internal/domain"
+	"github.com/dpopsuev/emcee/internal/adapter/driven/github"
+	"github.com/dpopsuev/emcee/internal/domain"
 )
 
 func newReadOnlyRepo(t *testing.T) *github.Repository {

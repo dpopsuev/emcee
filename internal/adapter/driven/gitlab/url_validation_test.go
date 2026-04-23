@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/DanyPops/emcee/internal/adapter/driven/gitlab"
+	"github.com/dpopsuev/emcee/internal/adapter/driven/gitlab"
 )
 
 func TestNewWithURL_ValidURLs(t *testing.T) {

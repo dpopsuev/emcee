@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DanyPops/emcee/internal/adapter/driven/sqlite"
-	"github.com/DanyPops/emcee/internal/domain"
+	"github.com/dpopsuev/emcee/internal/adapter/driven/sqlite"
+	"github.com/dpopsuev/emcee/internal/domain"
 )
 
 func newTestLedger(t *testing.T) *sqlite.Ledger {

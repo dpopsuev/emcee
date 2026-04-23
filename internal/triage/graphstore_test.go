@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/DanyPops/emcee/internal/domain"
+	"github.com/dpopsuev/emcee/internal/domain"
 )
 
 func TestInMemoryGraphStore_PutAndGet(t *testing.T) {

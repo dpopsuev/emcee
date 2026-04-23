@@ -4,10 +4,10 @@ import (
 	"errors"
 	"testing"
 
-	adapterdriven "github.com/DanyPops/emcee/internal/adapter/driven"
-	"github.com/DanyPops/emcee/internal/config"
-	"github.com/DanyPops/emcee/internal/port/driven"
-	"github.com/DanyPops/emcee/internal/port/driven/driventest"
+	adapterdriven "github.com/dpopsuev/emcee/internal/adapter/driven"
+	"github.com/dpopsuev/emcee/internal/config"
+	"github.com/dpopsuev/emcee/internal/port/driven"
+	"github.com/dpopsuev/emcee/internal/port/driven/driventest"
 )
 
 func TestRegistry_RegisterAndCreateFromConfig(t *testing.T) {

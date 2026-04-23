@@ -12,11 +12,11 @@ import (
 
 	"golang.org/x/time/rate"
 
-	adapterdriven "github.com/DanyPops/emcee/internal/adapter/driven"
-	"github.com/DanyPops/emcee/internal/config"
-	"github.com/DanyPops/emcee/internal/domain"
-	"github.com/DanyPops/emcee/internal/port/driven"
-	"github.com/DanyPops/emcee/internal/port/driver"
+	adapterdriven "github.com/dpopsuev/emcee/internal/adapter/driven"
+	"github.com/dpopsuev/emcee/internal/config"
+	"github.com/dpopsuev/emcee/internal/domain"
+	"github.com/dpopsuev/emcee/internal/port/driven"
+	"github.com/dpopsuev/emcee/internal/port/driver"
 )
 
 const batchSize = 50

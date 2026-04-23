@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/DanyPops/emcee/internal/adapter/driven/linear"
-	"github.com/DanyPops/emcee/internal/domain"
+	"github.com/dpopsuev/emcee/internal/adapter/driven/linear"
+	"github.com/dpopsuev/emcee/internal/domain"
 )
 
 // fakeLinear serves a mock Linear GraphQL API.

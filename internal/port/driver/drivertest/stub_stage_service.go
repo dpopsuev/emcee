@@ -1,9 +1,9 @@
 package drivertest
 
 import (
-	"github.com/DanyPops/emcee/internal/app"
-	"github.com/DanyPops/emcee/internal/domain"
-	"github.com/DanyPops/emcee/internal/port/driver"
+	"github.com/dpopsuev/emcee/internal/app"
+	"github.com/dpopsuev/emcee/internal/domain"
+	"github.com/dpopsuev/emcee/internal/port/driver"
 )
 
 var _ driver.StageService = (*StubStageService)(nil)

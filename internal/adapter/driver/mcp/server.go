@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DanyPops/emcee/internal/domain"
-	"github.com/DanyPops/emcee/internal/port/driver"
 	"github.com/dpopsuev/battery/mcpserver"
 	"github.com/dpopsuev/battery/server"
+	"github.com/dpopsuev/emcee/internal/domain"
+	"github.com/dpopsuev/emcee/internal/port/driver"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 

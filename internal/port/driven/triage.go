@@ -3,7 +3,7 @@ package driven
 import (
 	"context"
 
-	"github.com/DanyPops/emcee/internal/domain"
+	"github.com/dpopsuev/emcee/internal/domain"
 )
 
 // LinkExtractor discovers cross-references in artifact text.

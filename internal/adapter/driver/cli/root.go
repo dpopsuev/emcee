@@ -12,18 +12,18 @@ import (
 	"text/tabwriter"
 
 	// Blank imports trigger init() registration with the backend registry.
-	_ "github.com/DanyPops/emcee/internal/adapter/driven/github"
-	_ "github.com/DanyPops/emcee/internal/adapter/driven/gitlab"
-	_ "github.com/DanyPops/emcee/internal/adapter/driven/jira"
-	_ "github.com/DanyPops/emcee/internal/adapter/driven/linear"
+	_ "github.com/dpopsuev/emcee/internal/adapter/driven/github"
+	_ "github.com/dpopsuev/emcee/internal/adapter/driven/gitlab"
+	_ "github.com/dpopsuev/emcee/internal/adapter/driven/jira"
+	_ "github.com/dpopsuev/emcee/internal/adapter/driven/linear"
 
-	adapterdriven "github.com/DanyPops/emcee/internal/adapter/driven"
-	adaptersqlite "github.com/DanyPops/emcee/internal/adapter/driven/sqlite"
-	mcpserver "github.com/DanyPops/emcee/internal/adapter/driver/mcp"
-	"github.com/DanyPops/emcee/internal/app"
-	"github.com/DanyPops/emcee/internal/config"
-	"github.com/DanyPops/emcee/internal/domain"
-	"github.com/DanyPops/emcee/internal/triage"
+	adapterdriven "github.com/dpopsuev/emcee/internal/adapter/driven"
+	adaptersqlite "github.com/dpopsuev/emcee/internal/adapter/driven/sqlite"
+	mcpserver "github.com/dpopsuev/emcee/internal/adapter/driver/mcp"
+	"github.com/dpopsuev/emcee/internal/app"
+	"github.com/dpopsuev/emcee/internal/config"
+	"github.com/dpopsuev/emcee/internal/domain"
+	"github.com/dpopsuev/emcee/internal/triage"
 	"github.com/spf13/cobra"
 )
 

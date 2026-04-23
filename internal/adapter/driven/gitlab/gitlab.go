@@ -16,9 +16,9 @@ import (
 	"strings"
 	"time"
 
-	adapterdriven "github.com/DanyPops/emcee/internal/adapter/driven"
-	"github.com/DanyPops/emcee/internal/domain"
-	"github.com/DanyPops/emcee/internal/port/driven"
+	adapterdriven "github.com/dpopsuev/emcee/internal/adapter/driven"
+	"github.com/dpopsuev/emcee/internal/domain"
+	"github.com/dpopsuev/emcee/internal/port/driven"
 )
 
 const (

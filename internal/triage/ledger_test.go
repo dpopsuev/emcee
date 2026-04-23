@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DanyPops/emcee/internal/domain"
+	"github.com/dpopsuev/emcee/internal/domain"
 )
 
 func TestInMemoryLedger_PutAndGet(t *testing.T) {

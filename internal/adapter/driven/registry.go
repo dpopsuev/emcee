@@ -5,9 +5,9 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/DanyPops/emcee/internal/adapter/driven/cache"
-	"github.com/DanyPops/emcee/internal/config"
-	"github.com/DanyPops/emcee/internal/port/driven"
+	"github.com/dpopsuev/emcee/internal/adapter/driven/cache"
+	"github.com/dpopsuev/emcee/internal/config"
+	"github.com/dpopsuev/emcee/internal/port/driven"
 )
 
 // Factory creates an IssueRepository from a backend configuration entry.

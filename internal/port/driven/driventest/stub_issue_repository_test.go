@@ -6,8 +6,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/DanyPops/emcee/internal/domain"
-	"github.com/DanyPops/emcee/internal/port/driven/driventest"
+	"github.com/dpopsuev/emcee/internal/domain"
+	"github.com/dpopsuev/emcee/internal/port/driven/driventest"
 )
 
 func TestStubIssueRepository_Name(t *testing.T) {
