@@ -75,7 +75,14 @@ func newTestServer(t *testing.T) (*sdkmcp.ClientSession, *drivertest.StubEmceeSe
 		{ID: "10", Name: "test_login", Status: "PASSED", LaunchID: "1"},
 		{ID: "11", Name: "test_logout", Status: "FAILED", LaunchID: "1"},
 	}
-	svc.StubLaunchService.TestItem = &domain.TestItem{ID: "10", Name: "test_login", Status: "PASSED", LaunchID: "1"}
+	svc.StubLaunchService.BulkTestItems = []domain.TestItem{
+		{ID: "10", Name: "test_login", Status: "FAILED", LaunchID: "1", FailureMessage: "401 error"},
+		{ID: "11", Name: "test_logout", Status: "PASSED", LaunchID: "1"},
+	}
+	svc.StubLaunchService.TestItem = &domain.TestItem{
+		ID: "10", Name: "test_login", Status: "FAILED", LaunchID: "1",
+		FailureMessage: "AssertionError: expected 200 got 401",
+	}
 	svc.StubPRService.PRs = []domain.PullRequest{
 		{Number: 42, Title: "feat: add widget", Author: "alice", State: "merged", URL: "https://github.com/org/repo/pull/42"},
 	}
@@ -145,6 +152,15 @@ func newTestServer(t *testing.T) (*sdkmcp.ClientSession, *drivertest.StubEmceeSe
 	}
 	svc.StubPipelineService.PipelineInputs = []domain.PipelineInput{
 		{ID: "input-1", Message: "Proceed to deploy?"},
+	}
+	svc.StubIssueService.Issue = &domain.Issue{
+		Ref: "test:T-1", Key: "T-1", Title: "First Issue",
+		IssueLinks: []domain.IssueLink{
+			{Type: "blocks", Direction: "outward", TargetRef: "test:T-2", TargetKey: "T-2", TargetTitle: "Second Issue"},
+		},
+		ExternalLinks: []domain.ExternalLink{
+			{Title: "PR #42", URL: "https://github.com/org/repo/pull/42", Type: "GitHub"},
+		},
 	}
 	svc.StubCIService.Pipelines = []domain.CIPipeline{
 		{ID: 500, Status: "success", Ref: "main"},
@@ -543,6 +559,9 @@ func TestEmceeTestItemGet(t *testing.T) {
 	}
 	if item.Name != "test_login" {
 		t.Errorf("name = %q, want %q", item.Name, "test_login")
+	}
+	if item.FailureMessage != "AssertionError: expected 200 got 401" {
+		t.Errorf("failure_message = %q, want assertion error", item.FailureMessage)
 	}
 }
 
@@ -1650,5 +1669,82 @@ func TestEmceeCIRetry(t *testing.T) {
 	}
 	if !strings.Contains(resultText(t, result), "true") {
 		t.Errorf("expected retry confirmation")
+	}
+}
+
+// --- Issue links tests ---
+
+func TestEmceeGetIncludesIssueLinks(t *testing.T) {
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "get", "ref": "test:T-1"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var issue domain.Issue
+	if err := json.Unmarshal([]byte(resultText(t, result)), &issue); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(issue.IssueLinks) != 1 {
+		t.Fatalf("issue_links len = %d, want 1", len(issue.IssueLinks))
+	}
+	if issue.IssueLinks[0].TargetKey != "T-2" {
+		t.Errorf("target_key = %q, want T-2", issue.IssueLinks[0].TargetKey)
+	}
+}
+
+func TestEmceeGetIncludesExternalLinks(t *testing.T) {
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "get", "ref": "test:T-1"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var issue domain.Issue
+	if err := json.Unmarshal([]byte(resultText(t, result)), &issue); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(issue.ExternalLinks) != 1 {
+		t.Fatalf("external_links len = %d, want 1", len(issue.ExternalLinks))
+	}
+	if issue.ExternalLinks[0].Type != "GitHub" {
+		t.Errorf("type = %q, want GitHub", issue.ExternalLinks[0].Type)
+	}
+}
+
+func TestEmceeBulkTestItemGet(t *testing.T) {
+	session, svc := newTestServer(t)
+	ids := `["10","11"]`
+	result := callTool(t, session, "emcee", map[string]any{"action": "bulk_test_item_get", "backend": "reportportal", "issues": ids})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var items []domain.TestItem
+	if err := json.Unmarshal([]byte(resultText(t, result)), &items); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("len = %d, want 2", len(items))
+	}
+	if len(svc.StubLaunchService.GetTestItemsCalls) != 1 {
+		t.Fatalf("GetTestItemsCalls = %d, want 1", len(svc.StubLaunchService.GetTestItemsCalls))
+	}
+}
+
+func TestEmceeLinkIssue(t *testing.T) {
+	session, svc := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{
+		"action":     "link_issue",
+		"ref":        "test:T-1",
+		"query":      "T-2",
+		"issue_type": "Blocks",
+	})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	if len(svc.StubIssueLinkService.LinkIssueCalls) != 1 {
+		t.Fatalf("LinkIssueCalls = %d, want 1", len(svc.StubIssueLinkService.LinkIssueCalls))
+	}
+	call := svc.StubIssueLinkService.LinkIssueCalls[0]
+	if call.InwardKey != "T-1" || call.OutwardKey != "T-2" || call.Type != "Blocks" {
+		t.Errorf("unexpected call: %+v", call)
 	}
 }

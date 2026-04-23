@@ -31,23 +31,30 @@ type TestItemGetCall struct {
 	ID      string
 }
 
+type TestItemsGetCall struct {
+	Backend string
+	IDs     []string
+}
+
 type DefectUpdateCall struct {
 	Backend string
 	Updates []domain.DefectUpdate
 }
 
 type StubLaunchService struct {
-	Launches  []domain.Launch
-	Launch    *domain.Launch
-	TestItems []domain.TestItem
-	TestItem  *domain.TestItem
-	Err       error
+	Launches      []domain.Launch
+	Launch        *domain.Launch
+	TestItems     []domain.TestItem
+	TestItem      *domain.TestItem
+	BulkTestItems []domain.TestItem
+	Err           error
 
 	mu                 sync.Mutex
 	ListLaunchesCalls  []LaunchListCall
 	GetLaunchCalls     []LaunchGetCall
 	ListTestItemsCalls []TestItemsListCall
 	GetTestItemCalls   []TestItemGetCall
+	GetTestItemsCalls  []TestItemsGetCall
 	UpdateDefectsCalls []DefectUpdateCall
 }
 
@@ -77,6 +84,13 @@ func (s *StubLaunchService) GetTestItem(_ context.Context, backend, id string) (
 	defer s.mu.Unlock()
 	s.GetTestItemCalls = append(s.GetTestItemCalls, TestItemGetCall{Backend: backend, ID: id})
 	return s.TestItem, s.Err
+}
+
+func (s *StubLaunchService) GetTestItems(_ context.Context, backend string, ids []string) ([]domain.TestItem, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.GetTestItemsCalls = append(s.GetTestItemsCalls, TestItemsGetCall{Backend: backend, IDs: ids})
+	return s.BulkTestItems, s.Err
 }
 
 func (s *StubLaunchService) UpdateDefects(_ context.Context, backend string, updates []domain.DefectUpdate) error {

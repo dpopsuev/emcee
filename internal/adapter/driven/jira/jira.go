@@ -39,12 +39,14 @@ var (
 
 // Compile-time interface compliance checks.
 var (
-	_ driven.IssueRepository   = (*Repository)(nil)
-	_ driven.ProjectRepository = (*Repository)(nil)
-	_ driven.LabelRepository   = (*Repository)(nil)
-	_ driven.CommentRepository = (*Repository)(nil)
-	_ driven.FieldRepository   = (*Repository)(nil)
-	_ driven.JQLRepository     = (*Repository)(nil)
+	_ driven.IssueRepository        = (*Repository)(nil)
+	_ driven.ProjectRepository      = (*Repository)(nil)
+	_ driven.LabelRepository        = (*Repository)(nil)
+	_ driven.CommentRepository      = (*Repository)(nil)
+	_ driven.FieldRepository        = (*Repository)(nil)
+	_ driven.JQLRepository          = (*Repository)(nil)
+	_ driven.ExternalLinkRepository = (*Repository)(nil)
+	_ driven.IssueLinkRepository    = (*Repository)(nil)
 )
 
 // Repository implements driven.IssueRepository for Jira.
@@ -196,7 +198,7 @@ func (r *Repository) List(ctx context.Context, filter domain.ListFilter) ([]doma
 func (r *Repository) Get(ctx context.Context, key string) (*domain.Issue, error) {
 	adapterdriven.LogOp(ctx, BackendName, "get", slog.String(adapterdriven.LogKeyIssueKey, key))
 	var raw jiraIssue
-	path := fmt.Sprintf("/rest/api/2/issue/%s?fields=summary,status,priority,assignee,description,labels,created,updated,project,issuetype,resolution,fixVersions,components", key)
+	path := fmt.Sprintf("/rest/api/2/issue/%s?fields=summary,status,priority,assignee,description,labels,created,updated,project,issuetype,resolution,fixVersions,components,issuelinks", key)
 	if err := r.api(ctx, "GET", path, nil, &raw); err != nil {
 		return nil, err
 	}
@@ -496,6 +498,31 @@ type jiraIssue struct {
 		Components []struct {
 			Name string `json:"name"`
 		} `json:"components"`
+		IssueLinks []struct {
+			Type struct {
+				Name    string `json:"name"`
+				Inward  string `json:"inward"`
+				Outward string `json:"outward"`
+			} `json:"type"`
+			InwardIssue *struct {
+				Key    string `json:"key"`
+				Fields struct {
+					Summary string `json:"summary"`
+					Status  struct {
+						Name string `json:"name"`
+					} `json:"status"`
+				} `json:"fields"`
+			} `json:"inwardIssue"`
+			OutwardIssue *struct {
+				Key    string `json:"key"`
+				Fields struct {
+					Summary string `json:"summary"`
+					Status  struct {
+						Name string `json:"name"`
+					} `json:"status"`
+				} `json:"fields"`
+			} `json:"outwardIssue"`
+		} `json:"issuelinks"`
 		Created string `json:"created"`
 		Updated string `json:"updated"`
 	} `json:"fields"`
@@ -546,7 +573,29 @@ func (j *jiraIssue) toDomain() domain.Issue {
 		issue.UpdatedAt = t
 	}
 
-	// Build URL from self link: strip /rest/api/... and append /browse/KEY
+	for _, link := range j.Fields.IssueLinks {
+		if link.OutwardIssue != nil {
+			issue.IssueLinks = append(issue.IssueLinks, domain.IssueLink{
+				Type:         link.Type.Outward,
+				Direction:    "outward",
+				TargetRef:    BackendName + ":" + link.OutwardIssue.Key,
+				TargetKey:    link.OutwardIssue.Key,
+				TargetTitle:  link.OutwardIssue.Fields.Summary,
+				TargetStatus: link.OutwardIssue.Fields.Status.Name,
+			})
+		}
+		if link.InwardIssue != nil {
+			issue.IssueLinks = append(issue.IssueLinks, domain.IssueLink{
+				Type:         link.Type.Inward,
+				Direction:    "inward",
+				TargetRef:    BackendName + ":" + link.InwardIssue.Key,
+				TargetKey:    link.InwardIssue.Key,
+				TargetTitle:  link.InwardIssue.Fields.Summary,
+				TargetStatus: link.InwardIssue.Fields.Status.Name,
+			})
+		}
+	}
+
 	if j.Self != "" {
 		if idx := strings.Index(j.Self, "/rest/"); idx > 0 {
 			issue.URL = j.Self[:idx] + "/browse/" + j.Key
@@ -750,4 +799,52 @@ func (r *Repository) SearchJQL(ctx context.Context, jql string, limit int) ([]do
 		limit = defaultLimit
 	}
 	return r.searchJQL(ctx, jql, limit)
+}
+
+// --- External link operations ---
+
+type rpRemoteLink struct {
+	Object struct {
+		URL   string `json:"url"`
+		Title string `json:"title"`
+	} `json:"object"`
+	Application *struct {
+		Name string `json:"name"`
+	} `json:"application"`
+}
+
+func (r *Repository) ListExternalLinks(ctx context.Context, key string) ([]domain.ExternalLink, error) {
+	adapterdriven.LogOp(ctx, BackendName, "list_external_links", slog.String(adapterdriven.LogKeyIssueKey, key))
+	path := fmt.Sprintf("/rest/api/2/issue/%s/remotelink", key)
+	var raw []rpRemoteLink
+	if err := r.api(ctx, "GET", path, nil, &raw); err != nil {
+		return nil, err
+	}
+	links := make([]domain.ExternalLink, 0, len(raw))
+	for i := range raw {
+		link := domain.ExternalLink{
+			Title: raw[i].Object.Title,
+			URL:   raw[i].Object.URL,
+		}
+		if raw[i].Application != nil {
+			link.Type = raw[i].Application.Name
+		}
+		links = append(links, link)
+	}
+	return links, nil
+}
+
+// --- Issue link operations ---
+
+func (r *Repository) CreateIssueLink(ctx context.Context, input domain.IssueLinkInput) error {
+	adapterdriven.LogWrite(ctx, BackendName, "create_issue_link",
+		slog.String("type", input.Type),
+		slog.String("inward", input.InwardKey),
+		slog.String("outward", input.OutwardKey))
+	body := map[string]any{
+		"type":         map[string]string{"name": input.Type},
+		"inwardIssue":  map[string]string{"key": input.InwardKey},
+		"outwardIssue": map[string]string{"key": input.OutwardKey},
+	}
+	return r.api(ctx, "POST", "/rest/api/2/issueLink", body, nil)
 }

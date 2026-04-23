@@ -85,24 +85,26 @@ const (
 // Issue is the canonical domain object — the unified representation of a work item
 // regardless of which platform it lives on.
 type Issue struct {
-	Ref         string    `json:"ref"`
-	ID          string    `json:"id"`
-	Key         string    `json:"key"`
-	Title       string    `json:"title"`
-	Description string    `json:"description,omitempty"`
-	Status      Status    `json:"status"`
-	Priority    Priority  `json:"priority"`
-	Labels      []string  `json:"labels,omitempty"`
-	Assignee    string    `json:"assignee,omitempty"`
-	Project     string    `json:"project,omitempty"`
-	IssueType   string    `json:"issue_type,omitempty"`
-	Resolution  string    `json:"resolution,omitempty"`
-	FixVersions []string  `json:"fix_versions,omitempty"`
-	Components  []string  `json:"components,omitempty"`
-	Comments    []Comment `json:"comments,omitempty"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
-	URL         string    `json:"url,omitempty"`
+	Ref           string         `json:"ref"`
+	ID            string         `json:"id"`
+	Key           string         `json:"key"`
+	Title         string         `json:"title"`
+	Description   string         `json:"description,omitempty"`
+	Status        Status         `json:"status"`
+	Priority      Priority       `json:"priority"`
+	Labels        []string       `json:"labels,omitempty"`
+	Assignee      string         `json:"assignee,omitempty"`
+	Project       string         `json:"project,omitempty"`
+	IssueType     string         `json:"issue_type,omitempty"`
+	Resolution    string         `json:"resolution,omitempty"`
+	FixVersions   []string       `json:"fix_versions,omitempty"`
+	Components    []string       `json:"components,omitempty"`
+	Comments      []Comment      `json:"comments,omitempty"`
+	IssueLinks    []IssueLink    `json:"issue_links,omitempty"`
+	ExternalLinks []ExternalLink `json:"external_links,omitempty"`
+	CreatedAt     time.Time      `json:"created_at"`
+	UpdatedAt     time.Time      `json:"updated_at"`
+	URL           string         `json:"url,omitempty"`
 }
 
 type CreateInput struct {
@@ -131,6 +133,30 @@ type UpdateInput struct {
 	Components  []string  `json:"components,omitempty"`
 	FixVersions []string  `json:"fix_versions,omitempty"`
 	Resolution  *string   `json:"resolution,omitempty"`
+}
+
+// IssueLink represents a link between two Jira issues.
+type IssueLink struct {
+	Type         string `json:"type"`
+	Direction    string `json:"direction"`
+	TargetRef    string `json:"target_ref"`
+	TargetKey    string `json:"target_key"`
+	TargetTitle  string `json:"target_title"`
+	TargetStatus string `json:"target_status,omitempty"`
+}
+
+// ExternalLink represents a remote link (PR, commit, Confluence page) on an issue.
+type ExternalLink struct {
+	Title string `json:"title"`
+	URL   string `json:"url"`
+	Type  string `json:"type,omitempty"`
+}
+
+// IssueLinkInput is the input for creating an issue link.
+type IssueLinkInput struct {
+	Type       string `json:"type"`
+	InwardKey  string `json:"inward_key"`
+	OutwardKey string `json:"outward_key"`
 }
 
 type ListFilter struct {

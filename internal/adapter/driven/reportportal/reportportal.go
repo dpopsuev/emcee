@@ -268,8 +268,14 @@ type rpTestItem struct {
 	Type     string `json:"type"`
 	LaunchID int    `json:"launchId"`
 	Issue    *struct {
-		IssueType string `json:"issueType"`
-		Comment   string `json:"comment"`
+		IssueType            string `json:"issueType"`
+		Comment              string `json:"comment"`
+		ExternalSystemIssues []struct {
+			TicketID   string `json:"ticketId"`
+			BtsURL     string `json:"btsUrl"`
+			BtsProject string `json:"btsProject"`
+			URL        string `json:"url"`
+		} `json:"externalSystemIssues"`
 	} `json:"issue"`
 }
 
@@ -285,6 +291,14 @@ func (ti *rpTestItem) toDomain(baseURL, project string) domain.TestItem {
 	if ti.Issue != nil {
 		item.IssueType = ti.Issue.IssueType
 		item.Comment = ti.Issue.Comment
+		for _, esi := range ti.Issue.ExternalSystemIssues {
+			item.ExternalSystemIssues = append(item.ExternalSystemIssues, domain.ExternalSystemIssue{
+				TicketID:   esi.TicketID,
+				BtsURL:     esi.BtsURL,
+				BtsProject: esi.BtsProject,
+				URL:        esi.URL,
+			})
+		}
 	}
 	return item
 }
@@ -325,18 +339,75 @@ func (r *Repository) GetTestItem(ctx context.Context, id string) (*domain.TestIt
 		return nil, err
 	}
 	item := raw.toDomain(r.baseURL, r.project)
+	if item.Status == "FAILED" {
+		item.FailureMessage = r.fetchErrorLogs(ctx, id)
+	}
 	return &item, nil
+}
+
+type rpLogEntry struct {
+	ID      int    `json:"id"`
+	Message string `json:"message"`
+	Level   string `json:"level"`
+}
+
+func (r *Repository) fetchErrorLogs(ctx context.Context, itemID string) string {
+	path := fmt.Sprintf("/log?filter.eq.item=%s&filter.in.level=ERROR,TRACE&page.size=10&page.sort=time,ASC", itemID)
+	var result struct {
+		Content []rpLogEntry `json:"content"`
+	}
+	if err := r.api(ctx, "GET", path, nil, &result); err != nil {
+		return ""
+	}
+	if len(result.Content) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	for i := range result.Content {
+		if i > 0 {
+			sb.WriteString("\n")
+		}
+		sb.WriteString(result.Content[i].Message)
+	}
+	return sb.String()
+}
+
+func (r *Repository) GetTestItems(ctx context.Context, ids []string) ([]domain.TestItem, error) {
+	adapterdriven.LogOp(ctx, BackendName, "get_test_items", slog.Int(adapterdriven.LogKeyCount, len(ids)))
+	path := fmt.Sprintf("/item?filter.in.id=%s&page.size=%d", strings.Join(ids, ","), len(ids))
+	var result struct {
+		Content []rpTestItem `json:"content"`
+	}
+	if err := r.api(ctx, "GET", path, nil, &result); err != nil {
+		return nil, err
+	}
+	items := make([]domain.TestItem, 0, len(result.Content))
+	for i := range result.Content {
+		item := result.Content[i].toDomain(r.baseURL, r.project)
+		if item.Status == "FAILED" {
+			item.FailureMessage = r.fetchErrorLogs(ctx, item.ID)
+		}
+		items = append(items, item)
+	}
+	return items, nil
 }
 
 // --- Defect update (bulk endpoint per NED-5: always use PUT /item, not PUT /item/{id}/update) ---
 
 func (r *Repository) UpdateDefects(ctx context.Context, updates []domain.DefectUpdate) error {
 	adapterdriven.LogWrite(ctx, BackendName, "update_defects", slog.Int(adapterdriven.LogKeyCount, len(updates)))
+	type btsIssue struct {
+		TicketID   string `json:"ticketId"`
+		BtsURL     string `json:"btsUrl"`
+		BtsProject string `json:"btsProject"`
+		URL        string `json:"url,omitempty"`
+	}
 	type issueUpdate struct {
 		TestItemID int `json:"testItemId"`
 		Issue      struct {
-			IssueType string `json:"issueType"`
-			Comment   string `json:"comment,omitempty"`
+			IssueType            string     `json:"issueType"`
+			Comment              string     `json:"comment,omitempty"`
+			ExternalSystemIssues []btsIssue `json:"externalSystemIssues,omitempty"`
 		} `json:"issue"`
 	}
 
@@ -349,6 +420,14 @@ func (r *Repository) UpdateDefects(ctx context.Context, updates []domain.DefectU
 		iu := issueUpdate{TestItemID: id}
 		iu.Issue.IssueType = u.IssueType
 		iu.Issue.Comment = u.Comment
+		for _, esi := range u.ExternalSystemIssues {
+			iu.Issue.ExternalSystemIssues = append(iu.Issue.ExternalSystemIssues, btsIssue{
+				TicketID:   esi.TicketID,
+				BtsURL:     esi.BtsURL,
+				BtsProject: esi.BtsProject,
+				URL:        esi.URL,
+			})
+		}
 		issues = append(issues, iu)
 	}
 

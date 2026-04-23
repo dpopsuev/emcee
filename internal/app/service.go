@@ -45,6 +45,8 @@ type Service struct {
 	pipelineRepos  map[string]driven.PipelineRepository
 	actionsRepos   map[string]driven.ActionsRepository
 	ciRepos        map[string]driven.CIRepository
+	extLinkRepos   map[string]driven.ExternalLinkRepository
+	issueLinkRepos map[string]driven.IssueLinkRepository
 	extractor      driven.LinkExtractor
 	graphStore     driven.GraphStore
 	ledger         driven.Ledger
@@ -59,22 +61,24 @@ type Service struct {
 // are automatically registered for those capabilities.
 func NewService(repos ...driven.IssueRepository) *Service {
 	s := &Service{
-		repos:         make(map[string]driven.IssueRepository, len(repos)),
-		docRepos:      make(map[string]driven.DocumentRepository),
-		projRepos:     make(map[string]driven.ProjectRepository),
-		initRepos:     make(map[string]driven.InitiativeRepository),
-		labelRepos:    make(map[string]driven.LabelRepository),
-		bulkRepos:     make(map[string]driven.BulkIssueRepository),
-		commentRepos:  make(map[string]driven.CommentRepository),
-		launchRepos:   make(map[string]driven.LaunchRepository),
-		fieldRepos:    make(map[string]driven.FieldRepository),
-		jqlRepos:      make(map[string]driven.JQLRepository),
-		prRepos:       make(map[string]driven.PRRepository),
-		buildRepos:    make(map[string]driven.BuildRepository),
-		pipelineRepos: make(map[string]driven.PipelineRepository),
-		actionsRepos:  make(map[string]driven.ActionsRepository),
-		ciRepos:       make(map[string]driven.CIRepository),
-		stage:         NewStageStore(),
+		repos:          make(map[string]driven.IssueRepository, len(repos)),
+		docRepos:       make(map[string]driven.DocumentRepository),
+		projRepos:      make(map[string]driven.ProjectRepository),
+		initRepos:      make(map[string]driven.InitiativeRepository),
+		labelRepos:     make(map[string]driven.LabelRepository),
+		bulkRepos:      make(map[string]driven.BulkIssueRepository),
+		commentRepos:   make(map[string]driven.CommentRepository),
+		launchRepos:    make(map[string]driven.LaunchRepository),
+		fieldRepos:     make(map[string]driven.FieldRepository),
+		jqlRepos:       make(map[string]driven.JQLRepository),
+		prRepos:        make(map[string]driven.PRRepository),
+		buildRepos:     make(map[string]driven.BuildRepository),
+		pipelineRepos:  make(map[string]driven.PipelineRepository),
+		actionsRepos:   make(map[string]driven.ActionsRepository),
+		ciRepos:        make(map[string]driven.CIRepository),
+		extLinkRepos:   make(map[string]driven.ExternalLinkRepository),
+		issueLinkRepos: make(map[string]driven.IssueLinkRepository),
+		stage:          NewStageStore(),
 	}
 	for _, r := range repos {
 		name := r.Name()
@@ -120,6 +124,12 @@ func NewService(repos ...driven.IssueRepository) *Service {
 		}
 		if cr, ok := r.(driven.CIRepository); ok {
 			s.ciRepos[name] = cr
+		}
+		if elr, ok := r.(driven.ExternalLinkRepository); ok {
+			s.extLinkRepos[name] = elr
+		}
+		if ilr, ok := r.(driven.IssueLinkRepository); ok {
+			s.issueLinkRepos[name] = ilr
 		}
 	}
 	return s
@@ -173,6 +183,12 @@ func (s *Service) AddBackend(r driven.IssueRepository) {
 	if cr, ok := r.(driven.CIRepository); ok {
 		s.ciRepos[name] = cr
 	}
+	if elr, ok := r.(driven.ExternalLinkRepository); ok {
+		s.extLinkRepos[name] = elr
+	}
+	if ilr, ok := r.(driven.IssueLinkRepository); ok {
+		s.issueLinkRepos[name] = ilr
+	}
 }
 
 // RemoveBackend removes a backend by name at runtime. Thread-safe.
@@ -197,6 +213,8 @@ func (s *Service) RemoveBackend(name string) bool {
 	delete(s.pipelineRepos, name)
 	delete(s.actionsRepos, name)
 	delete(s.ciRepos, name)
+	delete(s.extLinkRepos, name)
+	delete(s.issueLinkRepos, name)
 	return true
 }
 
@@ -314,6 +332,11 @@ func (s *Service) Get(ctx context.Context, ref string) (*domain.Issue, error) {
 			issue.Comments = comments
 		}
 	}
+	if elr, ok := s.extLinkRepos[backend]; ok {
+		if links, lerr := elr.ListExternalLinks(ctx, key); lerr == nil {
+			issue.ExternalLinks = links
+		}
+	}
 	if s.ledger != nil {
 		_ = s.ledger.Put(ctx, issueToRecord(backend, issue))
 	}
@@ -429,6 +452,12 @@ func (s *Service) Health() *driver.HealthStatus {
 		}
 		if _, ok := s.ciRepos[name]; ok {
 			caps = append(caps, "ci")
+		}
+		if _, ok := s.extLinkRepos[name]; ok {
+			caps = append(caps, "external_links")
+		}
+		if _, ok := s.issueLinkRepos[name]; ok {
+			caps = append(caps, "issue_links")
 		}
 		status.Backends = append(status.Backends, driver.BackendHealth{
 			Name:         name,
@@ -642,6 +671,14 @@ func (s *Service) GetTestItem(ctx context.Context, backend, id string) (*domain.
 		return nil, s.notSupportedErr(backend, "launches")
 	}
 	return r.GetTestItem(ctx, id)
+}
+
+func (s *Service) GetTestItems(ctx context.Context, backend string, ids []string) ([]domain.TestItem, error) {
+	r, ok := s.launchRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "launches")
+	}
+	return r.GetTestItems(ctx, ids)
 }
 
 func (s *Service) UpdateDefects(ctx context.Context, backend string, updates []domain.DefectUpdate) error {
@@ -886,6 +923,16 @@ func (s *Service) GetStageLog(ctx context.Context, backend, jobName, runID, node
 		return "", s.notSupportedErr(backend, "pipelines")
 	}
 	return r.GetStageLog(ctx, jobName, runID, nodeID)
+}
+
+// --- Issue link operations ---
+
+func (s *Service) LinkIssue(ctx context.Context, backend string, input domain.IssueLinkInput) error {
+	r, ok := s.issueLinkRepos[backend]
+	if !ok {
+		return s.notSupportedErr(backend, "issue_links")
+	}
+	return r.CreateIssueLink(ctx, input)
 }
 
 // --- CI operations (GitLab CI) ---

@@ -58,6 +58,7 @@ type LaunchService interface {
 	GetLaunch(ctx context.Context, backend, id string) (*domain.Launch, error)
 	ListTestItems(ctx context.Context, backend, launchID string, filter domain.TestItemFilter) ([]domain.TestItem, error)
 	GetTestItem(ctx context.Context, backend, id string) (*domain.TestItem, error)
+	GetTestItems(ctx context.Context, backend string, ids []string) ([]domain.TestItem, error)
 	UpdateDefects(ctx context.Context, backend string, updates []domain.DefectUpdate) error
 }
 
@@ -96,6 +97,11 @@ type PipelineService interface {
 	ApproveInput(ctx context.Context, backend, jobName, runID string) error
 	AbortInput(ctx context.Context, backend, jobName, runID string) error
 	GetStageLog(ctx context.Context, backend, jobName, runID, nodeID string) (string, error)
+}
+
+// IssueLinkService is the inbound port for creating issue-to-issue links.
+type IssueLinkService interface {
+	LinkIssue(ctx context.Context, backend string, input domain.IssueLinkInput) error
 }
 
 //nolint:dupl // ISP: ActionsService and CIService are intentionally separate interfaces

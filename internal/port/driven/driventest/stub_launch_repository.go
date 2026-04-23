@@ -28,6 +28,10 @@ type GetTestItemCall struct {
 	ID string
 }
 
+type GetTestItemsCall struct {
+	IDs []string
+}
+
 type UpdateDefectsCall struct {
 	Updates []domain.DefectUpdate
 }
@@ -45,6 +49,7 @@ type StubLaunchRepository struct {
 	GetLaunchCalls     []GetLaunchCall
 	ListTestItemsCalls []ListTestItemsCall
 	GetTestItemCalls   []GetTestItemCall
+	GetTestItemsCalls  []GetTestItemsCall
 	UpdateDefectsCalls []UpdateDefectsCall
 }
 
@@ -76,6 +81,13 @@ func (s *StubLaunchRepository) GetTestItem(_ context.Context, id string) (*domai
 	defer s.mu.Unlock()
 	s.GetTestItemCalls = append(s.GetTestItemCalls, GetTestItemCall{ID: id})
 	return s.TestItem, s.Err
+}
+
+func (s *StubLaunchRepository) GetTestItems(_ context.Context, ids []string) ([]domain.TestItem, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.GetTestItemsCalls = append(s.GetTestItemsCalls, GetTestItemsCall{IDs: ids})
+	return s.TestItems, s.Err
 }
 
 func (s *StubLaunchRepository) UpdateDefects(_ context.Context, updates []domain.DefectUpdate) error {

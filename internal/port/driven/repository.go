@@ -73,6 +73,7 @@ type LaunchRepository interface {
 	GetLaunch(ctx context.Context, id string) (*domain.Launch, error)
 	ListTestItems(ctx context.Context, launchID string, filter domain.TestItemFilter) ([]domain.TestItem, error)
 	GetTestItem(ctx context.Context, id string) (*domain.TestItem, error)
+	GetTestItems(ctx context.Context, ids []string) ([]domain.TestItem, error)
 	UpdateDefects(ctx context.Context, updates []domain.DefectUpdate) error
 }
 
@@ -133,6 +134,18 @@ type CIRepository interface {
 	ListPipelineJobs(ctx context.Context, pipelineID int64) ([]domain.CIJob, error)
 	GetJobLog(ctx context.Context, jobID int64) (string, error)
 	RetryPipeline(ctx context.Context, pipelineID int64) error
+}
+
+// ExternalLinkRepository is the outbound port for remote link retrieval (PRs, commits).
+type ExternalLinkRepository interface {
+	Name() string
+	ListExternalLinks(ctx context.Context, key string) ([]domain.ExternalLink, error)
+}
+
+// IssueLinkRepository is the outbound port for creating issue-to-issue links.
+type IssueLinkRepository interface {
+	Name() string
+	CreateIssueLink(ctx context.Context, input domain.IssueLinkInput) error
 }
 
 // FieldRepository is the outbound port for field metadata discovery.

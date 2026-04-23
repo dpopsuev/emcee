@@ -19,7 +19,7 @@ import (
 
 const (
 	serverName    = "emcee"
-	serverVersion = "0.10.0"
+	serverVersion = "0.11.0"
 
 	defaultListMax   = 50
 	defaultSearchMax = 20
@@ -56,6 +56,7 @@ type EmceeService interface {
 	driver.TriageService
 	driver.ActionsService
 	driver.CIService
+	driver.IssueLinkService
 	driver.FieldService
 	driver.JQLService
 	driver.PRService
@@ -96,6 +97,7 @@ Report Portal:
   launch_get  — backend=reportportal, ref (launch ID)
   test_items  — backend=reportportal, ref (launch ID), [status, limit]
   test_item_get — backend=reportportal, ref (item ID)
+  bulk_test_item_get — backend=reportportal, issues (JSON array of test item ID strings)
   defect_update — backend=reportportal, issues (JSON array of {test_item_id, issue_type, comment?})
 
 Jenkins CI:
@@ -149,6 +151,9 @@ Triage (Defect Lifecycle):
   triage_config — (no params) → current crawl settings (rate_limit, allow_list)
   triage_config_set — [limit (rate limit req/s), issues (JSON array of allowed backend names)] → update crawl settings
 
+Issue Links:
+  link_issue  — backend=jira, ref (inward key, e.g. jira:PROJ-1), query (outward key, e.g. PROJ-2), issue_type (link type: Blocks, Relates, Clones)
+
 Pull Requests / Merge Requests:
   prs         — backend, [author, status, merged_after (YYYY-MM-DD), merged_before (YYYY-MM-DD), repo (override: owner/repo or namespace/project), limit]
 
@@ -196,7 +201,7 @@ func RegisterTools(srv *mcpserver.Server, svc EmceeService) {
 	srv.ToolWithSchema(
 		server.ToolMeta{
 			Name:        "emcee",
-			Description: "Issue management across all backends. Actions: list, get, create, update, search, children, bulk_create, bulk_update, comments, comment_add, stage, stage_list, stage_show, stage_patch, stage_drop, push, push_all, launches, launch_get, test_items, test_item_get, defect_update, jobs, job_get, build_trigger, build_get, build_log, test_results, queue, build_artifacts, build_revision, build_causes, nodes, node_get, views, view_jobs, pipeline_runs, pipeline_run_get, pipeline_inputs, pipeline_input_approve, pipeline_input_abort, runs, run_get, run_jobs, run_logs, run_rerun, ci_pipelines, ci_pipeline, ci_jobs, ci_job_log, ci_retry, fields, jql, prs, ledger_list, ledger_get, ledger_search, ledger_similar, ledger_ingest, ledger_stats.",
+			Description: "Issue management across all backends. Actions: list, get, create, update, search, children, bulk_create, bulk_update, comments, comment_add, stage, stage_list, stage_show, stage_patch, stage_drop, push, push_all, launches, launch_get, test_items, test_item_get, defect_update, jobs, job_get, build_trigger, build_get, build_log, test_results, queue, build_artifacts, build_revision, build_causes, nodes, node_get, views, view_jobs, pipeline_runs, pipeline_run_get, pipeline_inputs, pipeline_input_approve, pipeline_input_abort, runs, run_get, run_jobs, run_logs, run_rerun, ci_pipelines, ci_pipeline, ci_jobs, ci_job_log, ci_retry, link_issue, bulk_test_item_get, fields, jql, prs, ledger_list, ledger_get, ledger_search, ledger_similar, ledger_ingest, ledger_stats.",
 			Keywords:    []string{"issue", "ticket", "bug", "task", "comment", "stage", "push", "linear", "github", "jira", "gitlab"},
 			Categories:  []string{"issue-management"},
 		},
@@ -229,7 +234,7 @@ func RegisterTools(srv *mcpserver.Server, svc EmceeService) {
 var emceeSchema = json.RawMessage(`{
 	"type": "object",
 	"properties": {
-		"action":      {"type": "string", "enum": ["list","get","create","update","search","children","bulk_create","bulk_update","comments","comment_add","stage","stage_list","stage_show","stage_patch","stage_drop","push","push_all","launches","launch_get","test_items","test_item_get","defect_update","jobs","job_get","build_trigger","build_get","build_log","test_results","queue","builds","build_last","build_last_failed","build_last_successful","build_stop","job_params","folder_jobs","job_upstream","job_downstream","build_artifacts","build_revision","build_causes","nodes","node_get","views","view_jobs","pipeline_runs","pipeline_run_get","pipeline_inputs","pipeline_input_approve","pipeline_input_abort","runs","run_get","run_jobs","run_logs","run_rerun","ci_pipelines","ci_pipeline","ci_jobs","ci_job_log","ci_retry","triage","triage_config","triage_config_set","fields","jql","prs","ledger_list","ledger_get","ledger_search","ledger_similar","ledger_ingest","ledger_stats"], "description": "Action to perform"},
+		"action":      {"type": "string", "enum": ["list","get","create","update","search","children","bulk_create","bulk_update","comments","comment_add","stage","stage_list","stage_show","stage_patch","stage_drop","push","push_all","launches","launch_get","test_items","test_item_get","bulk_test_item_get","defect_update","jobs","job_get","build_trigger","build_get","build_log","test_results","queue","builds","build_last","build_last_failed","build_last_successful","build_stop","job_params","folder_jobs","job_upstream","job_downstream","build_artifacts","build_revision","build_causes","nodes","node_get","views","view_jobs","pipeline_runs","pipeline_run_get","pipeline_inputs","pipeline_input_approve","pipeline_input_abort","runs","run_get","run_jobs","run_logs","run_rerun","ci_pipelines","ci_pipeline","ci_jobs","ci_job_log","ci_retry","link_issue","triage","triage_config","triage_config_set","fields","jql","prs","ledger_list","ledger_get","ledger_search","ledger_similar","ledger_ingest","ledger_stats"], "description": "Action to perform"},
 		"backend":     {"type": "string", "description": "Backend name (required for list/create/search)"},
 		"ref":         {"type": "string", "description": "Issue ref for get/update/children (e.g. linear:PROJ-42)"},
 		"title":       {"type": "string", "description": "Issue title (create)"},
@@ -636,6 +641,20 @@ func emceeHandler(svc EmceeService) server.Handler {
 				return "", err
 			}
 			return server.JSONResult(item)
+
+		case "bulk_test_item_get":
+			if args.Issues == "" {
+				return "", errIssuesRequired
+			}
+			var ids []string
+			if err := json.Unmarshal([]byte(args.Issues), &ids); err != nil {
+				return "", fmt.Errorf("invalid test item IDs JSON: %w", err)
+			}
+			items, err := svc.GetTestItems(ctx, args.Backend, ids)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(items)
 
 		case "defect_update":
 			if args.Issues == "" {
@@ -1129,6 +1148,29 @@ func emceeHandler(svc EmceeService) server.Handler {
 			}
 			return server.JSONResult(map[string]any{"retried": true, "pipeline_id": pipelineID})
 
+		// --- Issue links ---
+
+		case "link_issue":
+			if args.Ref == "" {
+				return "", errRefRequired
+			}
+			if args.Query == "" {
+				return "", errQueryRequired
+			}
+			backend, inwardKey, err := parseRef(args.Ref)
+			if err != nil {
+				return "", err
+			}
+			input := domain.IssueLinkInput{
+				Type:       args.IssueType,
+				InwardKey:  inwardKey,
+				OutwardKey: args.Query,
+			}
+			if err := svc.LinkIssue(ctx, backend, input); err != nil {
+				return "", err
+			}
+			return server.JSONResult(map[string]any{"linked": true, "type": args.IssueType, "inward": inwardKey, "outward": args.Query})
+
 		// --- Triage ---
 
 		case "triage":
@@ -1444,6 +1486,16 @@ func healthHandler(svc EmceeService) server.Handler {
 		health := svc.Health()
 		return server.JSONResult(health)
 	}
+}
+
+var errInvalidRef = errors.New("invalid ref (expected backend:key)")
+
+func parseRef(ref string) (backend, key string, err error) {
+	parts := strings.SplitN(ref, ":", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return "", "", fmt.Errorf("%w: %q", errInvalidRef, ref)
+	}
+	return parts[0], parts[1], nil
 }
 
 // splitCSV splits a comma-separated string into a trimmed slice.

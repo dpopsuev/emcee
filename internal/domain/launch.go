@@ -33,14 +33,16 @@ type LaunchFilter struct {
 
 // TestItem represents a single test result within a launch.
 type TestItem struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Status    string `json:"status"`
-	Type      string `json:"type,omitempty"`
-	LaunchID  string `json:"launch_id"`
-	IssueType string `json:"issue_type,omitempty"`
-	Comment   string `json:"comment,omitempty"`
-	URL       string `json:"url,omitempty"`
+	ID                   string                `json:"id"`
+	Name                 string                `json:"name"`
+	Status               string                `json:"status"`
+	Type                 string                `json:"type,omitempty"`
+	LaunchID             string                `json:"launch_id"`
+	IssueType            string                `json:"issue_type,omitempty"`
+	Comment              string                `json:"comment,omitempty"`
+	FailureMessage       string                `json:"failure_message,omitempty"`
+	ExternalSystemIssues []ExternalSystemIssue `json:"external_system_issues,omitempty"`
+	URL                  string                `json:"url,omitempty"`
 }
 
 // TestItemFilter controls which test items to list.
@@ -50,9 +52,18 @@ type TestItemFilter struct {
 	Limit  int    `json:"limit,omitempty"`
 }
 
+// ExternalSystemIssue links a test item defect to an external bug tracker (e.g. Jira).
+type ExternalSystemIssue struct {
+	TicketID   string `json:"ticket_id"`
+	BtsURL     string `json:"bts_url"`
+	BtsProject string `json:"bts_project"`
+	URL        string `json:"url,omitempty"`
+}
+
 // DefectUpdate specifies a defect type change on a test item.
 type DefectUpdate struct {
-	TestItemID string `json:"test_item_id"`
-	IssueType  string `json:"issue_type"`
-	Comment    string `json:"comment,omitempty"`
+	TestItemID           string                `json:"test_item_id"`
+	IssueType            string                `json:"issue_type"`
+	Comment              string                `json:"comment,omitempty"`
+	ExternalSystemIssues []ExternalSystemIssue `json:"external_system_issues,omitempty"`
 }

@@ -161,8 +161,14 @@ func TestRpTestItemToDomain(t *testing.T) {
 		Type:     "STEP",
 		LaunchID: 42,
 		Issue: &struct {
-			IssueType string `json:"issueType"`
-			Comment   string `json:"comment"`
+			IssueType            string `json:"issueType"`
+			Comment              string `json:"comment"`
+			ExternalSystemIssues []struct {
+				TicketID   string `json:"ticketId"`
+				BtsURL     string `json:"btsUrl"`
+				BtsProject string `json:"btsProject"`
+				URL        string `json:"url"`
+			} `json:"externalSystemIssues"`
 		}{
 			IssueType: "pb001",
 			Comment:   "product bug",

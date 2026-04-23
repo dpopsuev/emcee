@@ -405,6 +405,13 @@ func (r *Repository) GetTestItem(ctx context.Context, id string) (*domain.TestIt
 	return r.launches.GetTestItem(ctx, id)
 }
 
+func (r *Repository) GetTestItems(ctx context.Context, ids []string) ([]domain.TestItem, error) {
+	if r.launches == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.launches.GetTestItems(ctx, ids)
+}
+
 func (r *Repository) UpdateDefects(ctx context.Context, updates []domain.DefectUpdate) error {
 	if r.launches == nil {
 		return fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
