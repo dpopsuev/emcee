@@ -18,7 +18,7 @@ import (
 
 const (
 	serverName    = "emcee"
-	serverVersion = "0.12.0"
+	serverVersion = "0.12.1"
 
 	defaultListMax   = 50
 	defaultSearchMax = 20
@@ -47,6 +47,7 @@ type EmceeService interface {
 	driver.BulkService
 	driver.HealthService
 	driver.CommentService
+	driver.LaunchService
 	driver.StageService
 	driver.BackendManager
 	driver.TriageService
@@ -85,6 +86,14 @@ Staging (pre-submission cache, all backends):
   stage_drop  — stage_id → discard staged item
   push        — stage_id → submit to backend, re-stages on failure
   push_all    — (no params) → push all staged items to their backends
+
+Report Portal:
+  launches    — backend=reportportal, [query (name filter), status, limit]
+  launch_get  — backend=reportportal, ref (launch ID)
+  test_items  — backend=reportportal, ref (launch ID), [status, limit]
+  test_item_get — backend=reportportal, ref (item ID)
+  bulk_test_item_get — backend=reportportal, issues (JSON array of test item ID strings)
+  defect_update — backend=reportportal, issues (JSON array of {test_item_id, issue_type, comment?})
 
 Triage (Defect Lifecycle):
   triage       — ref (seed artifact, e.g. jira:OCPBUGS-123), [limit (max depth, default 3)] → cross-backend correlation graph
@@ -141,7 +150,7 @@ func RegisterTools(srv *mcpserver.Server, svc EmceeService) {
 	srv.ToolWithSchema(
 		server.ToolMeta{
 			Name:        "emcee",
-			Description: "Issue management across all backends. Actions: list, get, create, update, search, children, bulk_create, bulk_update, comments, comment_add, stage, stage_list, stage_show, stage_patch, stage_drop, push, push_all, link_issue, fields, jql, prs, ledger_list, ledger_get, ledger_search, ledger_similar, ledger_ingest, ledger_stats.",
+			Description: "Issue management across all backends. Actions: list, get, create, update, search, children, bulk_create, bulk_update, comments, comment_add, stage, stage_list, stage_show, stage_patch, stage_drop, push, push_all, launches, launch_get, test_items, test_item_get, bulk_test_item_get, defect_update, link_issue, fields, jql, prs, ledger_list, ledger_get, ledger_search, ledger_similar, ledger_ingest, ledger_stats.",
 			Keywords:    []string{"issue", "ticket", "bug", "task", "comment", "stage", "push", "linear", "github", "jira", "gitlab"},
 			Categories:  []string{"issue-management"},
 		},
@@ -174,7 +183,7 @@ func RegisterTools(srv *mcpserver.Server, svc EmceeService) {
 var emceeSchema = json.RawMessage(`{
 	"type": "object",
 	"properties": {
-		"action":      {"type": "string", "enum": ["list","get","create","update","search","children","bulk_create","bulk_update","comments","comment_add","stage","stage_list","stage_show","stage_patch","stage_drop","push","push_all","link_issue","triage","triage_config","triage_config_set","fields","jql","prs","ledger_list","ledger_get","ledger_search","ledger_similar","ledger_ingest","ledger_stats"], "description": "Action to perform"},
+		"action":      {"type": "string", "enum": ["list","get","create","update","search","children","bulk_create","bulk_update","comments","comment_add","stage","stage_list","stage_show","stage_patch","stage_drop","push","push_all","link_issue","launches","launch_get","test_items","test_item_get","bulk_test_item_get","defect_update","triage","triage_config","triage_config_set","fields","jql","prs","ledger_list","ledger_get","ledger_search","ledger_similar","ledger_ingest","ledger_stats"], "description": "Action to perform"},
 		"backend":     {"type": "string", "description": "Backend name (required for list/create/search)"},
 		"ref":         {"type": "string", "description": "Issue ref for get/update/children (e.g. linear:PROJ-42)"},
 		"title":       {"type": "string", "description": "Issue title (create)"},
@@ -556,6 +565,81 @@ func emceeHandler(svc EmceeService) server.Handler {
 				return "", err
 			}
 			return server.JSONResult(map[string]any{"linked": true, "type": args.IssueType, "inward": inwardKey, "outward": args.Query})
+
+		// --- Report Portal ---
+
+		case "launches":
+			filter := domain.LaunchFilter{
+				Name:   args.Query,
+				Status: args.Status,
+				Limit:  int(args.Limit),
+			}
+			launches, err := svc.ListLaunches(ctx, args.Backend, filter)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(launches)
+
+		case "launch_get":
+			if args.Ref == "" {
+				return "", errRefRequired
+			}
+			launch, err := svc.GetLaunch(ctx, args.Backend, args.Ref)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(launch)
+
+		case "test_items":
+			if args.Ref == "" {
+				return "", errRefRequired
+			}
+			filter := domain.TestItemFilter{
+				Status: args.Status,
+				Limit:  int(args.Limit),
+			}
+			items, err := svc.ListTestItems(ctx, args.Backend, args.Ref, filter)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(items)
+
+		case "test_item_get":
+			if args.Ref == "" {
+				return "", errRefRequired
+			}
+			item, err := svc.GetTestItem(ctx, args.Backend, args.Ref)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(item)
+
+		case "bulk_test_item_get":
+			if args.Issues == "" {
+				return "", errIssuesRequired
+			}
+			var ids []string
+			if err := json.Unmarshal([]byte(args.Issues), &ids); err != nil {
+				return "", fmt.Errorf("invalid test item IDs JSON: %w", err)
+			}
+			items, err := svc.GetTestItems(ctx, args.Backend, ids)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(items)
+
+		case "defect_update":
+			if args.Issues == "" {
+				return "", errIssuesRequired
+			}
+			var updates []domain.DefectUpdate
+			if err := json.Unmarshal([]byte(args.Issues), &updates); err != nil {
+				return "", fmt.Errorf("invalid defect updates JSON: %w", err)
+			}
+			if err := svc.UpdateDefects(ctx, args.Backend, updates); err != nil {
+				return "", err
+			}
+			return server.JSONResult(map[string]any{"updated": len(updates)})
 
 		// --- Triage ---
 

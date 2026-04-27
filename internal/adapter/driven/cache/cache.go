@@ -49,6 +49,7 @@ type entry struct {
 type Repository struct {
 	inner       driven.IssueRepository
 	comments    driven.CommentRepository
+	launches    driven.LaunchRepository
 	fields      driven.FieldRepository
 	jql         driven.JQLRepository
 	docs        driven.DocumentRepository
@@ -89,6 +90,10 @@ func New(inner driven.IssueRepository, opts ...Option) *Repository {
 	if v, ok := inner.(driven.CommentRepository); ok {
 		r.comments = v
 		r.caps = append(r.caps, "comments")
+	}
+	if v, ok := inner.(driven.LaunchRepository); ok {
+		r.launches = v
+		r.caps = append(r.caps, "launches")
 	}
 	if v, ok := inner.(driven.FieldRepository); ok {
 		r.fields = v
@@ -467,3 +472,46 @@ func (r *Repository) ListPRs(ctx context.Context, filter domain.PRFilter) ([]dom
 	return r.prs.ListPRs(ctx, filter)
 }
 
+// --- Passthrough: LaunchRepository ---
+
+func (r *Repository) ListLaunches(ctx context.Context, filter domain.LaunchFilter) ([]domain.Launch, error) {
+	if r.launches == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.launches.ListLaunches(ctx, filter)
+}
+
+func (r *Repository) GetLaunch(ctx context.Context, id string) (*domain.Launch, error) {
+	if r.launches == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.launches.GetLaunch(ctx, id)
+}
+
+func (r *Repository) ListTestItems(ctx context.Context, launchID string, filter domain.TestItemFilter) ([]domain.TestItem, error) {
+	if r.launches == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.launches.ListTestItems(ctx, launchID, filter)
+}
+
+func (r *Repository) GetTestItem(ctx context.Context, id string) (*domain.TestItem, error) {
+	if r.launches == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.launches.GetTestItem(ctx, id)
+}
+
+func (r *Repository) GetTestItems(ctx context.Context, ids []string) ([]domain.TestItem, error) {
+	if r.launches == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.launches.GetTestItems(ctx, ids)
+}
+
+func (r *Repository) UpdateDefects(ctx context.Context, updates []domain.DefectUpdate) error {
+	if r.launches == nil {
+		return fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.launches.UpdateDefects(ctx, updates)
+}

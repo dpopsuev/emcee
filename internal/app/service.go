@@ -37,6 +37,7 @@ type Service struct {
 	labelRepos     map[string]driven.LabelRepository
 	bulkRepos      map[string]driven.BulkIssueRepository
 	commentRepos   map[string]driven.CommentRepository
+	launchRepos    map[string]driven.LaunchRepository
 	fieldRepos     map[string]driven.FieldRepository
 	jqlRepos       map[string]driven.JQLRepository
 	prRepos        map[string]driven.PRRepository
@@ -63,6 +64,7 @@ func NewService(repos ...driven.IssueRepository) *Service {
 		labelRepos:     make(map[string]driven.LabelRepository),
 		bulkRepos:      make(map[string]driven.BulkIssueRepository),
 		commentRepos:   make(map[string]driven.CommentRepository),
+		launchRepos:    make(map[string]driven.LaunchRepository),
 		fieldRepos:     make(map[string]driven.FieldRepository),
 		jqlRepos:       make(map[string]driven.JQLRepository),
 		prRepos:        make(map[string]driven.PRRepository),
@@ -90,6 +92,9 @@ func NewService(repos ...driven.IssueRepository) *Service {
 		}
 		if cr, ok := r.(driven.CommentRepository); ok {
 			s.commentRepos[name] = cr
+		}
+		if lr, ok := r.(driven.LaunchRepository); ok {
+			s.launchRepos[name] = lr
 		}
 		if fr, ok := r.(driven.FieldRepository); ok {
 			s.fieldRepos[name] = fr
@@ -134,6 +139,9 @@ func (s *Service) AddBackend(r driven.IssueRepository) {
 	if cr, ok := r.(driven.CommentRepository); ok {
 		s.commentRepos[name] = cr
 	}
+	if lr, ok := r.(driven.LaunchRepository); ok {
+		s.launchRepos[name] = lr
+	}
 	if fr, ok := r.(driven.FieldRepository); ok {
 		s.fieldRepos[name] = fr
 	}
@@ -165,6 +173,7 @@ func (s *Service) RemoveBackend(name string) bool {
 	delete(s.labelRepos, name)
 	delete(s.bulkRepos, name)
 	delete(s.commentRepos, name)
+	delete(s.launchRepos, name)
 	delete(s.fieldRepos, name)
 	delete(s.jqlRepos, name)
 	delete(s.prRepos, name)
@@ -384,6 +393,9 @@ func (s *Service) Health() *driver.HealthStatus {
 		if _, ok := s.commentRepos[name]; ok {
 			caps = append(caps, "comments")
 		}
+		if _, ok := s.launchRepos[name]; ok {
+			caps = append(caps, "launches")
+		}
 		if _, ok := s.fieldRepos[name]; ok {
 			caps = append(caps, "fields")
 		}
@@ -577,6 +589,56 @@ func (s *Service) ListPRs(ctx context.Context, backend string, filter domain.PRF
 		return nil, s.notSupportedErr(backend, "pull requests")
 	}
 	return r.ListPRs(ctx, filter)
+}
+
+// --- Launch operations (Report Portal) ---
+
+func (s *Service) ListLaunches(ctx context.Context, backend string, filter domain.LaunchFilter) ([]domain.Launch, error) {
+	r, ok := s.launchRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "launches")
+	}
+	return r.ListLaunches(ctx, filter)
+}
+
+func (s *Service) GetLaunch(ctx context.Context, backend, id string) (*domain.Launch, error) {
+	r, ok := s.launchRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "launches")
+	}
+	return r.GetLaunch(ctx, id)
+}
+
+func (s *Service) ListTestItems(ctx context.Context, backend, launchID string, filter domain.TestItemFilter) ([]domain.TestItem, error) {
+	r, ok := s.launchRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "launches")
+	}
+	return r.ListTestItems(ctx, launchID, filter)
+}
+
+func (s *Service) GetTestItem(ctx context.Context, backend, id string) (*domain.TestItem, error) {
+	r, ok := s.launchRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "launches")
+	}
+	return r.GetTestItem(ctx, id)
+}
+
+func (s *Service) GetTestItems(ctx context.Context, backend string, ids []string) ([]domain.TestItem, error) {
+	r, ok := s.launchRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "launches")
+	}
+	return r.GetTestItems(ctx, ids)
+}
+
+func (s *Service) UpdateDefects(ctx context.Context, backend string, updates []domain.DefectUpdate) error {
+	r, ok := s.launchRepos[backend]
+	if !ok {
+		return s.notSupportedErr(backend, "launches")
+	}
+	return r.UpdateDefects(ctx, updates)
 }
 
 // --- Issue link operations ---
@@ -907,6 +969,23 @@ func (s *Service) triageFetchNode(ctx context.Context, ref string) (node *domain
 		}
 	}
 
+	// Try launch (reportportal:launch/N)
+	if lr, ok := s.launchRepos[backend]; ok && strings.HasPrefix(key, "launch/") {
+		launchID := strings.TrimPrefix(key, "launch/")
+		launch, launchErr := lr.GetLaunch(ctx, launchID)
+		if launchErr == nil {
+			return &domain.TriageNode{
+				Ref:       ref,
+				Type:      "launch",
+				Phase:     "detected",
+				Title:     launch.Name,
+				URL:       launch.URL,
+				Status:    launch.Status,
+				Timestamp: launch.StartTime,
+			}, launch.Description
+		}
+	}
+
 	// Try PR (github:org/repo#N or gitlab:path!N)
 	if pr, ok := s.prRepos[backend]; ok {
 		prs, prErr := pr.ListPRs(ctx, domain.PRFilter{Limit: 1})
@@ -925,4 +1004,3 @@ func (s *Service) triageFetchNode(ctx context.Context, ref string) (node *domain
 		Type: "unknown",
 	}, ""
 }
-

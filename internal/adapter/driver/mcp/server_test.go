@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dpopsuev/battery/mcpserver"
 	"github.com/dpopsuev/emcee/internal/domain"
 	"github.com/dpopsuev/emcee/internal/port/driver"
 	"github.com/dpopsuev/emcee/internal/port/driver/drivertest"
-	"github.com/dpopsuev/battery/mcpserver"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	mcpdriver "github.com/dpopsuev/emcee/internal/adapter/driver/mcp"
@@ -75,6 +75,23 @@ func newTestServer(t *testing.T) (*sdkmcp.ClientSession, *drivertest.StubEmceeSe
 	}
 	svc.StubJQLService.Issues = []domain.Issue{
 		{Ref: "jira:PROJ-1", Key: "PROJ-1", Title: "JQL result"},
+	}
+	svc.StubLaunchService.Launches = []domain.Launch{
+		{ID: "1", Name: "Regression Suite", Status: "PASSED"},
+		{ID: "2", Name: "Smoke Tests", Status: "FAILED"},
+	}
+	svc.StubLaunchService.Launch = &domain.Launch{ID: "1", Name: "Regression Suite", Status: "PASSED"}
+	svc.StubLaunchService.TestItems = []domain.TestItem{
+		{ID: "10", Name: "test_login", Status: "PASSED", LaunchID: "1"},
+		{ID: "11", Name: "test_logout", Status: "FAILED", LaunchID: "1"},
+	}
+	svc.StubLaunchService.TestItem = &domain.TestItem{
+		ID: "10", Name: "test_login", Status: "FAILED", LaunchID: "1",
+		FailureMessage: "AssertionError: expected 200 got 401",
+	}
+	svc.StubLaunchService.BulkTestItems = []domain.TestItem{
+		{ID: "10", Name: "test_login", Status: "FAILED", LaunchID: "1"},
+		{ID: "11", Name: "test_logout", Status: "PASSED", LaunchID: "1"},
 	}
 	svc.StubIssueService.Issue = &domain.Issue{
 		Ref: "test:T-1", Key: "T-1", Title: "First Issue",
@@ -891,5 +908,97 @@ func TestEmceeLinkIssue(t *testing.T) {
 	call := svc.StubIssueLinkService.LinkIssueCalls[0]
 	if call.InwardKey != "T-1" || call.OutwardKey != "T-2" || call.Type != "Blocks" {
 		t.Errorf("unexpected call: %+v", call)
+	}
+}
+
+// --- Report Portal tests ---
+
+func TestEmceeLaunches(t *testing.T) {
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "launches", "backend": "reportportal"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var launches []domain.Launch
+	if err := json.Unmarshal([]byte(resultText(t, result)), &launches); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(launches) != 2 {
+		t.Errorf("len = %d, want 2", len(launches))
+	}
+}
+
+func TestEmceeLaunchGet(t *testing.T) {
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "launch_get", "backend": "reportportal", "ref": "1"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var launch domain.Launch
+	if err := json.Unmarshal([]byte(resultText(t, result)), &launch); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if launch.Name != "Regression Suite" {
+		t.Errorf("name = %q, want %q", launch.Name, "Regression Suite")
+	}
+}
+
+func TestEmceeTestItems(t *testing.T) {
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "test_items", "backend": "reportportal", "ref": "1"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var items []domain.TestItem
+	if err := json.Unmarshal([]byte(resultText(t, result)), &items); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(items) != 2 {
+		t.Errorf("len = %d, want 2", len(items))
+	}
+}
+
+func TestEmceeTestItemGet(t *testing.T) {
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "test_item_get", "backend": "reportportal", "ref": "10"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var item domain.TestItem
+	if err := json.Unmarshal([]byte(resultText(t, result)), &item); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if item.FailureMessage != "AssertionError: expected 200 got 401" {
+		t.Errorf("failure_message = %q", item.FailureMessage)
+	}
+}
+
+func TestEmceeBulkTestItemGet(t *testing.T) {
+	session, svc := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "bulk_test_item_get", "backend": "reportportal", "issues": `["10","11"]`})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var items []domain.TestItem
+	if err := json.Unmarshal([]byte(resultText(t, result)), &items); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("len = %d, want 2", len(items))
+	}
+	if len(svc.StubLaunchService.GetTestItemsCalls) != 1 {
+		t.Fatalf("GetTestItemsCalls = %d, want 1", len(svc.StubLaunchService.GetTestItemsCalls))
+	}
+}
+
+func TestEmceeDefectUpdate(t *testing.T) {
+	session, svc := newTestServer(t)
+	updates := `[{"test_item_id":"10","issue_type":"pb001","comment":"product bug"}]`
+	result := callTool(t, session, "emcee", map[string]any{"action": "defect_update", "backend": "reportportal", "issues": updates})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	if len(svc.StubLaunchService.UpdateDefectsCalls) != 1 {
+		t.Fatalf("UpdateDefectsCalls = %d, want 1", len(svc.StubLaunchService.UpdateDefectsCalls))
 	}
 }

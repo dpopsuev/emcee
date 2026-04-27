@@ -66,6 +66,17 @@ type CommentRepository interface {
 	AddComment(ctx context.Context, key string, input domain.CommentCreateInput) (*domain.Comment, error)
 }
 
+// LaunchRepository is the outbound port for test launch operations (Report Portal).
+type LaunchRepository interface {
+	Name() string
+	ListLaunches(ctx context.Context, filter domain.LaunchFilter) ([]domain.Launch, error)
+	GetLaunch(ctx context.Context, id string) (*domain.Launch, error)
+	ListTestItems(ctx context.Context, launchID string, filter domain.TestItemFilter) ([]domain.TestItem, error)
+	GetTestItem(ctx context.Context, id string) (*domain.TestItem, error)
+	GetTestItems(ctx context.Context, ids []string) ([]domain.TestItem, error)
+	UpdateDefects(ctx context.Context, updates []domain.DefectUpdate) error
+}
+
 // ExternalLinkRepository is the outbound port for remote link retrieval (PRs, commits).
 type ExternalLinkRepository interface {
 	Name() string

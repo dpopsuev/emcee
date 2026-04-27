@@ -16,6 +16,7 @@ import (
 	_ "github.com/dpopsuev/emcee/internal/adapter/driven/gitlab"
 	_ "github.com/dpopsuev/emcee/internal/adapter/driven/jira"
 	_ "github.com/dpopsuev/emcee/internal/adapter/driven/linear"
+	_ "github.com/dpopsuev/emcee/internal/adapter/driven/reportportal"
 
 	adapterdriven "github.com/dpopsuev/emcee/internal/adapter/driven"
 	adaptersqlite "github.com/dpopsuev/emcee/internal/adapter/driven/sqlite"
