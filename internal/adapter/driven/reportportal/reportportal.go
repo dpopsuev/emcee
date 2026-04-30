@@ -434,3 +434,73 @@ func (r *Repository) UpdateDefects(ctx context.Context, updates []domain.DefectU
 	body := map[string]any{"issues": issues}
 	return r.api(ctx, "PUT", "/item", body, nil)
 }
+
+// --- Dashboard operations ---
+
+type rpDashboard struct {
+	ID          int    `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
+func (d *rpDashboard) toDomain() domain.Dashboard {
+	return domain.Dashboard{
+		ID:          strconv.Itoa(d.ID),
+		Name:        d.Name,
+		Description: d.Description,
+	}
+}
+
+func (r *Repository) ListDashboards(ctx context.Context) ([]domain.Dashboard, error) {
+	adapterdriven.LogOp(ctx, BackendName, "list_dashboards")
+	var result struct {
+		Content []rpDashboard `json:"content"`
+	}
+	if err := r.api(ctx, "GET", "/dashboard", nil, &result); err != nil {
+		return nil, err
+	}
+	dashboards := make([]domain.Dashboard, 0, len(result.Content))
+	for i := range result.Content {
+		dashboards = append(dashboards, result.Content[i].toDomain())
+	}
+	return dashboards, nil
+}
+
+func (r *Repository) GetDashboard(ctx context.Context, id string) (*domain.Dashboard, error) {
+	adapterdriven.LogOp(ctx, BackendName, "get_dashboard", slog.String(adapterdriven.LogKeyID, id))
+	var raw rpDashboard
+	if err := r.api(ctx, "GET", "/dashboard/"+id, nil, &raw); err != nil {
+		return nil, err
+	}
+	d := raw.toDomain()
+	return &d, nil
+}
+
+func (r *Repository) CreateDashboard(ctx context.Context, input domain.DashboardCreateInput) (*domain.Dashboard, error) {
+	adapterdriven.LogWrite(ctx, BackendName, "create_dashboard", slog.String(adapterdriven.LogKeyName, input.Name))
+	body := map[string]string{"name": input.Name, "description": input.Description}
+	var result struct {
+		ID int `json:"id"`
+	}
+	if err := r.api(ctx, "POST", "/dashboard", body, &result); err != nil {
+		return nil, err
+	}
+	return &domain.Dashboard{ID: strconv.Itoa(result.ID), Name: input.Name, Description: input.Description}, nil
+}
+
+func (r *Repository) AddWidget(ctx context.Context, dashboardID string, input domain.WidgetAddInput) (*domain.Widget, error) {
+	adapterdriven.LogWrite(ctx, BackendName, "add_widget", slog.String(adapterdriven.LogKeyID, dashboardID))
+	body := map[string]any{
+		"name":       input.Name,
+		"widgetType": input.Type,
+		"widgetSize": map[string]int{"width": input.Width, "height": input.Height},
+	}
+	var result struct {
+		ID int `json:"id"`
+	}
+	path := fmt.Sprintf("/dashboard/%s/widget", dashboardID)
+	if err := r.api(ctx, "POST", path, body, &result); err != nil {
+		return nil, err
+	}
+	return &domain.Widget{ID: strconv.Itoa(result.ID), Name: input.Name, Type: input.Type}, nil
+}

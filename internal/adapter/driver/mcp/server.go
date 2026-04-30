@@ -95,6 +95,10 @@ Report Portal:
   test_item_get — backend=reportportal, ref (item ID)
   bulk_test_item_get — backend=reportportal, issues (JSON array of test item ID strings)
   defect_update — backend=reportportal, issues (JSON array of {test_item_id, issue_type, comment?})
+  dashboards    — backend=reportportal → list dashboards
+  dashboard_get — backend=reportportal, ref (dashboard ID) → get dashboard details
+  dashboard_create — backend=reportportal, title (name), [description] → create dashboard
+  widget_add    — backend=reportportal, ref (dashboard ID), title (widget name), issue_type (widget type), [limit (width), query (height)]
 
 Triage (Defect Lifecycle):
   triage       — ref (seed artifact, e.g. jira:OCPBUGS-123), [limit (max depth, default 3)] → cross-backend correlation graph
@@ -160,7 +164,7 @@ func RegisterTools(srv *mcpserver.Server, svc EmceeService) {
 	srv.ToolWithSchema(
 		server.ToolMeta{
 			Name:        "emcee",
-			Description: "Issue management across all backends. Actions: list, get, create, update, search, children, bulk_create, bulk_update, comments, comment_add, stage, stage_list, stage_show, stage_patch, stage_drop, push, push_all, launches, launch_get, test_items, test_item_get, bulk_test_item_get, defect_update, link_issue, doc_parse, doc_links, doc_diff, doc_audit, doc_terms, doc_validate, doc_declarations, fields, jql, prs, ledger_list, ledger_get, ledger_search, ledger_similar, ledger_ingest, ledger_stats.",
+			Description: "Issue management across all backends. Actions: list, get, create, update, search, children, bulk_create, bulk_update, comments, comment_add, stage, stage_list, stage_show, stage_patch, stage_drop, push, push_all, launches, launch_get, test_items, test_item_get, bulk_test_item_get, defect_update, link_issue, dashboards, dashboard_get, dashboard_create, widget_add, doc_parse, doc_links, doc_diff, doc_audit, doc_terms, doc_validate, doc_declarations, fields, jql, prs, ledger_list, ledger_get, ledger_search, ledger_similar, ledger_ingest, ledger_stats.",
 			Keywords:    []string{"issue", "ticket", "bug", "task", "comment", "stage", "push", "linear", "github", "jira", "gitlab"},
 			Categories:  []string{"issue-management"},
 		},
@@ -193,7 +197,7 @@ func RegisterTools(srv *mcpserver.Server, svc EmceeService) {
 var emceeSchema = json.RawMessage(`{
 	"type": "object",
 	"properties": {
-		"action":      {"type": "string", "enum": ["list","get","create","update","search","children","bulk_create","bulk_update","comments","comment_add","stage","stage_list","stage_show","stage_patch","stage_drop","push","push_all","link_issue","launches","launch_get","test_items","test_item_get","bulk_test_item_get","defect_update","doc_parse","doc_links","doc_diff","doc_audit","doc_terms","doc_validate","doc_declarations","triage","triage_config","triage_config_set","fields","jql","prs","ledger_list","ledger_get","ledger_search","ledger_similar","ledger_ingest","ledger_stats"], "description": "Action to perform"},
+		"action":      {"type": "string", "enum": ["list","get","create","update","search","children","bulk_create","bulk_update","comments","comment_add","stage","stage_list","stage_show","stage_patch","stage_drop","push","push_all","link_issue","launches","launch_get","test_items","test_item_get","bulk_test_item_get","defect_update","dashboards","dashboard_get","dashboard_create","widget_add","doc_parse","doc_links","doc_diff","doc_audit","doc_terms","doc_validate","doc_declarations","triage","triage_config","triage_config_set","fields","jql","prs","ledger_list","ledger_get","ledger_search","ledger_similar","ledger_ingest","ledger_stats"], "description": "Action to perform"},
 		"backend":     {"type": "string", "description": "Backend name (required for list/create/search)"},
 		"ref":         {"type": "string", "description": "Issue ref for get/update/children (e.g. linear:PROJ-42)"},
 		"title":       {"type": "string", "description": "Issue title (create)"},
@@ -650,6 +654,55 @@ func emceeHandler(svc EmceeService) server.Handler {
 				return "", err
 			}
 			return server.JSONResult(map[string]any{"updated": len(updates)})
+
+		// --- Dashboard operations ---
+
+		case "dashboards":
+			dashboards, err := svc.ListDashboards(ctx, args.Backend)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(dashboards)
+
+		case "dashboard_get":
+			if args.Ref == "" {
+				return "", errRefRequired
+			}
+			dashboard, err := svc.GetDashboard(ctx, args.Backend, args.Ref)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(dashboard)
+
+		case "dashboard_create":
+			if args.Title == "" {
+				return "", errTitleRequired
+			}
+			input := domain.DashboardCreateInput{Name: args.Title, Description: args.Description}
+			dashboard, err := svc.CreateDashboard(ctx, args.Backend, input)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(dashboard)
+
+		case "widget_add":
+			if args.Ref == "" {
+				return "", errRefRequired
+			}
+			if args.Title == "" {
+				return "", errTitleRequired
+			}
+			input := domain.WidgetAddInput{
+				Name:   args.Title,
+				Type:   args.IssueType,
+				Width:  int(args.Limit),
+				Height: 4,
+			}
+			widget, err := svc.AddWidget(ctx, args.Backend, args.Ref, input)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(widget)
 
 		// --- Doc operations ---
 

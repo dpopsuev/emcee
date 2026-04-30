@@ -641,6 +641,40 @@ func (s *Service) UpdateDefects(ctx context.Context, backend string, updates []d
 	return r.UpdateDefects(ctx, updates)
 }
 
+// --- Dashboard operations (Report Portal) ---
+
+func (s *Service) ListDashboards(ctx context.Context, backend string) ([]domain.Dashboard, error) {
+	r, ok := s.launchRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "launches")
+	}
+	return r.ListDashboards(ctx)
+}
+
+func (s *Service) GetDashboard(ctx context.Context, backend, id string) (*domain.Dashboard, error) {
+	r, ok := s.launchRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "launches")
+	}
+	return r.GetDashboard(ctx, id)
+}
+
+func (s *Service) CreateDashboard(ctx context.Context, backend string, input domain.DashboardCreateInput) (*domain.Dashboard, error) {
+	r, ok := s.launchRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "launches")
+	}
+	return r.CreateDashboard(ctx, input)
+}
+
+func (s *Service) AddWidget(ctx context.Context, backend, dashboardID string, input domain.WidgetAddInput) (*domain.Widget, error) {
+	r, ok := s.launchRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "launches")
+	}
+	return r.AddWidget(ctx, dashboardID, input)
+}
+
 // --- Issue link operations ---
 
 func (s *Service) LinkIssue(ctx context.Context, backend string, input domain.IssueLinkInput) error {

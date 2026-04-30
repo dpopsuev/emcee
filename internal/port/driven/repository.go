@@ -75,6 +75,10 @@ type LaunchRepository interface {
 	GetTestItem(ctx context.Context, id string) (*domain.TestItem, error)
 	GetTestItems(ctx context.Context, ids []string) ([]domain.TestItem, error)
 	UpdateDefects(ctx context.Context, updates []domain.DefectUpdate) error
+	ListDashboards(ctx context.Context) ([]domain.Dashboard, error)
+	GetDashboard(ctx context.Context, id string) (*domain.Dashboard, error)
+	CreateDashboard(ctx context.Context, input domain.DashboardCreateInput) (*domain.Dashboard, error)
+	AddWidget(ctx context.Context, dashboardID string, input domain.WidgetAddInput) (*domain.Widget, error)
 }
 
 // ExternalLinkRepository is the outbound port for remote link retrieval (PRs, commits).

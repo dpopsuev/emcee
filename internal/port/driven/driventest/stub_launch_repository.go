@@ -37,12 +37,15 @@ type UpdateDefectsCall struct {
 }
 
 type StubLaunchRepository struct {
-	NameVal   string
-	Launches  []domain.Launch
-	Launch    *domain.Launch
-	TestItems []domain.TestItem
-	TestItem  *domain.TestItem
-	Err       error
+	NameVal    string
+	Launches   []domain.Launch
+	Launch     *domain.Launch
+	TestItems  []domain.TestItem
+	TestItem   *domain.TestItem
+	Dashboards []domain.Dashboard
+	Dashboard  *domain.Dashboard
+	Widget     *domain.Widget
+	Err        error
 
 	mu                 sync.Mutex
 	ListLaunchesCalls  []ListLaunchesCall
@@ -95,4 +98,20 @@ func (s *StubLaunchRepository) UpdateDefects(_ context.Context, updates []domain
 	defer s.mu.Unlock()
 	s.UpdateDefectsCalls = append(s.UpdateDefectsCalls, UpdateDefectsCall{Updates: updates})
 	return s.Err
+}
+
+func (s *StubLaunchRepository) ListDashboards(_ context.Context) ([]domain.Dashboard, error) {
+	return s.Dashboards, s.Err
+}
+
+func (s *StubLaunchRepository) GetDashboard(_ context.Context, _ string) (*domain.Dashboard, error) {
+	return s.Dashboard, s.Err
+}
+
+func (s *StubLaunchRepository) CreateDashboard(_ context.Context, _ domain.DashboardCreateInput) (*domain.Dashboard, error) {
+	return s.Dashboard, s.Err
+}
+
+func (s *StubLaunchRepository) AddWidget(_ context.Context, _ string, _ domain.WidgetAddInput) (*domain.Widget, error) {
+	return s.Widget, s.Err
 }

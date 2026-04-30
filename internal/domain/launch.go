@@ -60,6 +60,37 @@ type ExternalSystemIssue struct {
 	URL        string `json:"url,omitempty"`
 }
 
+// Dashboard represents a Report Portal dashboard.
+type Dashboard struct {
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	Description string   `json:"description,omitempty"`
+	Widgets     []Widget `json:"widgets,omitempty"`
+}
+
+// Widget represents a widget on a Report Portal dashboard.
+type Widget struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Type   string `json:"type"`
+	Width  int    `json:"width,omitempty"`
+	Height int    `json:"height,omitempty"`
+}
+
+// DashboardCreateInput is the input for creating a dashboard.
+type DashboardCreateInput struct {
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+}
+
+// WidgetAddInput is the input for adding a widget to a dashboard.
+type WidgetAddInput struct {
+	Name   string `json:"name"`
+	Type   string `json:"type"`
+	Width  int    `json:"width,omitempty"`
+	Height int    `json:"height,omitempty"`
+}
+
 // DefectUpdate specifies a defect type change on a test item.
 type DefectUpdate struct {
 	TestItemID           string                `json:"test_item_id"`

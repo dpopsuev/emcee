@@ -60,6 +60,10 @@ type LaunchService interface {
 	GetTestItem(ctx context.Context, backend, id string) (*domain.TestItem, error)
 	GetTestItems(ctx context.Context, backend string, ids []string) ([]domain.TestItem, error)
 	UpdateDefects(ctx context.Context, backend string, updates []domain.DefectUpdate) error
+	ListDashboards(ctx context.Context, backend string) ([]domain.Dashboard, error)
+	GetDashboard(ctx context.Context, backend, id string) (*domain.Dashboard, error)
+	CreateDashboard(ctx context.Context, backend string, input domain.DashboardCreateInput) (*domain.Dashboard, error)
+	AddWidget(ctx context.Context, backend, dashboardID string, input domain.WidgetAddInput) (*domain.Widget, error)
 }
 
 // IssueLinkService is the inbound port for creating issue-to-issue links.

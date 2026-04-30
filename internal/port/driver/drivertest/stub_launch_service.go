@@ -47,6 +47,9 @@ type StubLaunchService struct {
 	TestItems     []domain.TestItem
 	TestItem      *domain.TestItem
 	BulkTestItems []domain.TestItem
+	Dashboards    []domain.Dashboard
+	Dashboard     *domain.Dashboard
+	Widget        *domain.Widget
 	Err           error
 
 	mu                 sync.Mutex
@@ -98,4 +101,20 @@ func (s *StubLaunchService) UpdateDefects(_ context.Context, backend string, upd
 	defer s.mu.Unlock()
 	s.UpdateDefectsCalls = append(s.UpdateDefectsCalls, DefectUpdateCall{Backend: backend, Updates: updates})
 	return s.Err
+}
+
+func (s *StubLaunchService) ListDashboards(_ context.Context, _ string) ([]domain.Dashboard, error) {
+	return s.Dashboards, s.Err
+}
+
+func (s *StubLaunchService) GetDashboard(_ context.Context, _, _ string) (*domain.Dashboard, error) {
+	return s.Dashboard, s.Err
+}
+
+func (s *StubLaunchService) CreateDashboard(_ context.Context, _ string, _ domain.DashboardCreateInput) (*domain.Dashboard, error) {
+	return s.Dashboard, s.Err
+}
+
+func (s *StubLaunchService) AddWidget(_ context.Context, _, _ string, _ domain.WidgetAddInput) (*domain.Widget, error) {
+	return s.Widget, s.Err
 }

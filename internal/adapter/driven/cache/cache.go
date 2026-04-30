@@ -515,3 +515,31 @@ func (r *Repository) UpdateDefects(ctx context.Context, updates []domain.DefectU
 	}
 	return r.launches.UpdateDefects(ctx, updates)
 }
+
+func (r *Repository) ListDashboards(ctx context.Context) ([]domain.Dashboard, error) {
+	if r.launches == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.launches.ListDashboards(ctx)
+}
+
+func (r *Repository) GetDashboard(ctx context.Context, id string) (*domain.Dashboard, error) {
+	if r.launches == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.launches.GetDashboard(ctx, id)
+}
+
+func (r *Repository) CreateDashboard(ctx context.Context, input domain.DashboardCreateInput) (*domain.Dashboard, error) {
+	if r.launches == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.launches.CreateDashboard(ctx, input)
+}
+
+func (r *Repository) AddWidget(ctx context.Context, dashboardID string, input domain.WidgetAddInput) (*domain.Widget, error) {
+	if r.launches == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.launches.AddWidget(ctx, dashboardID, input)
+}
