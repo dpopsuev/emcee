@@ -11,6 +11,7 @@ import (
 
 	"github.com/dpopsuev/battery/mcpserver"
 	"github.com/dpopsuev/battery/server"
+	"github.com/dpopsuev/emcee/internal/docparse"
 	"github.com/dpopsuev/emcee/internal/domain"
 	"github.com/dpopsuev/emcee/internal/port/driver"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -18,7 +19,7 @@ import (
 
 const (
 	serverName    = "emcee"
-	serverVersion = "0.12.1"
+	serverVersion = "0.13.0"
 
 	defaultListMax   = 50
 	defaultSearchMax = 20
@@ -114,6 +115,15 @@ Ledger (cross-backend artifact index, populated from get/list/search):
   ledger_ingest  — ref, backend, title, [description, status, components] → actively deposit an artifact
   ledger_stats   — (no params) → totals and by-backend counts
 
+Doc Operations:
+  doc_parse       — query (markdown content) → parse into section tree with links + code blocks
+  doc_links       — query (markdown content) → check dead links, extract link graph edges
+  doc_diff        — query (old markdown), body (new markdown) → structural diff between versions
+  doc_audit       — query (markdown content) → duplicate code blocks, section weights, bloat analysis
+  doc_terms       — query (markdown content), body (comma-separated terms) → term usage + inconsistencies
+  doc_validate    — query (markdown content), body (comma-separated required section titles) → template validation
+  doc_declarations — query (markdown content) → extract Go type/func/const declarations from code blocks
+
 Discovery:
   fields      — backend → list available fields (Jira: custom field IDs)
   jql         — backend=jira, query (raw JQL string), [limit]
@@ -150,7 +160,7 @@ func RegisterTools(srv *mcpserver.Server, svc EmceeService) {
 	srv.ToolWithSchema(
 		server.ToolMeta{
 			Name:        "emcee",
-			Description: "Issue management across all backends. Actions: list, get, create, update, search, children, bulk_create, bulk_update, comments, comment_add, stage, stage_list, stage_show, stage_patch, stage_drop, push, push_all, launches, launch_get, test_items, test_item_get, bulk_test_item_get, defect_update, link_issue, fields, jql, prs, ledger_list, ledger_get, ledger_search, ledger_similar, ledger_ingest, ledger_stats.",
+			Description: "Issue management across all backends. Actions: list, get, create, update, search, children, bulk_create, bulk_update, comments, comment_add, stage, stage_list, stage_show, stage_patch, stage_drop, push, push_all, launches, launch_get, test_items, test_item_get, bulk_test_item_get, defect_update, link_issue, doc_parse, doc_links, doc_diff, doc_audit, doc_terms, doc_validate, doc_declarations, fields, jql, prs, ledger_list, ledger_get, ledger_search, ledger_similar, ledger_ingest, ledger_stats.",
 			Keywords:    []string{"issue", "ticket", "bug", "task", "comment", "stage", "push", "linear", "github", "jira", "gitlab"},
 			Categories:  []string{"issue-management"},
 		},
@@ -183,7 +193,7 @@ func RegisterTools(srv *mcpserver.Server, svc EmceeService) {
 var emceeSchema = json.RawMessage(`{
 	"type": "object",
 	"properties": {
-		"action":      {"type": "string", "enum": ["list","get","create","update","search","children","bulk_create","bulk_update","comments","comment_add","stage","stage_list","stage_show","stage_patch","stage_drop","push","push_all","link_issue","launches","launch_get","test_items","test_item_get","bulk_test_item_get","defect_update","triage","triage_config","triage_config_set","fields","jql","prs","ledger_list","ledger_get","ledger_search","ledger_similar","ledger_ingest","ledger_stats"], "description": "Action to perform"},
+		"action":      {"type": "string", "enum": ["list","get","create","update","search","children","bulk_create","bulk_update","comments","comment_add","stage","stage_list","stage_show","stage_patch","stage_drop","push","push_all","link_issue","launches","launch_get","test_items","test_item_get","bulk_test_item_get","defect_update","doc_parse","doc_links","doc_diff","doc_audit","doc_terms","doc_validate","doc_declarations","triage","triage_config","triage_config_set","fields","jql","prs","ledger_list","ledger_get","ledger_search","ledger_similar","ledger_ingest","ledger_stats"], "description": "Action to perform"},
 		"backend":     {"type": "string", "description": "Backend name (required for list/create/search)"},
 		"ref":         {"type": "string", "description": "Issue ref for get/update/children (e.g. linear:PROJ-42)"},
 		"title":       {"type": "string", "description": "Issue title (create)"},
@@ -640,6 +650,80 @@ func emceeHandler(svc EmceeService) server.Handler {
 				return "", err
 			}
 			return server.JSONResult(map[string]any{"updated": len(updates)})
+
+		// --- Doc operations ---
+
+		case "doc_parse":
+			if args.Query == "" {
+				return "", errQueryRequired
+			}
+			tree := docparse.Parse([]byte(args.Query))
+			return server.JSONResult(tree)
+
+		case "doc_links":
+			if args.Query == "" {
+				return "", errQueryRequired
+			}
+			tree := docparse.Parse([]byte(args.Query))
+			docparse.CheckDeadLinks(tree)
+			edges := docparse.ExtractLinkEdges(tree)
+			return server.JSONResult(map[string]any{"links": tree.Links, "edges": edges})
+
+		case "doc_diff":
+			if args.Query == "" {
+				return "", errQueryRequired
+			}
+			if args.Body == "" {
+				return "", errBodyRequired
+			}
+			oldTree := docparse.Parse([]byte(args.Query))
+			newTree := docparse.Parse([]byte(args.Body))
+			diffs := docparse.VersionDiff(oldTree, newTree)
+			return server.JSONResult(diffs)
+
+		case "doc_audit":
+			if args.Query == "" {
+				return "", errQueryRequired
+			}
+			tree := docparse.Parse([]byte(args.Query))
+			return server.JSONResult(map[string]any{
+				"duplicates": docparse.FindDuplicateCodeBlocks(tree),
+				"weights":    docparse.AnalyzeBloat(tree),
+			})
+
+		case "doc_terms":
+			if args.Query == "" {
+				return "", errQueryRequired
+			}
+			tree := docparse.Parse([]byte(args.Query))
+			terms := splitCSV(args.Body)
+			var usages []docparse.TermUsage
+			for _, term := range terms {
+				usages = append(usages, docparse.FindTermUsage(args.Query, tree, term))
+			}
+			inconsistencies := docparse.FindInconsistentTerms(args.Query, terms)
+			return server.JSONResult(map[string]any{"usage": usages, "inconsistencies": inconsistencies})
+
+		case "doc_validate":
+			if args.Query == "" {
+				return "", errQueryRequired
+			}
+			tree := docparse.Parse([]byte(args.Query))
+			titles := splitCSV(args.Body)
+			rules := make([]docparse.TemplateRule, len(titles))
+			for i, t := range titles {
+				rules[i] = docparse.TemplateRule{Title: t, Required: true}
+			}
+			result := docparse.ValidateTemplate(tree, rules)
+			return server.JSONResult(result)
+
+		case "doc_declarations":
+			if args.Query == "" {
+				return "", errQueryRequired
+			}
+			tree := docparse.Parse([]byte(args.Query))
+			decls := docparse.ExtractGoDeclarations(tree)
+			return server.JSONResult(decls)
 
 		// --- Triage ---
 
