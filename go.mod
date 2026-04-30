@@ -6,6 +6,7 @@ require (
 	github.com/dpopsuev/battery v0.9.0
 	github.com/modelcontextprotocol/go-sdk v1.5.0
 	github.com/spf13/cobra v1.10.2
+	github.com/yuin/goldmark v1.8.2
 	golang.org/x/time v0.15.0
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.49.1
