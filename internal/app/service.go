@@ -43,6 +43,7 @@ type Service struct {
 	prRepos        map[string]driven.PRRepository
 	extLinkRepos   map[string]driven.ExternalLinkRepository
 	issueLinkRepos map[string]driven.IssueLinkRepository
+	gistRepos      map[string]driven.GistRepository
 	extractor      driven.LinkExtractor
 	graphStore     driven.GraphStore
 	ledger         driven.Ledger
@@ -70,6 +71,7 @@ func NewService(repos ...driven.IssueRepository) *Service {
 		prRepos:        make(map[string]driven.PRRepository),
 		extLinkRepos:   make(map[string]driven.ExternalLinkRepository),
 		issueLinkRepos: make(map[string]driven.IssueLinkRepository),
+		gistRepos:      make(map[string]driven.GistRepository),
 		stage:          NewStageStore(),
 	}
 	for _, r := range repos {
@@ -110,6 +112,9 @@ func NewService(repos ...driven.IssueRepository) *Service {
 		}
 		if ilr, ok := r.(driven.IssueLinkRepository); ok {
 			s.issueLinkRepos[name] = ilr
+		}
+		if gr, ok := r.(driven.GistRepository); ok {
+			s.gistRepos[name] = gr
 		}
 	}
 	return s
@@ -157,6 +162,9 @@ func (s *Service) AddBackend(r driven.IssueRepository) {
 	if ilr, ok := r.(driven.IssueLinkRepository); ok {
 		s.issueLinkRepos[name] = ilr
 	}
+	if gr, ok := r.(driven.GistRepository); ok {
+		s.gistRepos[name] = gr
+	}
 }
 
 // RemoveBackend removes a backend by name at runtime. Thread-safe.
@@ -179,6 +187,7 @@ func (s *Service) RemoveBackend(name string) bool {
 	delete(s.prRepos, name)
 	delete(s.extLinkRepos, name)
 	delete(s.issueLinkRepos, name)
+	delete(s.gistRepos, name)
 	return true
 }
 
@@ -639,6 +648,24 @@ func (s *Service) UpdateDefects(ctx context.Context, backend string, updates []d
 		return s.notSupportedErr(backend, "launches")
 	}
 	return r.UpdateDefects(ctx, updates)
+}
+
+// --- Gist operations ---
+
+func (s *Service) CreateGist(ctx context.Context, backend, filename, content string, public bool) (id, url string, err error) {
+	r, ok := s.gistRepos[backend]
+	if !ok {
+		return "", "", s.notSupportedErr(backend, "gists")
+	}
+	return r.CreateGist(ctx, filename, content, public)
+}
+
+func (s *Service) UpdateGist(ctx context.Context, backend, gistID, filename, content string) (string, error) {
+	r, ok := s.gistRepos[backend]
+	if !ok {
+		return "", s.notSupportedErr(backend, "gists")
+	}
+	return r.UpdateGist(ctx, gistID, filename, content)
 }
 
 // --- Dashboard operations (Report Portal) ---

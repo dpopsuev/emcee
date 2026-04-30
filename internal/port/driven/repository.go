@@ -81,6 +81,13 @@ type LaunchRepository interface {
 	AddWidget(ctx context.Context, dashboardID string, input domain.WidgetAddInput) (*domain.Widget, error)
 }
 
+// GistRepository is the outbound port for gist operations (GitHub).
+type GistRepository interface {
+	Name() string
+	CreateGist(ctx context.Context, filename, content string, public bool) (id, url string, err error)
+	UpdateGist(ctx context.Context, gistID, filename, content string) (url string, err error)
+}
+
 // ExternalLinkRepository is the outbound port for remote link retrieval (PRs, commits).
 type ExternalLinkRepository interface {
 	Name() string

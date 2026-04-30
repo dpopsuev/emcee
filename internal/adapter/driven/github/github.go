@@ -47,6 +47,7 @@ var (
 	_ driven.LabelRepository   = (*Repository)(nil)
 	_ driven.CommentRepository = (*Repository)(nil)
 	_ driven.PRRepository      = (*Repository)(nil)
+	_ driven.GistRepository    = (*Repository)(nil)
 )
 
 // Repository implements driven.IssueRepository for GitHub.

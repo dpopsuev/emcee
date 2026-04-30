@@ -22,6 +22,7 @@ type StubEmceeService struct {
 	StubJQLService
 	StubPRService
 	StubLaunchService
+	StubGistService
 	StubIssueLinkService
 	StubBackendManager
 	StubTriageService

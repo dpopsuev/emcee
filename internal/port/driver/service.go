@@ -66,6 +66,12 @@ type LaunchService interface {
 	AddWidget(ctx context.Context, backend, dashboardID string, input domain.WidgetAddInput) (*domain.Widget, error)
 }
 
+// GistService is the inbound port for gist sync operations.
+type GistService interface {
+	CreateGist(ctx context.Context, backend, filename, content string, public bool) (id, url string, err error)
+	UpdateGist(ctx context.Context, backend, gistID, filename, content string) (url string, err error)
+}
+
 // IssueLinkService is the inbound port for creating issue-to-issue links.
 type IssueLinkService interface {
 	LinkIssue(ctx context.Context, backend string, input domain.IssueLinkInput) error
