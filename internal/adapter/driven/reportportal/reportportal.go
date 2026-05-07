@@ -266,6 +266,7 @@ type rpTestItem struct {
 	Name     string `json:"name"`
 	Status   string `json:"status"`
 	Type     string `json:"type"`
+	ParentID int    `json:"parent"`
 	LaunchID int    `json:"launchId"`
 	Issue    *struct {
 		IssueType            string `json:"issueType"`
@@ -285,6 +286,7 @@ func (ti *rpTestItem) toDomain(baseURL, project string) domain.TestItem {
 		Name:     ti.Name,
 		Status:   ti.Status,
 		Type:     ti.Type,
+		ParentID: strconv.Itoa(ti.ParentID),
 		LaunchID: strconv.Itoa(ti.LaunchID),
 		URL:      fmt.Sprintf("%s/ui/#%s/launches/all/%d", baseURL, project, ti.LaunchID),
 	}
@@ -309,7 +311,7 @@ func (r *Repository) ListTestItems(ctx context.Context, launchID string, filter 
 	if limit <= 0 {
 		limit = defaultLimit
 	}
-	path := fmt.Sprintf("/item?filter.eq.launchId=%s&filter.in.type=STEP&isLatest=false&launchesLimit=0&page.size=%d",
+	path := fmt.Sprintf("/item?filter.eq.launchId=%s&filter.in.type=STEP,SUITE&isLatest=false&launchesLimit=0&page.size=%d",
 		launchID, limit)
 	if filter.Status != "" {
 		path += "&filter.eq.status=" + strings.ToUpper(filter.Status)
@@ -322,11 +324,42 @@ func (r *Repository) ListTestItems(ctx context.Context, launchID string, filter 
 		return nil, err
 	}
 
-	items := make([]domain.TestItem, 0, len(result.Content))
+	var items []domain.TestItem
 	for i := range result.Content {
+		if result.Content[i].Type == "SUITE" {
+			children := r.fetchSuiteChildren(ctx, launchID, strconv.Itoa(result.Content[i].ID), filter, limit)
+			items = append(items, children...)
+			continue
+		}
 		items = append(items, result.Content[i].toDomain(r.baseURL, r.project))
 	}
 	return items, nil
+}
+
+func (r *Repository) fetchSuiteChildren(ctx context.Context, launchID, parentID string, filter domain.TestItemFilter, limit int) []domain.TestItem {
+	path := fmt.Sprintf("/item?filter.eq.launchId=%s&filter.eq.parentId=%s&isLatest=false&launchesLimit=0&page.size=%d",
+		launchID, parentID, limit)
+	if filter.Status != "" {
+		path += "&filter.eq.status=" + strings.ToUpper(filter.Status)
+	}
+
+	var result struct {
+		Content []rpTestItem `json:"content"`
+	}
+	if err := r.api(ctx, "GET", path, nil, &result); err != nil {
+		return nil
+	}
+
+	var items []domain.TestItem
+	for i := range result.Content {
+		if result.Content[i].Type == "SUITE" {
+			children := r.fetchSuiteChildren(ctx, launchID, strconv.Itoa(result.Content[i].ID), filter, limit)
+			items = append(items, children...)
+			continue
+		}
+		items = append(items, result.Content[i].toDomain(r.baseURL, r.project))
+	}
+	return items
 }
 
 func (r *Repository) GetTestItem(ctx context.Context, id string) (*domain.TestItem, error) {

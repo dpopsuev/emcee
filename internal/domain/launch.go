@@ -37,6 +37,7 @@ type TestItem struct {
 	Name                 string                `json:"name"`
 	Status               string                `json:"status"`
 	Type                 string                `json:"type,omitempty"`
+	ParentID             string                `json:"parent_id,omitempty"`
 	LaunchID             string                `json:"launch_id"`
 	IssueType            string                `json:"issue_type,omitempty"`
 	Comment              string                `json:"comment,omitempty"`
