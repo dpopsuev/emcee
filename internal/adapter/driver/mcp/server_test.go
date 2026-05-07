@@ -991,6 +991,25 @@ func TestEmceeBulkTestItemGet(t *testing.T) {
 	}
 }
 
+func TestEmceeTestItemsNoDuplicates(t *testing.T) {
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "test_items", "backend": "reportportal", "ref": "1"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var items []domain.TestItem
+	if err := json.Unmarshal([]byte(resultText(t, result)), &items); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	seen := make(map[string]bool, len(items))
+	for _, item := range items {
+		if seen[item.ID] {
+			t.Errorf("duplicate test item ID: %s", item.ID)
+		}
+		seen[item.ID] = true
+	}
+}
+
 func TestEmceeDefectUpdate(t *testing.T) {
 	session, svc := newTestServer(t)
 	updates := `[{"test_item_id":"10","issue_type":"pb001","comment":"product bug"}]`
