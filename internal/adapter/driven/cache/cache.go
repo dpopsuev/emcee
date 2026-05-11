@@ -58,6 +58,7 @@ type Repository struct {
 	labels      driven.LabelRepository
 	bulk        driven.BulkIssueRepository
 	prs         driven.PRRepository
+	prReviews   driven.PRReviewRepository
 	caps        []string
 
 	mu       sync.Mutex
@@ -126,6 +127,10 @@ func New(inner driven.IssueRepository, opts ...Option) *Repository {
 	if v, ok := inner.(driven.PRRepository); ok {
 		r.prs = v
 		r.caps = append(r.caps, "prs")
+	}
+	if v, ok := inner.(driven.PRReviewRepository); ok {
+		r.prReviews = v
+		r.caps = append(r.caps, "pr_reviews")
 	}
 	for _, o := range opts {
 		o(r)
@@ -470,6 +475,20 @@ func (r *Repository) ListPRs(ctx context.Context, filter domain.PRFilter) ([]dom
 		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
 	}
 	return r.prs.ListPRs(ctx, filter)
+}
+
+func (r *Repository) ListPRReviews(ctx context.Context, prNumber int) ([]domain.PRReview, error) {
+	if r.prReviews == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.prReviews.ListPRReviews(ctx, prNumber)
+}
+
+func (r *Repository) ListPRComments(ctx context.Context, prNumber int) ([]domain.PRComment, error) {
+	if r.prReviews == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.prReviews.ListPRComments(ctx, prNumber)
 }
 
 // --- Passthrough: LaunchRepository ---
