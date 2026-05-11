@@ -51,6 +51,7 @@ type Service struct {
 	crawlRateLimit float64  // requests per second (0 = unlimited)
 	crawlAllowList []string // backend names to recurse into (empty = all)
 	stage          *StageStore
+	view           *ViewStore
 	mu             sync.RWMutex
 }
 
@@ -75,6 +76,7 @@ func NewService(repos ...driven.IssueRepository) *Service {
 		gistRepos:      make(map[string]driven.GistRepository),
 		prReviewRepos:  make(map[string]driven.PRReviewRepository),
 		stage:          NewStageStore(),
+		view:           NewViewStore(),
 	}
 	for _, r := range repos {
 		name := r.Name()
@@ -796,6 +798,48 @@ func (s *Service) BulkUpdateIssues(ctx context.Context, backend string, inputs [
 		result.Updated = append(result.Updated, *issue)
 	}
 	return result, nil
+}
+
+// --- View operations (Local Materialized View) ---
+
+func (s *Service) ViewPull(ctx context.Context, ref string) (*domain.ViewRecord, error) {
+	return s.view.Pull(ctx, s, ref)
+}
+
+func (s *Service) ViewGet(ref string) (*domain.ViewRecord, error) {
+	return s.view.Get(ref)
+}
+
+func (s *Service) ViewMutate(ref, field, value string) error {
+	return s.view.Mutate(ref, field, value)
+}
+
+func (s *Service) ViewDiff(ref string) (*domain.ViewDiff, error) {
+	return s.view.Diff(ref)
+}
+
+func (s *Service) ViewPush(ctx context.Context, ref string) (*domain.Issue, error) {
+	return s.view.Push(ctx, s, ref)
+}
+
+func (s *Service) ViewPushAll(ctx context.Context) ([]string, []string) {
+	return s.view.PushAll(ctx, s)
+}
+
+func (s *Service) ViewList() []domain.ViewRecord {
+	return s.view.List()
+}
+
+func (s *Service) ViewDirty() []*domain.ChangeSet {
+	return s.view.Dirty()
+}
+
+func (s *Service) ViewDrop(ref string) {
+	s.view.Drop(ref)
+}
+
+func (s *Service) ViewReset() {
+	s.view.Reset()
 }
 
 // --- Service options ---

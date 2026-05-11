@@ -138,6 +138,25 @@ func newTestServer(t *testing.T) (*sdkmcp.ClientSession, *drivertest.StubEmceeSe
 		Total:     2,
 		ByBackend: map[string]int{"jira": 1, "github": 1},
 	}
+	svc.ViewRecords = map[string]*domain.ViewRecord{}
+	svc.ViewChanges = map[string]*domain.ChangeSet{}
+	svc.ViewPullFunc = func(_ context.Context, ref string) (*domain.ViewRecord, error) {
+		vr := &domain.ViewRecord{
+			Ref: ref,
+			Fields: map[string]string{
+				"title":       "First Issue",
+				"description": "",
+				"status":      "todo",
+				"priority":    "high",
+				"assignee":    "",
+				"url":         "",
+			},
+			Version:  "2026-05-10T12:00:00Z",
+			PulledAt: time.Now(),
+		}
+		svc.ViewRecords[ref] = vr
+		return vr, nil
+	}
 	svc.StubBackendManager.RemoveResult = true
 	svc.StubBackendManager.ReloadAdded = []string{"jenkins-ci"}
 	svc.StubBackendManager.ReloadRemoved = []string{"old-backend"}
@@ -1057,5 +1076,173 @@ func TestEmceePRComments(t *testing.T) {
 	}
 	if len(comments) != 1 || comments[0].Path != "main.go" {
 		t.Errorf("comments = %+v", comments)
+	}
+}
+
+// --- View (Local Materialized View) tests ---
+
+func TestEmceeViewPull(t *testing.T) {
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "view_pull", "ref": "test:T-1"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var vr domain.ViewRecord
+	if err := json.Unmarshal([]byte(resultText(t, result)), &vr); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if vr.Ref != "test:T-1" {
+		t.Errorf("ref = %q, want test:T-1", vr.Ref)
+	}
+	if vr.Fields["title"] != "First Issue" {
+		t.Errorf("title = %q, want 'First Issue'", vr.Fields["title"])
+	}
+}
+
+func TestEmceeViewGet(t *testing.T) {
+	session, _ := newTestServer(t)
+	callTool(t, session, "emcee", map[string]any{"action": "view_pull", "ref": "test:T-1"})
+
+	result := callTool(t, session, "emcee", map[string]any{"action": "view_get", "ref": "test:T-1"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var vr domain.ViewRecord
+	if err := json.Unmarshal([]byte(resultText(t, result)), &vr); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if vr.Fields["status"] != "todo" {
+		t.Errorf("status = %q, want 'todo'", vr.Fields["status"])
+	}
+}
+
+func TestEmceeViewMutate(t *testing.T) {
+	session, _ := newTestServer(t)
+	callTool(t, session, "emcee", map[string]any{"action": "view_pull", "ref": "test:T-1"})
+
+	result := callTool(t, session, "emcee", map[string]any{
+		"action": "view_mutate", "ref": "test:T-1",
+		"query": "status", "body": "done",
+	})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var vr domain.ViewRecord
+	if err := json.Unmarshal([]byte(resultText(t, result)), &vr); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if vr.Fields["status"] != "done" {
+		t.Errorf("status after mutate = %q, want 'done'", vr.Fields["status"])
+	}
+}
+
+func TestEmceeViewDiff(t *testing.T) {
+	session, _ := newTestServer(t)
+	callTool(t, session, "emcee", map[string]any{"action": "view_pull", "ref": "test:T-1"})
+	callTool(t, session, "emcee", map[string]any{
+		"action": "view_mutate", "ref": "test:T-1",
+		"query": "status", "body": "done",
+	})
+
+	result := callTool(t, session, "emcee", map[string]any{"action": "view_diff", "ref": "test:T-1"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var diff domain.ViewDiff
+	if err := json.Unmarshal([]byte(resultText(t, result)), &diff); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(diff.Changes) == 0 {
+		t.Error("expected changes in diff")
+	}
+}
+
+func TestEmceeViewPush(t *testing.T) {
+	session, _ := newTestServer(t)
+	callTool(t, session, "emcee", map[string]any{"action": "view_pull", "ref": "test:T-1"})
+	callTool(t, session, "emcee", map[string]any{
+		"action": "view_mutate", "ref": "test:T-1",
+		"query": "status", "body": "done",
+	})
+
+	result := callTool(t, session, "emcee", map[string]any{"action": "view_push", "ref": "test:T-1"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	text := resultText(t, result)
+	if !strings.Contains(text, "pushed") {
+		t.Errorf("expected push result, got: %s", text)
+	}
+}
+
+func TestEmceeViewList(t *testing.T) {
+	session, _ := newTestServer(t)
+	callTool(t, session, "emcee", map[string]any{"action": "view_pull", "ref": "test:T-1"})
+
+	result := callTool(t, session, "emcee", map[string]any{"action": "view_list"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var records []domain.ViewRecord
+	if err := json.Unmarshal([]byte(resultText(t, result)), &records); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(records) != 1 {
+		t.Errorf("expected 1 record, got %d", len(records))
+	}
+}
+
+func TestEmceeViewDirty(t *testing.T) {
+	session, _ := newTestServer(t)
+	callTool(t, session, "emcee", map[string]any{"action": "view_pull", "ref": "test:T-1"})
+	callTool(t, session, "emcee", map[string]any{
+		"action": "view_mutate", "ref": "test:T-1",
+		"query": "status", "body": "done",
+	})
+
+	result := callTool(t, session, "emcee", map[string]any{"action": "view_dirty"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var changes []*domain.ChangeSet
+	if err := json.Unmarshal([]byte(resultText(t, result)), &changes); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(changes) != 1 {
+		t.Errorf("expected 1 dirty set, got %d", len(changes))
+	}
+}
+
+func TestEmceeViewDrop(t *testing.T) {
+	session, _ := newTestServer(t)
+	callTool(t, session, "emcee", map[string]any{"action": "view_pull", "ref": "test:T-1"})
+
+	result := callTool(t, session, "emcee", map[string]any{"action": "view_drop", "ref": "test:T-1"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+
+	getResult := callTool(t, session, "emcee", map[string]any{"action": "view_get", "ref": "test:T-1"})
+	if !getResult.IsError {
+		t.Error("expected error after drop")
+	}
+}
+
+func TestEmceeViewReset(t *testing.T) {
+	session, _ := newTestServer(t)
+	callTool(t, session, "emcee", map[string]any{"action": "view_pull", "ref": "test:T-1"})
+
+	result := callTool(t, session, "emcee", map[string]any{"action": "view_reset"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+
+	listResult := callTool(t, session, "emcee", map[string]any{"action": "view_list"})
+	var records []domain.ViewRecord
+	if err := json.Unmarshal([]byte(resultText(t, listResult)), &records); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(records) != 0 {
+		t.Errorf("expected 0 records after reset, got %d", len(records))
 	}
 }

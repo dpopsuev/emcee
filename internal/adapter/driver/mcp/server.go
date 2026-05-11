@@ -20,7 +20,7 @@ import (
 
 const (
 	serverName    = "emcee"
-	serverVersion = "0.13.0"
+	serverVersion = "0.15.0"
 
 	defaultListMax   = 50
 	defaultSearchMax = 20
@@ -37,6 +37,7 @@ var (
 	errBackendNotFound = errors.New("backend not found")
 	errIDRequired      = errors.New("id is required")
 	errUnknownAction   = errors.New("unknown action")
+	errFieldRequired   = errors.New("field name is required (pass in query param)")
 )
 
 // EmceeService combines all driver port interfaces.
@@ -60,6 +61,7 @@ type EmceeService interface {
 	driver.JQLService
 	driver.PRService
 	driver.LedgerService
+	driver.ViewService
 }
 
 const serverInstructions = `Emcee — All Ceremonies in one place. Unified issue tracker across Linear, GitHub, GitLab, Jira, and Report Portal. Ref format: "backend:key" (e.g. "jira:PROJ-42"). Backend is required for list/create/search actions.
@@ -135,6 +137,18 @@ Doc Operations:
   doc_sync_gist   — backend=github, title (filename), query (content), [ref (gist ID for update)] → create or update a GitHub Gist
   doc_sync_jira   — ref (jira:KEY), query (markdown content) → update Jira issue description
 
+Local View (Identity Map + Unit of Work — pull issues, mutate locally, push changes):
+  view_pull   — ref → fetch from backend into local view (or refresh)
+  view_get    — ref → read local copy (no API call)
+  view_mutate — ref, query (field name), body (new value) → mutate local field
+  view_diff   — ref → show local changes vs pulled state
+  view_push   — ref → flush dirty fields to backend (only changed fields)
+  view_push_all — (no params) → flush all dirty records to their backends
+  view_list   — (no params) → all records in the local view
+  view_dirty  — (no params) → all pending change sets
+  view_drop   — ref → remove from local view
+  view_reset  — (no params) → clear entire local view
+
 Discovery:
   fields      — backend → list available fields (Jira: custom field IDs)
   jql         — backend=jira, query (raw JQL string), [limit]
@@ -171,7 +185,7 @@ func RegisterTools(srv *mcpserver.Server, svc EmceeService) {
 	srv.ToolWithSchema(
 		server.ToolMeta{
 			Name:        "emcee",
-			Description: "Issue management across all backends. Actions: list, get, create, update, search, children, bulk_create, bulk_update, comments, comment_add, stage, stage_list, stage_show, stage_patch, stage_drop, push, push_all, launches, launch_get, test_items, test_item_get, bulk_test_item_get, defect_update, link_issue, dashboards, dashboard_get, dashboard_create, widget_add, doc_parse, doc_links, doc_diff, doc_audit, doc_terms, doc_validate, doc_declarations, doc_sync_gist, doc_sync_jira, pr_reviews, pr_comments, fields, jql, prs, ledger_list, ledger_get, ledger_search, ledger_similar, ledger_ingest, ledger_stats.",
+			Description: "Issue management across all backends. Actions: list, get, create, update, search, children, bulk_create, bulk_update, comments, comment_add, stage, stage_list, stage_show, stage_patch, stage_drop, push, push_all, launches, launch_get, test_items, test_item_get, bulk_test_item_get, defect_update, link_issue, dashboards, dashboard_get, dashboard_create, widget_add, doc_parse, doc_links, doc_diff, doc_audit, doc_terms, doc_validate, doc_declarations, doc_sync_gist, doc_sync_jira, pr_reviews, pr_comments, fields, jql, prs, ledger_list, ledger_get, ledger_search, ledger_similar, ledger_ingest, ledger_stats, view_pull, view_get, view_mutate, view_diff, view_push, view_push_all, view_list, view_dirty, view_drop, view_reset.",
 			Keywords:    []string{"issue", "ticket", "bug", "task", "comment", "stage", "push", "linear", "github", "jira", "gitlab"},
 			Categories:  []string{"issue-management"},
 		},
@@ -204,7 +218,7 @@ func RegisterTools(srv *mcpserver.Server, svc EmceeService) {
 var emceeSchema = json.RawMessage(`{
 	"type": "object",
 	"properties": {
-		"action":      {"type": "string", "enum": ["list","get","create","update","search","children","bulk_create","bulk_update","comments","comment_add","stage","stage_list","stage_show","stage_patch","stage_drop","push","push_all","link_issue","launches","launch_get","test_items","test_item_get","bulk_test_item_get","defect_update","dashboards","dashboard_get","dashboard_create","widget_add","doc_parse","doc_links","doc_diff","doc_audit","doc_terms","doc_validate","doc_declarations","doc_sync_gist","doc_sync_jira","pr_reviews","pr_comments","triage","triage_config","triage_config_set","fields","jql","prs","ledger_list","ledger_get","ledger_search","ledger_similar","ledger_ingest","ledger_stats"], "description": "Action to perform"},
+		"action":      {"type": "string", "enum": ["list","get","create","update","search","children","bulk_create","bulk_update","comments","comment_add","stage","stage_list","stage_show","stage_patch","stage_drop","push","push_all","link_issue","launches","launch_get","test_items","test_item_get","bulk_test_item_get","defect_update","dashboards","dashboard_get","dashboard_create","widget_add","doc_parse","doc_links","doc_diff","doc_audit","doc_terms","doc_validate","doc_declarations","doc_sync_gist","doc_sync_jira","pr_reviews","pr_comments","triage","triage_config","triage_config_set","fields","jql","prs","ledger_list","ledger_get","ledger_search","ledger_similar","ledger_ingest","ledger_stats","view_pull","view_get","view_mutate","view_diff","view_push","view_push_all","view_list","view_dirty","view_drop","view_reset"], "description": "Action to perform"},
 		"backend":     {"type": "string", "description": "Backend name (required for list/create/search)"},
 		"ref":         {"type": "string", "description": "Issue ref for get/update/children (e.g. linear:PROJ-42)"},
 		"title":       {"type": "string", "description": "Issue title (create)"},
@@ -1000,6 +1014,102 @@ func emceeHandler(svc EmceeService) server.Handler {
 				return "", err
 			}
 			return server.JSONResult(stats)
+
+		// --- View (Local Materialized View) ---
+
+		case "view_pull":
+			if args.Ref == "" {
+				return "", errRefRequired
+			}
+			vr, err := svc.ViewPull(ctx, args.Ref)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(vr)
+
+		case "view_get":
+			if args.Ref == "" {
+				return "", errRefRequired
+			}
+			vr, err := svc.ViewGet(args.Ref)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(vr)
+
+		case "view_mutate":
+			if args.Ref == "" {
+				return "", errRefRequired
+			}
+			if args.Query == "" {
+				return "", errFieldRequired
+			}
+			value := args.Body
+			if err := svc.ViewMutate(args.Ref, args.Query, value); err != nil {
+				return "", err
+			}
+			vr, err := svc.ViewGet(args.Ref)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(vr)
+
+		case "view_diff":
+			if args.Ref == "" {
+				return "", errRefRequired
+			}
+			diff, err := svc.ViewDiff(args.Ref)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(diff)
+
+		case "view_push":
+			if args.Ref == "" {
+				return "", errRefRequired
+			}
+			issue, err := svc.ViewPush(ctx, args.Ref)
+			if err != nil {
+				return "", err
+			}
+			if issue == nil {
+				return server.JSONResult(map[string]string{
+					"ref":     args.Ref,
+					"message": "no dirty fields to push",
+				})
+			}
+			return server.JSONResult(issue)
+
+		case "view_list":
+			records := svc.ViewList()
+			return server.JSONResult(records)
+
+		case "view_dirty":
+			changes := svc.ViewDirty()
+			return server.JSONResult(changes)
+
+		case "view_push_all":
+			pushed, errs := svc.ViewPushAll(ctx)
+			return server.JSONResult(map[string]any{
+				"pushed": pushed,
+				"errors": errs,
+			})
+
+		case "view_drop":
+			if args.Ref == "" {
+				return "", errRefRequired
+			}
+			svc.ViewDrop(args.Ref)
+			return server.JSONResult(map[string]string{
+				"ref":     args.Ref,
+				"message": "dropped from view",
+			})
+
+		case "view_reset":
+			svc.ViewReset()
+			return server.JSONResult(map[string]string{
+				"message": "view store reset",
+			})
 
 		default:
 			return "", fmt.Errorf("%w %q", errUnknownAction, args.Action)

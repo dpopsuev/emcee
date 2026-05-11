@@ -28,4 +28,5 @@ type StubEmceeService struct {
 	StubBackendManager
 	StubTriageService
 	StubLedgerService
+	StubViewService
 }
