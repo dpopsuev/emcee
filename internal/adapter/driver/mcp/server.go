@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -54,6 +55,7 @@ type EmceeService interface {
 	driver.TriageService
 	driver.IssueLinkService
 	driver.GistService
+	driver.PRReviewService
 	driver.FieldService
 	driver.JQLService
 	driver.PRService
@@ -111,6 +113,8 @@ Issue Links:
 
 Pull Requests / Merge Requests:
   prs         — backend, [author, status, merged_after (YYYY-MM-DD), merged_before (YYYY-MM-DD), repo (override: owner/repo or namespace/project), limit]
+  pr_reviews  — backend=github, ref (PR number) → list reviews (APPROVED, CHANGES_REQUESTED, etc.)
+  pr_comments — backend=github, ref (PR number) → list review comments on diff lines
 
 Ledger (cross-backend artifact index, populated from get/list/search):
   ledger_list    — [backend, status, components (via components param), limit] → list seen artifacts
@@ -167,7 +171,7 @@ func RegisterTools(srv *mcpserver.Server, svc EmceeService) {
 	srv.ToolWithSchema(
 		server.ToolMeta{
 			Name:        "emcee",
-			Description: "Issue management across all backends. Actions: list, get, create, update, search, children, bulk_create, bulk_update, comments, comment_add, stage, stage_list, stage_show, stage_patch, stage_drop, push, push_all, launches, launch_get, test_items, test_item_get, bulk_test_item_get, defect_update, link_issue, dashboards, dashboard_get, dashboard_create, widget_add, doc_parse, doc_links, doc_diff, doc_audit, doc_terms, doc_validate, doc_declarations, doc_sync_gist, doc_sync_jira, fields, jql, prs, ledger_list, ledger_get, ledger_search, ledger_similar, ledger_ingest, ledger_stats.",
+			Description: "Issue management across all backends. Actions: list, get, create, update, search, children, bulk_create, bulk_update, comments, comment_add, stage, stage_list, stage_show, stage_patch, stage_drop, push, push_all, launches, launch_get, test_items, test_item_get, bulk_test_item_get, defect_update, link_issue, dashboards, dashboard_get, dashboard_create, widget_add, doc_parse, doc_links, doc_diff, doc_audit, doc_terms, doc_validate, doc_declarations, doc_sync_gist, doc_sync_jira, pr_reviews, pr_comments, fields, jql, prs, ledger_list, ledger_get, ledger_search, ledger_similar, ledger_ingest, ledger_stats.",
 			Keywords:    []string{"issue", "ticket", "bug", "task", "comment", "stage", "push", "linear", "github", "jira", "gitlab"},
 			Categories:  []string{"issue-management"},
 		},
@@ -200,7 +204,7 @@ func RegisterTools(srv *mcpserver.Server, svc EmceeService) {
 var emceeSchema = json.RawMessage(`{
 	"type": "object",
 	"properties": {
-		"action":      {"type": "string", "enum": ["list","get","create","update","search","children","bulk_create","bulk_update","comments","comment_add","stage","stage_list","stage_show","stage_patch","stage_drop","push","push_all","link_issue","launches","launch_get","test_items","test_item_get","bulk_test_item_get","defect_update","dashboards","dashboard_get","dashboard_create","widget_add","doc_parse","doc_links","doc_diff","doc_audit","doc_terms","doc_validate","doc_declarations","doc_sync_gist","doc_sync_jira","triage","triage_config","triage_config_set","fields","jql","prs","ledger_list","ledger_get","ledger_search","ledger_similar","ledger_ingest","ledger_stats"], "description": "Action to perform"},
+		"action":      {"type": "string", "enum": ["list","get","create","update","search","children","bulk_create","bulk_update","comments","comment_add","stage","stage_list","stage_show","stage_patch","stage_drop","push","push_all","link_issue","launches","launch_get","test_items","test_item_get","bulk_test_item_get","defect_update","dashboards","dashboard_get","dashboard_create","widget_add","doc_parse","doc_links","doc_diff","doc_audit","doc_terms","doc_validate","doc_declarations","doc_sync_gist","doc_sync_jira","pr_reviews","pr_comments","triage","triage_config","triage_config_set","fields","jql","prs","ledger_list","ledger_get","ledger_search","ledger_similar","ledger_ingest","ledger_stats"], "description": "Action to perform"},
 		"backend":     {"type": "string", "description": "Backend name (required for list/create/search)"},
 		"ref":         {"type": "string", "description": "Issue ref for get/update/children (e.g. linear:PROJ-42)"},
 		"title":       {"type": "string", "description": "Issue title (create)"},
@@ -780,6 +784,36 @@ func emceeHandler(svc EmceeService) server.Handler {
 			tree := docparse.Parse([]byte(args.Query))
 			decls := docparse.ExtractGoDeclarations(tree)
 			return server.JSONResult(decls)
+
+		// --- PR reviews ---
+
+		case "pr_reviews":
+			if args.Ref == "" {
+				return "", errRefRequired
+			}
+			prNum, err := strconv.Atoi(args.Ref)
+			if err != nil {
+				return "", fmt.Errorf("invalid PR number %q: %w", args.Ref, err)
+			}
+			reviews, err := svc.ListPRReviews(ctx, args.Backend, prNum)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(reviews)
+
+		case "pr_comments":
+			if args.Ref == "" {
+				return "", errRefRequired
+			}
+			prNum, err := strconv.Atoi(args.Ref)
+			if err != nil {
+				return "", fmt.Errorf("invalid PR number %q: %w", args.Ref, err)
+			}
+			comments, err := svc.ListPRComments(ctx, args.Backend, prNum)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(comments)
 
 		// --- Doc sync ---
 

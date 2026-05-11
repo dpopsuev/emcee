@@ -81,6 +81,13 @@ type LaunchRepository interface {
 	AddWidget(ctx context.Context, dashboardID string, input domain.WidgetAddInput) (*domain.Widget, error)
 }
 
+// PRReviewRepository is the outbound port for PR review operations.
+type PRReviewRepository interface {
+	Name() string
+	ListPRReviews(ctx context.Context, prNumber int) ([]domain.PRReview, error)
+	ListPRComments(ctx context.Context, prNumber int) ([]domain.PRComment, error)
+}
+
 // GistRepository is the outbound port for gist operations (GitHub).
 type GistRepository interface {
 	Name() string

@@ -93,6 +93,12 @@ func newTestServer(t *testing.T) (*sdkmcp.ClientSession, *drivertest.StubEmceeSe
 		{ID: "10", Name: "test_login", Status: "FAILED", LaunchID: "1"},
 		{ID: "11", Name: "test_logout", Status: "PASSED", LaunchID: "1"},
 	}
+	svc.Reviews = []domain.PRReview{
+		{ID: "1", Author: "alice", State: "APPROVED", Body: "LGTM"},
+	}
+	svc.PRComments = []domain.PRComment{
+		{ID: "2", Author: "bob", Body: "nit: rename this", Path: "main.go", Line: 42},
+	}
 	svc.StubIssueService.Issue = &domain.Issue{
 		Ref: "test:T-1", Key: "T-1", Title: "First Issue",
 		IssueLinks: []domain.IssueLink{
@@ -1019,5 +1025,37 @@ func TestEmceeDefectUpdate(t *testing.T) {
 	}
 	if len(svc.StubLaunchService.UpdateDefectsCalls) != 1 {
 		t.Fatalf("UpdateDefectsCalls = %d, want 1", len(svc.StubLaunchService.UpdateDefectsCalls))
+	}
+}
+
+// --- PR review tests ---
+
+func TestEmceePRReviews(t *testing.T) {
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "pr_reviews", "backend": "github", "ref": "42"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var reviews []domain.PRReview
+	if err := json.Unmarshal([]byte(resultText(t, result)), &reviews); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(reviews) != 1 || reviews[0].State != "APPROVED" {
+		t.Errorf("reviews = %+v", reviews)
+	}
+}
+
+func TestEmceePRComments(t *testing.T) {
+	session, _ := newTestServer(t)
+	result := callTool(t, session, "emcee", map[string]any{"action": "pr_comments", "backend": "github", "ref": "42"})
+	if result.IsError {
+		t.Fatalf("error: %s", resultText(t, result))
+	}
+	var comments []domain.PRComment
+	if err := json.Unmarshal([]byte(resultText(t, result)), &comments); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(comments) != 1 || comments[0].Path != "main.go" {
+		t.Errorf("comments = %+v", comments)
 	}
 }

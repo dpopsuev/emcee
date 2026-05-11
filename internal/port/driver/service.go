@@ -66,6 +66,12 @@ type LaunchService interface {
 	AddWidget(ctx context.Context, backend, dashboardID string, input domain.WidgetAddInput) (*domain.Widget, error)
 }
 
+// PRReviewService is the inbound port for PR review operations.
+type PRReviewService interface {
+	ListPRReviews(ctx context.Context, backend string, prNumber int) ([]domain.PRReview, error)
+	ListPRComments(ctx context.Context, backend string, prNumber int) ([]domain.PRComment, error)
+}
+
 // GistService is the inbound port for gist sync operations.
 type GistService interface {
 	CreateGist(ctx context.Context, backend, filename, content string, public bool) (id, url string, err error)

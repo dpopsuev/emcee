@@ -159,6 +159,24 @@ type IssueLinkInput struct {
 	OutwardKey string `json:"outward_key"`
 }
 
+// PRReview represents a pull request review.
+type PRReview struct {
+	ID     string `json:"id"`
+	Author string `json:"author"`
+	State  string `json:"state"` // APPROVED, CHANGES_REQUESTED, COMMENTED, DISMISSED
+	Body   string `json:"body,omitempty"`
+}
+
+// PRComment represents a review comment on a specific line of a PR diff.
+type PRComment struct {
+	ID       string `json:"id"`
+	Author   string `json:"author"`
+	Body     string `json:"body"`
+	Path     string `json:"path"`
+	Line     int    `json:"line,omitempty"`
+	CommitID string `json:"commit_id,omitempty"`
+}
+
 type ListFilter struct {
 	Project  string   `json:"project,omitempty"`
 	Status   Status   `json:"status,omitempty"`

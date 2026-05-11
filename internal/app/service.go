@@ -44,6 +44,7 @@ type Service struct {
 	extLinkRepos   map[string]driven.ExternalLinkRepository
 	issueLinkRepos map[string]driven.IssueLinkRepository
 	gistRepos      map[string]driven.GistRepository
+	prReviewRepos  map[string]driven.PRReviewRepository
 	extractor      driven.LinkExtractor
 	graphStore     driven.GraphStore
 	ledger         driven.Ledger
@@ -72,6 +73,7 @@ func NewService(repos ...driven.IssueRepository) *Service {
 		extLinkRepos:   make(map[string]driven.ExternalLinkRepository),
 		issueLinkRepos: make(map[string]driven.IssueLinkRepository),
 		gistRepos:      make(map[string]driven.GistRepository),
+		prReviewRepos:  make(map[string]driven.PRReviewRepository),
 		stage:          NewStageStore(),
 	}
 	for _, r := range repos {
@@ -115,6 +117,9 @@ func NewService(repos ...driven.IssueRepository) *Service {
 		}
 		if gr, ok := r.(driven.GistRepository); ok {
 			s.gistRepos[name] = gr
+		}
+		if prr, ok := r.(driven.PRReviewRepository); ok {
+			s.prReviewRepos[name] = prr
 		}
 	}
 	return s
@@ -165,6 +170,9 @@ func (s *Service) AddBackend(r driven.IssueRepository) {
 	if gr, ok := r.(driven.GistRepository); ok {
 		s.gistRepos[name] = gr
 	}
+	if prr, ok := r.(driven.PRReviewRepository); ok {
+		s.prReviewRepos[name] = prr
+	}
 }
 
 // RemoveBackend removes a backend by name at runtime. Thread-safe.
@@ -188,6 +196,7 @@ func (s *Service) RemoveBackend(name string) bool {
 	delete(s.extLinkRepos, name)
 	delete(s.issueLinkRepos, name)
 	delete(s.gistRepos, name)
+	delete(s.prReviewRepos, name)
 	return true
 }
 
@@ -648,6 +657,24 @@ func (s *Service) UpdateDefects(ctx context.Context, backend string, updates []d
 		return s.notSupportedErr(backend, "launches")
 	}
 	return r.UpdateDefects(ctx, updates)
+}
+
+// --- PR review operations ---
+
+func (s *Service) ListPRReviews(ctx context.Context, backend string, prNumber int) ([]domain.PRReview, error) {
+	r, ok := s.prReviewRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "pr_reviews")
+	}
+	return r.ListPRReviews(ctx, prNumber)
+}
+
+func (s *Service) ListPRComments(ctx context.Context, backend string, prNumber int) ([]domain.PRComment, error) {
+	r, ok := s.prReviewRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "pr_reviews")
+	}
+	return r.ListPRComments(ctx, prNumber)
 }
 
 // --- Gist operations ---

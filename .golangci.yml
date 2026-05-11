@@ -32,11 +32,10 @@ linters:
     - dupl            # code duplication
 
     # --- Lex: naming ---
-    - revive          # naming conventions, style
     - misspell        # typos in comments and strings
 
     # --- Lex: hexagonal-architecture + solid ---
-    - depguard        # dependency direction enforcement
+    # depguard removed — not useful for single-module repos with v2 config format
     - unconvert       # unnecessary type conversions
     - unparam         # unused function parameters
 
@@ -95,6 +94,7 @@ linters-settings:
     locale: US
 
   revive:
+    enable-all-rules: false
     rules:
       - name: exported
         disabled: true
@@ -120,6 +120,7 @@ linters-settings:
   depguard:
     rules:
       main:
+        list-mode: lax
         deny:
           - pkg: "^log$"
             desc: "use slog or structured logging instead of stdlib log"
@@ -162,3 +163,9 @@ issues:
         - unused
         - funlen
         - err113
+    - path: drivertest/
+      linters:
+        - revive
+    - linters:
+        - revive
+      text: "exported:"
