@@ -685,6 +685,11 @@ func extractNameList(raw json.RawMessage) []string {
 // based on the semantic field name.
 func coerceCustomFieldValue(semantic, value string) any {
 	switch semantic {
+	case "sprint":
+		var id int
+		if _, err := fmt.Sscanf(value, "%d", &id); err == nil {
+			return id
+		}
 	case "story_points":
 		var f float64
 		if _, err := fmt.Sscanf(value, "%f", &f); err == nil {
