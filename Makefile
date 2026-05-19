@@ -12,6 +12,10 @@ build:
 install: build
 	cp $(BIN) $(GOBIN)/emcee
 	@echo "installed to $(GOBIN)/emcee"
+	@if [ -d "$(HOME)/go/bin" ] && [ "$(GOBIN)" != "$(HOME)/go/bin" ]; then \
+		cp $(BIN) $(HOME)/go/bin/emcee; \
+		echo "installed to $(HOME)/go/bin/emcee (pi MCP path)"; \
+	fi
 
 test:
 	go test ./...
