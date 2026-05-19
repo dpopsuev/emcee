@@ -40,7 +40,7 @@ var (
 	errBackendRequired  = errors.New("backend is required")
 	errIDRequired      = errors.New("id is required")
 	errUnknownAction   = errors.New("unknown action")
-	errFieldRequired   = errors.New("field name is required (pass in query param)")
+	errFieldRequired   = errors.New("field is required for view_mutate")
 )
 
 // EmceeService combines all driver port interfaces.
@@ -144,7 +144,7 @@ Doc Operations:
 Local View (Identity Map + Unit of Work — pull issues, mutate locally, push changes):
   view_pull   — ref → fetch from backend into local view (or refresh)
   view_get    — ref → read local copy (no API call)
-  view_mutate — ref, query (field name), body (new value) → mutate local field
+  view_mutate — ref, field, value → mutate a local field in the view
   view_diff   — ref → show local changes vs pulled state
   view_push   — ref → flush dirty fields to backend (only changed fields)
   view_push_all — (no params) → flush all dirty records to their backends
@@ -235,6 +235,8 @@ var emceeSchema = json.RawMessage(`{
 		"parent_id":   {"type": "string", "description": "Parent issue ID for sub-issues (create)"},
 		"project_id":  {"type": "string", "description": "Project ID (create)"},
 		"query":       {"type": "string", "description": "Search query text (search)"},
+		"field":       {"type": "string", "description": "Field name to mutate (view_mutate)"},
+		"value":       {"type": "string", "description": "New field value (view_mutate)"},
 		"target_ref":  {"type": "string", "description": "Target issue ref for link_issue (e.g. PROJ-2 or jira:PROJ-2)"},
 		"limit":       {"type": "number", "description": "Max results (list/search)"},
 		"issues":      {"type": "string", "description": "JSON array for bulk_create/bulk_update"},
@@ -302,6 +304,8 @@ type emceeArgs struct {
 	Page           float64 `json:"page"`
 	IncludeLogs    bool    `json:"include_logs"`
 	TargetRef      string  `json:"target_ref"`
+	Field          string  `json:"field"`
+	Value          string  `json:"value"`
 }
 
 //nolint:gocyclo,funlen // dispatcher with many action cases
@@ -1104,11 +1108,19 @@ func emceeHandler(svc EmceeService) server.Handler {
 			if args.Ref == "" {
 				return "", errRefRequired
 			}
-			if args.Query == "" {
+			// Accept dedicated field/value params; fall back to query/body for compat.
+			field := args.Field
+			if field == "" {
+				field = args.Query
+			}
+			if field == "" {
 				return "", errFieldRequired
 			}
-			value := args.Body
-			if err := svc.ViewMutate(args.Ref, args.Query, value); err != nil {
+			value := args.Value
+			if value == "" {
+				value = args.Body
+			}
+			if err := svc.ViewMutate(args.Ref, field, value); err != nil {
 				return "", err
 			}
 			vr, err := svc.ViewGet(args.Ref)
