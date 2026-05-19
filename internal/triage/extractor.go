@@ -7,10 +7,10 @@ import (
 	"regexp"
 
 	"github.com/dpopsuev/emcee/internal/domain"
-	"github.com/dpopsuev/emcee/internal/port/driven"
+	repository "github.com/dpopsuev/emcee/internal/repository"
 )
 
-var _ driven.LinkExtractor = (*RegexLinkExtractor)(nil)
+var _ repository.LinkExtractor = (*RegexLinkExtractor)(nil)
 
 // Pattern defines a regex pattern that extracts cross-references from text.
 type Pattern struct {

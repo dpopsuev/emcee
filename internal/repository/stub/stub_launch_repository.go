@@ -1,0 +1,121 @@
+//nolint:dupl // stub repositories share patterns by design
+package stub
+
+import (
+	"context"
+	"sync"
+
+	"github.com/dpopsuev/emcee/internal/domain"
+	repository "github.com/dpopsuev/emcee/internal/repository"
+)
+
+var _ repository.LaunchRepository = (*StubLaunchRepository)(nil)
+
+type ListLaunchesCall struct {
+	Filter domain.LaunchFilter
+}
+
+type GetLaunchCall struct {
+	ID string
+}
+
+type ListTestItemsCall struct {
+	LaunchID string
+	Filter   domain.TestItemFilter
+}
+
+type GetTestItemCall struct {
+	ID string
+}
+
+type GetTestItemsCall struct {
+	IDs []string
+}
+
+type UpdateDefectsCall struct {
+	Updates []domain.DefectUpdate
+}
+
+type StubLaunchRepository struct {
+	NameVal    string
+	Launches   []domain.Launch
+	Launch     *domain.Launch
+	TestItems  []domain.TestItem
+	TestItem   *domain.TestItem
+	Dashboards []domain.Dashboard
+	Dashboard  *domain.Dashboard
+	Widget     *domain.Widget
+	Err        error
+
+	mu                 sync.Mutex
+	ListLaunchesCalls  []ListLaunchesCall
+	GetLaunchCalls     []GetLaunchCall
+	ListTestItemsCalls []ListTestItemsCall
+	GetTestItemCalls   []GetTestItemCall
+	GetTestItemsCalls  []GetTestItemsCall
+	UpdateDefectsCalls []UpdateDefectsCall
+}
+
+func (s *StubLaunchRepository) Name() string { return s.NameVal }
+
+func (s *StubLaunchRepository) ListLaunches(_ context.Context, filter domain.LaunchFilter) ([]domain.Launch, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ListLaunchesCalls = append(s.ListLaunchesCalls, ListLaunchesCall{Filter: filter})
+	return s.Launches, s.Err
+}
+
+func (s *StubLaunchRepository) GetLaunch(_ context.Context, id string) (*domain.Launch, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.GetLaunchCalls = append(s.GetLaunchCalls, GetLaunchCall{ID: id})
+	return s.Launch, s.Err
+}
+
+func (s *StubLaunchRepository) ListTestItems(_ context.Context, launchID string, filter domain.TestItemFilter) ([]domain.TestItem, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ListTestItemsCalls = append(s.ListTestItemsCalls, ListTestItemsCall{LaunchID: launchID, Filter: filter})
+	return s.TestItems, s.Err
+}
+
+func (s *StubLaunchRepository) GetTestItem(_ context.Context, id string) (*domain.TestItem, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.GetTestItemCalls = append(s.GetTestItemCalls, GetTestItemCall{ID: id})
+	return s.TestItem, s.Err
+}
+
+func (s *StubLaunchRepository) SearchTestItems(_ context.Context, _ domain.TestItemFilter) ([]domain.TestItem, error) {
+	return s.TestItems, s.Err
+}
+
+func (s *StubLaunchRepository) GetTestItems(_ context.Context, ids []string) ([]domain.TestItem, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.GetTestItemsCalls = append(s.GetTestItemsCalls, GetTestItemsCall{IDs: ids})
+	return s.TestItems, s.Err
+}
+
+func (s *StubLaunchRepository) UpdateDefects(_ context.Context, updates []domain.DefectUpdate) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.UpdateDefectsCalls = append(s.UpdateDefectsCalls, UpdateDefectsCall{Updates: updates})
+	return s.Err
+}
+
+func (s *StubLaunchRepository) ListDashboards(_ context.Context) ([]domain.Dashboard, error) {
+	return s.Dashboards, s.Err
+}
+
+func (s *StubLaunchRepository) GetDashboard(_ context.Context, _ string) (*domain.Dashboard, error) {
+	return s.Dashboard, s.Err
+}
+
+func (s *StubLaunchRepository) CreateDashboard(_ context.Context, _ domain.DashboardCreateInput) (*domain.Dashboard, error) {
+	return s.Dashboard, s.Err
+}
+
+func (s *StubLaunchRepository) AddWidget(_ context.Context, _ string, _ domain.WidgetAddInput) (*domain.Widget, error) {
+	return s.Widget, s.Err
+}

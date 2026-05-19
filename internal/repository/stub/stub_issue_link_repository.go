@@ -1,0 +1,36 @@
+package stub
+
+import (
+	"context"
+	"sync"
+
+	"github.com/dpopsuev/emcee/internal/domain"
+	repository "github.com/dpopsuev/emcee/internal/repository"
+)
+
+var _ repository.IssueLinkRepository = (*StubIssueLinkRepository)(nil)
+
+type StubIssueLinkRepository struct {
+	NameVal string
+	Err     error
+
+	mu                   sync.Mutex
+	CreateIssueLinkCalls []domain.IssueLinkInput
+}
+
+func (s *StubIssueLinkRepository) Name() string { return s.NameVal }
+
+func (s *StubIssueLinkRepository) CreateIssueLink(_ context.Context, input domain.IssueLinkInput) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.CreateIssueLinkCalls = append(s.CreateIssueLinkCalls, input)
+	return s.Err
+}
+
+func (s *StubIssueLinkRepository) DeleteIssueLink(_ context.Context, _, _, _ string) error {
+	return s.Err
+}
+
+func (s *StubIssueLinkRepository) ListLinkTypes(_ context.Context) ([]domain.IssueLinkType, error) {
+	return nil, s.Err
+}
