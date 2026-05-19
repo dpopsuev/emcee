@@ -31,6 +31,14 @@ type Backend struct {
 	Email     string `yaml:"email,omitempty"`
 	Team      string `yaml:"team,omitempty"`  // Linear team key or GitHub repo name
 	Owner     string `yaml:"owner,omitempty"` // GitHub owner (org or user)
+	// Fields maps semantic names to backend-specific field IDs (e.g. Jira customfield_*).
+	// If a semantic name is absent, the adapter will attempt discovery via the fields API.
+	// Example:
+	//   fields:
+	//     sprint:        customfield_10020
+	//     story_points:  customfield_10028
+	//     target_version: customfield_10855
+	Fields map[string]string `yaml:"fields,omitempty"`
 }
 
 // ResolveType returns the backend type. If Type is set, returns it.
@@ -96,10 +104,20 @@ func Exists(path string) bool {
 }
 
 func defaultPath() string {
+	return filepath.Join(Dir(), configFile)
+}
+
+// DefaultPath returns the default manifest path for a backend (for display purposes).
+func DefaultPath(backend string) string {
+	return filepath.Join(Dir(), "fields", backend+".yaml")
+}
+
+// Dir returns the emcee config directory ($XDG_CONFIG_HOME/emcee or ~/.config/emcee).
+func Dir() string {
 	dir := os.Getenv("XDG_CONFIG_HOME")
 	if dir == "" {
 		home, _ := os.UserHomeDir()
 		dir = filepath.Join(home, ".config")
 	}
-	return filepath.Join(dir, appName, configFile)
+	return filepath.Join(dir, appName)
 }

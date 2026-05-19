@@ -57,6 +57,7 @@ type LaunchService interface {
 	ListLaunches(ctx context.Context, backend string, filter domain.LaunchFilter) ([]domain.Launch, error)
 	GetLaunch(ctx context.Context, backend, id string) (*domain.Launch, error)
 	ListTestItems(ctx context.Context, backend, launchID string, filter domain.TestItemFilter) ([]domain.TestItem, error)
+	SearchTestItems(ctx context.Context, backend string, filter domain.TestItemFilter) ([]domain.TestItem, error)
 	GetTestItem(ctx context.Context, backend, id string) (*domain.TestItem, error)
 	GetTestItems(ctx context.Context, backend string, ids []string) ([]domain.TestItem, error)
 	UpdateDefects(ctx context.Context, backend string, updates []domain.DefectUpdate) error
@@ -86,6 +87,9 @@ type IssueLinkService interface {
 // FieldService is the inbound port for field metadata discovery.
 type FieldService interface {
 	ListFields(ctx context.Context, backend string) ([]domain.Field, error)
+	// DiscoverFields fetches all fields from the backend, matches them against
+	// known semantic names, writes a manifest to configDir, and returns the mapping.
+	DiscoverFields(ctx context.Context, backend, configDir string) (map[string]string, error)
 }
 
 // JQLService is the inbound port for raw JQL query passthrough.

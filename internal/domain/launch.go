@@ -29,6 +29,7 @@ type LaunchFilter struct {
 	Name   string `json:"name,omitempty"`
 	Status string `json:"status,omitempty"`
 	Limit  int    `json:"limit,omitempty"`
+	Page   int    `json:"page,omitempty"` // 0-based page number for pagination
 }
 
 // TestItem represents a single test result within a launch.
@@ -48,9 +49,12 @@ type TestItem struct {
 
 // TestItemFilter controls which test items to list.
 type TestItemFilter struct {
-	Status string `json:"status,omitempty"`
-	Type   string `json:"type,omitempty"`
-	Limit  int    `json:"limit,omitempty"`
+	Name        string `json:"name,omitempty"` // substring filter on test item name
+	Status      string `json:"status,omitempty"`
+	Type        string `json:"type,omitempty"`
+	Limit       int    `json:"limit,omitempty"`
+	Page        int    `json:"page,omitempty"`         // 0-based page number for pagination
+	IncludeLogs bool   `json:"include_logs,omitempty"` // fetch failure_message for FAILED items
 }
 
 // ExternalSystemIssue links a test item defect to an external bug tracker (e.g. Jira).

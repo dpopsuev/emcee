@@ -86,6 +86,10 @@ func (s *StubLaunchRepository) GetTestItem(_ context.Context, id string) (*domai
 	return s.TestItem, s.Err
 }
 
+func (s *StubLaunchRepository) SearchTestItems(_ context.Context, _ domain.TestItemFilter) ([]domain.TestItem, error) {
+	return s.TestItems, s.Err
+}
+
 func (s *StubLaunchRepository) GetTestItems(_ context.Context, ids []string) ([]domain.TestItem, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

@@ -89,6 +89,10 @@ func (s *StubLaunchService) GetTestItem(_ context.Context, backend, id string) (
 	return s.TestItem, s.Err
 }
 
+func (s *StubLaunchService) SearchTestItems(_ context.Context, _ string, _ domain.TestItemFilter) ([]domain.TestItem, error) {
+	return s.TestItems, s.Err
+}
+
 func (s *StubLaunchService) GetTestItems(_ context.Context, backend string, ids []string) ([]domain.TestItem, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

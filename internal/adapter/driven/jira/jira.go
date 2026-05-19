@@ -51,25 +51,55 @@ var (
 
 // Repository implements driven.IssueRepository for Jira.
 type Repository struct {
-	name    string
-	baseURL string
-	email   string
-	token   string
-	project string
-	client  *http.Client
+	name         string
+	baseURL      string
+	email        string
+	token        string
+	project      string
+	client       *http.Client
+	customFields map[string]string // semantic name → field ID, populated from config + discovery
 }
 
-// New creates a Jira repository.
-func New(name, baseURL, email, token, project string) (*Repository, error) {
+// New creates a Jira repository. configFields is the optional user-supplied mapping
+// from config.Backend.Fields; nil is valid (discovery will run lazily).
+func New(name, baseURL, email, token, project string, configFields map[string]string) (*Repository, error) {
 	baseURL = strings.TrimRight(baseURL, "/")
+	cf := make(map[string]string, len(configFields))
+	for k, v := range configFields {
+		cf[k] = v
+	}
 	return &Repository{
-		name:    name,
-		baseURL: baseURL,
-		email:   email,
-		token:   token,
-		project: project,
-		client:  &http.Client{Timeout: defaultTimeout},
+		name:         name,
+		baseURL:      baseURL,
+		email:        email,
+		token:        token,
+		project:      project,
+		client:       &http.Client{Timeout: defaultTimeout},
+		customFields: cf,
 	}, nil
+}
+
+// customFieldIDs returns the resolved field IDs for the given semantic names,
+// silently omitting any that could not be resolved.
+func (r *Repository) customFieldIDs(names ...string) []string {
+	ids := make([]string, 0, len(names))
+	for _, n := range names {
+		if id, ok := r.customFields[n]; ok {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
+// buildFieldList returns the comma-separated fields param for issue GET/search,
+// including standard fields plus any resolved custom field IDs.
+func (r *Repository) buildFieldList() string {
+	const standard = "summary,status,priority,assignee,reporter,description,labels,created,updated,project,issuetype,resolution,fixVersions,components,issuelinks,parent"
+	custom := r.customFieldIDs("sprint", "story_points", "target_version")
+	if len(custom) == 0 {
+		return standard
+	}
+	return standard + "," + strings.Join(custom, ",")
 }
 
 func (r *Repository) Name() string { return r.name }
@@ -198,11 +228,11 @@ func (r *Repository) List(ctx context.Context, filter domain.ListFilter) ([]doma
 func (r *Repository) Get(ctx context.Context, key string) (*domain.Issue, error) {
 	adapterdriven.LogOp(ctx, BackendName, "get", slog.String(adapterdriven.LogKeyIssueKey, key))
 	var raw jiraIssue
-	path := fmt.Sprintf("/rest/api/2/issue/%s?fields=summary,status,priority,assignee,description,labels,created,updated,project,issuetype,resolution,fixVersions,components,issuelinks", key)
+	path := fmt.Sprintf("/rest/api/2/issue/%s?fields=%s", key, r.buildFieldList())
 	if err := r.api(ctx, "GET", path, nil, &raw); err != nil {
 		return nil, err
 	}
-	issue := raw.toDomain()
+	issue := raw.toDomain(r.customFields)
 	return &issue, nil
 }
 
@@ -403,8 +433,8 @@ func (r *Repository) CreateLabel(_ context.Context, _ domain.LabelCreateInput) (
 // --- Internal helpers ---
 
 func (r *Repository) searchJQL(ctx context.Context, jql string, limit int) ([]domain.Issue, error) {
-	path := fmt.Sprintf("/rest/api/3/search/jql?jql=%s&maxResults=%d&fields=summary,status,priority,assignee,description,labels,created,updated,project,issuetype,resolution,fixVersions,components",
-		url.QueryEscape(jql), limit)
+	path := fmt.Sprintf("/rest/api/3/search/jql?jql=%s&maxResults=%d&fields=%s",
+		url.QueryEscape(jql), limit, r.buildFieldList())
 
 	var result struct {
 		Issues []jiraIssue `json:"issues"`
@@ -415,7 +445,7 @@ func (r *Repository) searchJQL(ctx context.Context, jql string, limit int) ([]do
 
 	issues := make([]domain.Issue, 0, len(result.Issues))
 	for i := range result.Issues {
-		issues = append(issues, result.Issues[i].toDomain())
+		issues = append(issues, result.Issues[i].toDomain(r.customFields))
 	}
 	return issues, nil
 }
@@ -463,10 +493,11 @@ func transitionNames(transitions []struct {
 // --- Jira API types ---
 
 type jiraIssue struct {
-	ID     string `json:"id"`
-	Key    string `json:"key"`
-	Self   string `json:"self"`
-	Fields struct {
+	ID        string                     `json:"id"`
+	Key       string                     `json:"key"`
+	Self      string                     `json:"self"`
+	RawFields map[string]json.RawMessage // populated by UnmarshalJSON
+	Fields    struct {
 		Summary     string          `json:"summary"`
 		Description json.RawMessage `json:"description"`
 		Status      struct {
@@ -492,6 +523,18 @@ type jiraIssue struct {
 		Resolution *struct {
 			Name string `json:"name"`
 		} `json:"resolution"`
+		Reporter *struct {
+			DisplayName string `json:"displayName"`
+		} `json:"reporter"`
+		Parent *struct {
+			Key    string `json:"key"`
+			Fields struct {
+				Summary string `json:"summary"`
+				Status  struct {
+					Name string `json:"name"`
+				} `json:"status"`
+			} `json:"fields"`
+		} `json:"parent"`
 		FixVersions []struct {
 			Name string `json:"name"`
 		} `json:"fixVersions"`
@@ -534,22 +577,112 @@ type jiraProject struct {
 	Name string `json:"name"`
 }
 
-func (j *jiraIssue) toDomain() domain.Issue {
-	issue := domain.Issue{
-		Ref:    BackendName + ":" + j.Key,
-		ID:     j.ID,
-		Key:    j.Key,
-		Title:  j.Fields.Summary,
-		Status: mapStatusFromJira(j.Fields.Status.StatusCategory.Key),
-		Labels: j.Fields.Labels,
+// UnmarshalJSON captures all fields into a raw map alongside the typed struct,
+// allowing dynamic extraction of custom fields whose IDs vary per Jira instance.
+func (j *jiraIssue) UnmarshalJSON(data []byte) error {
+	type Alias jiraIssue
+	if err := json.Unmarshal(data, (*Alias)(j)); err != nil {
+		return err
 	}
+	// Capture the raw fields map for custom field extraction.
+	var wrapper struct {
+		Fields map[string]json.RawMessage `json:"fields"`
+	}
+	if err := json.Unmarshal(data, &wrapper); err == nil {
+		j.RawFields = wrapper.Fields
+	}
+	return nil
+}
 
-	issue.Description = extractDescription(j.Fields.Description)
+// applyCustomFields extracts sprint, story_points, and target_version from the raw
+// field map using the caller-supplied field ID mapping.
+func (j *jiraIssue) applyCustomFields(issue *domain.Issue, customFields map[string]string) {
+	if sprintID, ok := customFields["sprint"]; ok {
+		issue.Sprint = extractSprint(j.RawFields[sprintID])
+	}
+	if spID, ok := customFields["story_points"]; ok {
+		var v float64
+		if raw := j.RawFields[spID]; raw != nil && json.Unmarshal(raw, &v) == nil {
+			issue.StoryPoints = &v
+		}
+	}
+	if tvID, ok := customFields["target_version"]; ok {
+		issue.TargetVersions = extractNameList(j.RawFields[tvID])
+	}
+}
+
+func extractSprint(raw json.RawMessage) string {
+	if raw == nil {
+		return ""
+	}
+	var sprints []struct {
+		Name  string `json:"name"`
+		State string `json:"state"`
+	}
+	if json.Unmarshal(raw, &sprints) != nil || len(sprints) == 0 {
+		return ""
+	}
+	s := sprints[0].Name
+	if sprints[0].State != "" {
+		s += " (" + sprints[0].State + ")"
+	}
+	return s
+}
+
+func extractNameList(raw json.RawMessage) []string {
+	if raw == nil {
+		return nil
+	}
+	var items []struct {
+		Name string `json:"name"`
+	}
+	if json.Unmarshal(raw, &items) != nil {
+		return nil
+	}
+	names := make([]string, 0, len(items))
+	for _, item := range items {
+		names = append(names, item.Name)
+	}
+	return names
+}
+
+func (j *jiraIssue) toDomain(customFields map[string]string) domain.Issue {
+	issue := domain.Issue{
+		Ref:         BackendName + ":" + j.Key,
+		ID:          j.ID,
+		Key:         j.Key,
+		Title:       j.Fields.Summary,
+		Status:      mapStatusFromJira(j.Fields.Status.StatusCategory.Key),
+		Labels:      j.Fields.Labels,
+		Description: extractDescription(j.Fields.Description),
+	}
+	j.applyStandardFields(&issue)
+	j.applyCustomFields(&issue, customFields)
+	j.applyIssueLinks(&issue)
+	if j.Self != "" {
+		if idx := strings.Index(j.Self, "/rest/"); idx > 0 {
+			issue.URL = j.Self[:idx] + "/browse/" + j.Key
+		}
+	}
+	return issue
+}
+
+func (j *jiraIssue) applyStandardFields(issue *domain.Issue) {
 	if j.Fields.Priority != nil {
 		issue.Priority = mapPriorityFromJira(j.Fields.Priority.Name)
 	}
 	if j.Fields.Assignee != nil {
 		issue.Assignee = j.Fields.Assignee.DisplayName
+	}
+	if j.Fields.Reporter != nil {
+		issue.Reporter = j.Fields.Reporter.DisplayName
+	}
+	if j.Fields.Parent != nil {
+		issue.Parent = &domain.IssueParent{
+			Key:    j.Fields.Parent.Key,
+			Title:  j.Fields.Parent.Fields.Summary,
+			Status: j.Fields.Parent.Fields.Status.Name,
+		}
 	}
 	if j.Fields.Project.Key != "" {
 		issue.Project = j.Fields.Project.Key
@@ -566,13 +699,11 @@ func (j *jiraIssue) toDomain() domain.Issue {
 	for _, c := range j.Fields.Components {
 		issue.Components = append(issue.Components, c.Name)
 	}
-	if t, err := time.Parse("2006-01-02T15:04:05.000+0000", j.Fields.Created); err == nil {
-		issue.CreatedAt = t
-	}
-	if t, err := time.Parse("2006-01-02T15:04:05.000+0000", j.Fields.Updated); err == nil {
-		issue.UpdatedAt = t
-	}
+	issue.CreatedAt, _ = time.Parse("2006-01-02T15:04:05.000+0000", j.Fields.Created)
+	issue.UpdatedAt, _ = time.Parse("2006-01-02T15:04:05.000+0000", j.Fields.Updated)
+}
 
+func (j *jiraIssue) applyIssueLinks(issue *domain.Issue) {
 	for _, link := range j.Fields.IssueLinks {
 		if link.OutwardIssue != nil {
 			issue.IssueLinks = append(issue.IssueLinks, domain.IssueLink{
@@ -595,14 +726,6 @@ func (j *jiraIssue) toDomain() domain.Issue {
 			})
 		}
 	}
-
-	if j.Self != "" {
-		if idx := strings.Index(j.Self, "/rest/"); idx > 0 {
-			issue.URL = j.Self[:idx] + "/browse/" + j.Key
-		}
-	}
-
-	return issue
 }
 
 // extractDescription handles both v2 (plain string) and v3 (ADF object) description formats.

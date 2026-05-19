@@ -72,6 +72,7 @@ type LaunchRepository interface {
 	ListLaunches(ctx context.Context, filter domain.LaunchFilter) ([]domain.Launch, error)
 	GetLaunch(ctx context.Context, id string) (*domain.Launch, error)
 	ListTestItems(ctx context.Context, launchID string, filter domain.TestItemFilter) ([]domain.TestItem, error)
+	SearchTestItems(ctx context.Context, filter domain.TestItemFilter) ([]domain.TestItem, error)
 	GetTestItem(ctx context.Context, id string) (*domain.TestItem, error)
 	GetTestItems(ctx context.Context, ids []string) ([]domain.TestItem, error)
 	UpdateDefects(ctx context.Context, updates []domain.DefectUpdate) error

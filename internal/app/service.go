@@ -15,6 +15,7 @@ import (
 	adapterdriven "github.com/dpopsuev/emcee/internal/adapter/driven"
 	"github.com/dpopsuev/emcee/internal/config"
 	"github.com/dpopsuev/emcee/internal/domain"
+	"github.com/dpopsuev/emcee/internal/fieldmanifest"
 	"github.com/dpopsuev/emcee/internal/port/driven"
 	"github.com/dpopsuev/emcee/internal/port/driver"
 )
@@ -591,6 +592,26 @@ func (s *Service) ListFields(ctx context.Context, backend string) ([]domain.Fiel
 	return r.ListFields(ctx)
 }
 
+func (s *Service) DiscoverFields(ctx context.Context, backend, configDir string) (map[string]string, error) {
+	r, ok := s.fieldRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "fields")
+	}
+	domainFields, err := r.ListFields(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list fields for discovery: %w", err)
+	}
+	named := make([]fieldmanifest.NamedField, len(domainFields))
+	for i, f := range domainFields {
+		named[i] = fieldmanifest.NamedField{ID: f.ID, Name: f.Name}
+	}
+	manifest := fieldmanifest.Discover(backend, named)
+	if err := fieldmanifest.Save(backend, configDir, manifest); err != nil {
+		return nil, fmt.Errorf("save field manifest: %w", err)
+	}
+	return manifest.Mappings, nil
+}
+
 // --- JQL passthrough ---
 
 func (s *Service) SearchJQL(ctx context.Context, backend, jql string, limit int) ([]domain.Issue, error) {
@@ -651,6 +672,14 @@ func (s *Service) GetTestItems(ctx context.Context, backend string, ids []string
 		return nil, s.notSupportedErr(backend, "launches")
 	}
 	return r.GetTestItems(ctx, ids)
+}
+
+func (s *Service) SearchTestItems(ctx context.Context, backend string, filter domain.TestItemFilter) ([]domain.TestItem, error) {
+	r, ok := s.launchRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "launches")
+	}
+	return r.SearchTestItems(ctx, filter)
 }
 
 func (s *Service) UpdateDefects(ctx context.Context, backend string, updates []domain.DefectUpdate) error {

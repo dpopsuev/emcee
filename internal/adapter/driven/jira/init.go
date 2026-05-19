@@ -5,6 +5,7 @@ import (
 
 	adapterdriven "github.com/dpopsuev/emcee/internal/adapter/driven"
 	"github.com/dpopsuev/emcee/internal/config"
+	"github.com/dpopsuev/emcee/internal/fieldmanifest"
 	"github.com/dpopsuev/emcee/internal/port/driven"
 )
 
@@ -35,6 +36,15 @@ func init() {
 		if project == "" {
 			project = os.Getenv("JIRA_PROJECT")
 		}
-		return New(name, url, email, token, project)
+		// Load the field manifest for this backend, then apply any explicit
+		// overrides from config.yaml backend.fields on top.
+		manifest, err := fieldmanifest.Load(name, config.Dir())
+		if err != nil {
+			return nil, err
+		}
+		if len(backend.Fields) > 0 {
+			manifest = manifest.Merge(backend.Fields)
+		}
+		return New(name, url, email, token, project, manifest.Mappings)
 	})
 }

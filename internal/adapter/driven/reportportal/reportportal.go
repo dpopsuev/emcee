@@ -24,6 +24,7 @@ const (
 	BackendName    = "reportportal"
 	defaultTimeout = 30 * time.Second
 	defaultLimit   = 50
+	statusFailed   = "FAILED"
 )
 
 var (
@@ -228,9 +229,13 @@ func (r *Repository) ListLaunches(ctx context.Context, filter domain.LaunchFilte
 	if limit <= 0 {
 		limit = defaultLimit
 	}
-	path := fmt.Sprintf("/launch?page.size=%d&page.sort=startTime,desc", limit)
+	page := filter.Page
+	if page < 0 {
+		page = 0
+	}
+	path := fmt.Sprintf("/launch?page.size=%d&page.number=%d&page.sort=startTime,desc", limit, page)
 	if filter.Name != "" {
-		path += "&filter.cnt.name=" + filter.Name
+		path += "&filter.cnt.name=" + url.QueryEscape(filter.Name)
 	}
 	if filter.Status != "" {
 		path += "&filter.eq.status=" + strings.ToUpper(filter.Status)
@@ -312,12 +317,63 @@ func (r *Repository) ListTestItems(ctx context.Context, launchID string, filter 
 	if limit <= 0 {
 		limit = defaultLimit
 	}
+	page := filter.Page
+	if page < 0 {
+		page = 0
+	}
 	params := url.Values{
 		"filter.eq.launchId":    {launchID},
 		"filter.eq.hasChildren": {"false"},
 		"isLatest":              {"false"},
 		"launchesLimit":         {"0"},
 		"page.size":             {strconv.Itoa(limit)},
+		"page.number":           {strconv.Itoa(page)},
+	}
+	if filter.Status != "" {
+		params.Set("filter.eq.status", strings.ToUpper(filter.Status))
+	}
+	if filter.Name != "" {
+		params.Set("filter.cnt.name", filter.Name)
+	}
+
+	var result struct {
+		Content []rpTestItem `json:"content"`
+	}
+	if err := r.api(ctx, "GET", "/item?"+params.Encode(), nil, &result); err != nil {
+		return nil, err
+	}
+
+	items := make([]domain.TestItem, 0, len(result.Content))
+	for i := range result.Content {
+		item := result.Content[i].toDomain(r.baseURL, r.project)
+		if filter.IncludeLogs && item.Status == statusFailed {
+			item.FailureMessage = r.fetchErrorLogs(ctx, item.ID)
+		}
+		items = append(items, item)
+	}
+	return items, nil
+}
+
+// SearchTestItems searches test items across all launches by name substring.
+func (r *Repository) SearchTestItems(ctx context.Context, filter domain.TestItemFilter) ([]domain.TestItem, error) {
+	adapterdriven.LogOp(ctx, BackendName, "search_test_items")
+	limit := filter.Limit
+	if limit <= 0 {
+		limit = defaultLimit
+	}
+	page := filter.Page
+	if page < 0 {
+		page = 0
+	}
+	params := url.Values{
+		"filter.eq.hasChildren": {"false"},
+		"isLatest":              {"false"},
+		"launchesLimit":         {"0"},
+		"page.size":             {strconv.Itoa(limit)},
+		"page.number":           {strconv.Itoa(page)},
+	}
+	if filter.Name != "" {
+		params.Set("filter.cnt.name", filter.Name)
 	}
 	if filter.Status != "" {
 		params.Set("filter.eq.status", strings.ToUpper(filter.Status))
@@ -332,7 +388,11 @@ func (r *Repository) ListTestItems(ctx context.Context, launchID string, filter 
 
 	items := make([]domain.TestItem, 0, len(result.Content))
 	for i := range result.Content {
-		items = append(items, result.Content[i].toDomain(r.baseURL, r.project))
+		item := result.Content[i].toDomain(r.baseURL, r.project)
+		if filter.IncludeLogs && item.Status == statusFailed {
+			item.FailureMessage = r.fetchErrorLogs(ctx, item.ID)
+		}
+		items = append(items, item)
 	}
 	return items, nil
 }
@@ -347,7 +407,7 @@ func (r *Repository) GetTestItem(ctx context.Context, id string) (*domain.TestIt
 		return nil, err
 	}
 	item := raw.toDomain(r.baseURL, r.project)
-	if item.Status == "FAILED" {
+	if item.Status == statusFailed {
 		item.FailureMessage = r.fetchErrorLogs(ctx, id)
 	}
 	return &item, nil
@@ -392,7 +452,7 @@ func (r *Repository) GetTestItems(ctx context.Context, ids []string) ([]domain.T
 	items := make([]domain.TestItem, 0, len(result.Content))
 	for i := range result.Content {
 		item := result.Content[i].toDomain(r.baseURL, r.project)
-		if item.Status == "FAILED" {
+		if item.Status == statusFailed {
 			item.FailureMessage = r.fetchErrorLogs(ctx, item.ID)
 		}
 		items = append(items, item)

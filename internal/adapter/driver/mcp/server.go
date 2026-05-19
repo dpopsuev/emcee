@@ -12,6 +12,7 @@ import (
 
 	"github.com/dpopsuev/battery/mcpserver"
 	"github.com/dpopsuev/battery/server"
+	"github.com/dpopsuev/emcee/internal/config"
 	"github.com/dpopsuev/emcee/internal/docparse"
 	"github.com/dpopsuev/emcee/internal/domain"
 	"github.com/dpopsuev/emcee/internal/port/driver"
@@ -32,9 +33,11 @@ var (
 	errQueryRequired   = errors.New("query is required")
 	errIssuesRequired  = errors.New("issues is required")
 	errBodyRequired    = errors.New("body is required")
-	errStageIDRequired = errors.New("stage_id is required")
+	errStageIDRequired   = errors.New("stage_id is required")
+	errTargetRefRequired = errors.New("target_ref is required for link_issue")
 	errNameRequired    = errors.New("name is required")
-	errBackendNotFound = errors.New("backend not found")
+	errBackendNotFound  = errors.New("backend not found")
+	errBackendRequired  = errors.New("backend is required")
 	errIDRequired      = errors.New("id is required")
 	errUnknownAction   = errors.New("unknown action")
 	errFieldRequired   = errors.New("field name is required (pass in query param)")
@@ -111,7 +114,7 @@ Triage (Defect Lifecycle):
   triage_config_set — [limit (rate limit req/s), issues (JSON array of allowed backend names)] → update crawl settings
 
 Issue Links:
-  link_issue  — backend=jira, ref (inward key, e.g. jira:PROJ-1), query (outward key, e.g. PROJ-2), issue_type (link type: Blocks, Relates, Clones)
+  link_issue  — backend=jira, ref (inward key, e.g. jira:PROJ-1), target_ref (outward key, e.g. jira:PROJ-2 or PROJ-2), issue_type (link type: Blocks, Relates, Clones)
 
 Pull Requests / Merge Requests:
   prs         — backend, [author, status, merged_after (YYYY-MM-DD), merged_before (YYYY-MM-DD), repo (override: owner/repo or namespace/project), limit]
@@ -150,7 +153,8 @@ Local View (Identity Map + Unit of Work — pull issues, mutate locally, push ch
   view_reset  — (no params) → clear entire local view
 
 Discovery:
-  fields      — backend → list available fields (Jira: custom field IDs)
+  fields         — backend → list all available fields (Jira: all custom field IDs + names)
+  fields_discover — backend → discover semantic field mappings, write manifest to ~/.config/emcee/fields/<backend>.yaml
   jql         — backend=jira, query (raw JQL string), [limit]
 
 ## emcee_manage tool — supporting entities:
@@ -185,7 +189,7 @@ func RegisterTools(srv *mcpserver.Server, svc EmceeService) {
 	srv.ToolWithSchema(
 		server.ToolMeta{
 			Name:        "emcee",
-			Description: "Issue management across all backends. Actions: list, get, create, update, search, children, bulk_create, bulk_update, comments, comment_add, stage, stage_list, stage_show, stage_patch, stage_drop, push, push_all, launches, launch_get, test_items, test_item_get, bulk_test_item_get, defect_update, link_issue, dashboards, dashboard_get, dashboard_create, widget_add, doc_parse, doc_links, doc_diff, doc_audit, doc_terms, doc_validate, doc_declarations, doc_sync_gist, doc_sync_jira, pr_reviews, pr_comments, fields, jql, prs, ledger_list, ledger_get, ledger_search, ledger_similar, ledger_ingest, ledger_stats, view_pull, view_get, view_mutate, view_diff, view_push, view_push_all, view_list, view_dirty, view_drop, view_reset.",
+			Description: "Issue management across all backends. Actions: list, get, create, update, search, children, bulk_create, bulk_update, comments, comment_add, stage, stage_list, stage_show, stage_patch, stage_drop, push, push_all, launches, launch_get, test_items, search_test_items, test_item_get, bulk_test_item_get, defect_update, link_issue, dashboards, dashboard_get, dashboard_create, widget_add, doc_parse, doc_links, doc_diff, doc_audit, doc_terms, doc_validate, doc_declarations, doc_sync_gist, doc_sync_jira, pr_reviews, pr_comments, fields, jql, prs, ledger_list, ledger_get, ledger_search, ledger_similar, ledger_ingest, ledger_stats, view_pull, view_get, view_mutate, view_diff, view_push, view_push_all, view_list, view_dirty, view_drop, view_reset.",
 			Keywords:    []string{"issue", "ticket", "bug", "task", "comment", "stage", "push", "linear", "github", "jira", "gitlab"},
 			Categories:  []string{"issue-management"},
 		},
@@ -218,7 +222,7 @@ func RegisterTools(srv *mcpserver.Server, svc EmceeService) {
 var emceeSchema = json.RawMessage(`{
 	"type": "object",
 	"properties": {
-		"action":      {"type": "string", "enum": ["list","get","create","update","search","children","bulk_create","bulk_update","comments","comment_add","stage","stage_list","stage_show","stage_patch","stage_drop","push","push_all","link_issue","launches","launch_get","test_items","test_item_get","bulk_test_item_get","defect_update","dashboards","dashboard_get","dashboard_create","widget_add","doc_parse","doc_links","doc_diff","doc_audit","doc_terms","doc_validate","doc_declarations","doc_sync_gist","doc_sync_jira","pr_reviews","pr_comments","triage","triage_config","triage_config_set","fields","jql","prs","ledger_list","ledger_get","ledger_search","ledger_similar","ledger_ingest","ledger_stats","view_pull","view_get","view_mutate","view_diff","view_push","view_push_all","view_list","view_dirty","view_drop","view_reset"], "description": "Action to perform"},
+		"action":      {"type": "string", "enum": ["list","get","create","update","search","children","bulk_create","bulk_update","comments","comment_add","stage","stage_list","stage_show","stage_patch","stage_drop","push","push_all","link_issue","launches","launch_get","test_items","search_test_items","test_item_get","bulk_test_item_get","defect_update","dashboards","dashboard_get","dashboard_create","widget_add","doc_parse","doc_links","doc_diff","doc_audit","doc_terms","doc_validate","doc_declarations","doc_sync_gist","doc_sync_jira","pr_reviews","pr_comments","triage","triage_config","triage_config_set","fields","fields_discover","jql","prs","ledger_list","ledger_get","ledger_search","ledger_similar","ledger_ingest","ledger_stats","view_pull","view_get","view_mutate","view_diff","view_push","view_push_all","view_list","view_dirty","view_drop","view_reset"], "description": "Action to perform"},
 		"backend":     {"type": "string", "description": "Backend name (required for list/create/search)"},
 		"ref":         {"type": "string", "description": "Issue ref for get/update/children (e.g. linear:PROJ-42)"},
 		"title":       {"type": "string", "description": "Issue title (create)"},
@@ -229,6 +233,7 @@ var emceeSchema = json.RawMessage(`{
 		"parent_id":   {"type": "string", "description": "Parent issue ID for sub-issues (create)"},
 		"project_id":  {"type": "string", "description": "Project ID (create)"},
 		"query":       {"type": "string", "description": "Search query text (search)"},
+		"target_ref":  {"type": "string", "description": "Target issue ref for link_issue (e.g. PROJ-2 or jira:PROJ-2)"},
 		"limit":       {"type": "number", "description": "Max results (list/search)"},
 		"issues":      {"type": "string", "description": "JSON array for bulk_create/bulk_update"},
 		"body":        {"type": "string", "description": "Comment body text (comment_add)"},
@@ -241,7 +246,9 @@ var emceeSchema = json.RawMessage(`{
 		"merged_after": {"type": "string", "description": "Date filter for PRs (YYYY-MM-DD)"},
 		"merged_before":{"type": "string", "description": "Date filter for PRs (YYYY-MM-DD)"},
 		"repo":         {"type": "string", "description": "Repository override for PRs (e.g. owner/repo for GitHub, namespace/project for GitLab)"},
-		"resolution":   {"type": "string", "description": "Resolution when closing (Jira): Done, Won't Fix, Duplicate, Cannot Reproduce, etc."}
+		"resolution":   {"type": "string", "description": "Resolution when closing (Jira): Done, Won't Fix, Duplicate, Cannot Reproduce, etc."},
+		"page":         {"type": "number", "description": "0-based page number for pagination (launches, test_items, search_test_items)"},
+		"include_logs": {"type": "boolean", "description": "Fetch failure_message for FAILED test items (test_items, search_test_items). Adds one request per failed item."}
 	},
 	"required": ["action"]
 }`)
@@ -290,6 +297,9 @@ type emceeArgs struct {
 	FixVersionsStr string  `json:"fix_versions"`
 	ComponentsStr  string  `json:"components"`
 	Resolution     string  `json:"resolution"`
+	Page           float64 `json:"page"`
+	IncludeLogs    bool    `json:"include_logs"`
+	TargetRef      string  `json:"target_ref"`
 }
 
 //nolint:gocyclo,funlen // dispatcher with many action cases
@@ -584,22 +594,31 @@ func emceeHandler(svc EmceeService) server.Handler {
 			if args.Ref == "" {
 				return "", errRefRequired
 			}
-			if args.Query == "" {
-				return "", errQueryRequired
+			// target_ref is the dedicated param; fall back to query for backward compat.
+			outwardRaw := args.TargetRef
+			if outwardRaw == "" {
+				outwardRaw = args.Query
+			}
+			if outwardRaw == "" {
+				return "", errTargetRefRequired
 			}
 			backend, inwardKey, err := parseRef(args.Ref)
 			if err != nil {
 				return "", err
 			}
+			_, outwardKey, err := parseRef(outwardRaw)
+			if err != nil {
+				outwardKey = outwardRaw // bare key like "CNF-24028"
+			}
 			input := domain.IssueLinkInput{
 				Type:       args.IssueType,
 				InwardKey:  inwardKey,
-				OutwardKey: args.Query,
+				OutwardKey: outwardKey,
 			}
 			if err := svc.LinkIssue(ctx, backend, input); err != nil {
 				return "", err
 			}
-			return server.JSONResult(map[string]any{"linked": true, "type": args.IssueType, "inward": inwardKey, "outward": args.Query})
+			return server.JSONResult(map[string]any{"linked": true, "type": args.IssueType, "inward": inwardKey, "outward": outwardKey})
 
 		// --- Report Portal ---
 
@@ -608,6 +627,7 @@ func emceeHandler(svc EmceeService) server.Handler {
 				Name:   args.Query,
 				Status: args.Status,
 				Limit:  int(args.Limit),
+				Page:   int(args.Page),
 			}
 			launches, err := svc.ListLaunches(ctx, args.Backend, filter)
 			if err != nil {
@@ -630,10 +650,27 @@ func emceeHandler(svc EmceeService) server.Handler {
 				return "", errRefRequired
 			}
 			filter := domain.TestItemFilter{
-				Status: args.Status,
-				Limit:  int(args.Limit),
+				Name:        args.Query,
+				Status:      args.Status,
+				Limit:       int(args.Limit),
+				Page:        int(args.Page),
+				IncludeLogs: args.IncludeLogs,
 			}
 			items, err := svc.ListTestItems(ctx, args.Backend, args.Ref, filter)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(items)
+
+		case "search_test_items":
+			filter := domain.TestItemFilter{
+				Name:        args.Query,
+				Status:      args.Status,
+				Limit:       int(args.Limit),
+				Page:        int(args.Page),
+				IncludeLogs: args.IncludeLogs,
+			}
+			items, err := svc.SearchTestItems(ctx, args.Backend, filter)
 			if err != nil {
 				return "", err
 			}
@@ -904,6 +941,20 @@ func emceeHandler(svc EmceeService) server.Handler {
 				return "", err
 			}
 			return server.JSONResult(fields)
+
+		case "fields_discover":
+			if args.Backend == "" {
+				return "", errBackendRequired
+			}
+			mappings, err := svc.DiscoverFields(ctx, args.Backend, config.Dir())
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(map[string]any{
+				"backend":  args.Backend,
+				"manifest": config.DefaultPath(args.Backend),
+				"mappings": mappings,
+			})
 
 		case "jql":
 			if args.Query == "" {
