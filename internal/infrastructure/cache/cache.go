@@ -52,6 +52,7 @@ type Repository struct {
 	launches    repository.LaunchRepository
 	fields      repository.FieldRepository
 	changelog   repository.ChangelogRepository
+	issueLinks  repository.IssueLinkRepository
 	jql         repository.JQLRepository
 	docs        repository.DocumentRepository
 	projects    repository.ProjectRepository
@@ -137,6 +138,10 @@ func New(inner repository.IssueRepository, opts ...Option) *Repository {
 	if v, ok := inner.(repository.ChangelogRepository); ok {
 		r.changelog = v
 		r.caps = append(r.caps, "changelog")
+	}
+	if v, ok := inner.(repository.IssueLinkRepository); ok {
+		r.issueLinks = v
+		r.caps = append(r.caps, "issue_links")
 	}
 	for _, o := range opts {
 		o(r)
@@ -383,6 +388,29 @@ func (r *Repository) ListFields(ctx context.Context) ([]domain.Field, error) {
 		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
 	}
 	return r.fields.ListFields(ctx)
+}
+
+// --- Passthrough: IssueLinkRepository ---
+
+func (r *Repository) CreateIssueLink(ctx context.Context, input domain.IssueLinkInput) error {
+	if r.issueLinks == nil {
+		return fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.issueLinks.CreateIssueLink(ctx, input)
+}
+
+func (r *Repository) DeleteIssueLink(ctx context.Context, inwardKey, outwardKey, linkType string) error {
+	if r.issueLinks == nil {
+		return fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.issueLinks.DeleteIssueLink(ctx, inwardKey, outwardKey, linkType)
+}
+
+func (r *Repository) ListLinkTypes(ctx context.Context) ([]domain.IssueLinkType, error) {
+	if r.issueLinks == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.issueLinks.ListLinkTypes(ctx)
 }
 
 // --- Passthrough: ChangelogRepository ---
