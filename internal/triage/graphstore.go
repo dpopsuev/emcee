@@ -5,10 +5,10 @@ import (
 	"sync"
 
 	"github.com/dpopsuev/emcee/internal/domain"
-	"github.com/dpopsuev/emcee/internal/port/driven"
+	repository "github.com/dpopsuev/emcee/internal/repository"
 )
 
-var _ driven.GraphStore = (*InMemoryGraphStore)(nil)
+var _ repository.GraphStore = (*InMemoryGraphStore)(nil)
 
 // InMemoryGraphStore is an in-memory graph with BFS traversal.
 type InMemoryGraphStore struct {

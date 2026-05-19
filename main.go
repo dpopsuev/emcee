@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/dpopsuev/emcee/internal/adapter/driver/cli"
+	"github.com/dpopsuev/emcee/internal/api/cli"
 )
 
 func main() {

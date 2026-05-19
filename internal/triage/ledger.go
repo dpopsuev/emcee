@@ -7,10 +7,10 @@ import (
 	"sync"
 
 	"github.com/dpopsuev/emcee/internal/domain"
-	"github.com/dpopsuev/emcee/internal/port/driven"
+	repository "github.com/dpopsuev/emcee/internal/repository"
 )
 
-var _ driven.Ledger = (*InMemoryLedger)(nil)
+var _ repository.Ledger = (*InMemoryLedger)(nil)
 
 // ErrLedgerNotFound is returned when a ref is not in the ledger.
 var ErrLedgerNotFound = errors.New("ledger: record not found")
