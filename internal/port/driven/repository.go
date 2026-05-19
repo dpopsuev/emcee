@@ -106,6 +106,8 @@ type ExternalLinkRepository interface {
 type IssueLinkRepository interface {
 	Name() string
 	CreateIssueLink(ctx context.Context, input domain.IssueLinkInput) error
+	DeleteIssueLink(ctx context.Context, inwardKey, outwardKey, linkType string) error
+	ListLinkTypes(ctx context.Context) ([]domain.IssueLinkType, error)
 }
 
 // FieldRepository is the outbound port for field metadata discovery.

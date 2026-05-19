@@ -224,7 +224,7 @@ func RegisterTools(srv *mcpserver.Server, svc EmceeService) {
 var emceeSchema = json.RawMessage(`{
 	"type": "object",
 	"properties": {
-		"action":      {"type": "string", "enum": ["list","get","create","update","search","children","bulk_create","bulk_update","comments","comment_add","stage","stage_list","stage_show","stage_patch","stage_drop","push","push_all","link_issue","launches","launch_get","test_items","search_test_items","test_item_get","bulk_test_item_get","defect_update","dashboards","dashboard_get","dashboard_create","widget_add","doc_parse","doc_links","doc_diff","doc_audit","doc_terms","doc_validate","doc_declarations","doc_sync_gist","doc_sync_jira","pr_reviews","pr_comments","triage","triage_config","triage_config_set","changelog","fields","fields_discover","jql","prs","ledger_list","ledger_get","ledger_search","ledger_similar","ledger_ingest","ledger_stats","view_pull","view_get","view_mutate","view_diff","view_push","view_push_all","view_list","view_dirty","view_drop","view_reset"], "description": "Action to perform"},
+		"action":      {"type": "string", "enum": ["list","get","create","update","search","children","bulk_create","bulk_update","comments","comment_add","stage","stage_list","stage_show","stage_patch","stage_drop","push","push_all","link_issue","unlink_issue","list_link_types","launches","launch_get","test_items","search_test_items","test_item_get","bulk_test_item_get","defect_update","dashboards","dashboard_get","dashboard_create","widget_add","doc_parse","doc_links","doc_diff","doc_audit","doc_terms","doc_validate","doc_declarations","doc_sync_gist","doc_sync_jira","pr_reviews","pr_comments","triage","triage_config","triage_config_set","changelog","fields","fields_discover","jql","prs","ledger_list","ledger_get","ledger_search","ledger_similar","ledger_ingest","ledger_stats","view_pull","view_get","view_mutate","view_diff","view_push","view_push_all","view_list","view_dirty","view_drop","view_reset"], "description": "Action to perform"},
 		"backend":     {"type": "string", "description": "Backend name (required for list/create/search)"},
 		"ref":         {"type": "string", "description": "Issue ref for get/update/children (e.g. linear:PROJ-42)"},
 		"title":       {"type": "string", "description": "Issue title (create)"},
@@ -624,7 +624,37 @@ func emceeHandler(svc EmceeService) server.Handler {
 			if err := svc.LinkIssue(ctx, backend, input); err != nil {
 				return "", err
 			}
-			return server.JSONResult(map[string]any{"linked": true, "type": args.IssueType, "inward": inwardKey, "outward": outwardKey})
+			return server.JSONResult(map[string]any{"linked": true, "type": input.Type, "inward": inwardKey, "outward": outwardKey})
+
+		case "unlink_issue":
+			if args.Ref == "" {
+				return "", errRefRequired
+			}
+			if args.TargetRef == "" {
+				return "", errTargetRefRequired
+			}
+			backend, inwardKey, err := parseRef(args.Ref)
+			if err != nil {
+				return "", err
+			}
+			_, outwardKey, err := parseRef(args.TargetRef)
+			if err != nil {
+				outwardKey = args.TargetRef
+			}
+			if err := svc.UnlinkIssue(ctx, backend, inwardKey, outwardKey, args.IssueType); err != nil {
+				return "", err
+			}
+			return server.JSONResult(map[string]any{"unlinked": true, "inward": inwardKey, "outward": outwardKey})
+
+		case "list_link_types":
+			if args.Backend == "" {
+				return "", errBackendRequired
+			}
+			types, err := svc.ListLinkTypes(ctx, args.Backend)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(types)
 
 		// --- Report Portal ---
 

@@ -82,6 +82,8 @@ type GistService interface {
 // IssueLinkService is the inbound port for creating issue-to-issue links.
 type IssueLinkService interface {
 	LinkIssue(ctx context.Context, backend string, input domain.IssueLinkInput) error
+	UnlinkIssue(ctx context.Context, backend, inwardKey, outwardKey, linkType string) error
+	ListLinkTypes(ctx context.Context, backend string) ([]domain.IssueLinkType, error)
 }
 
 // ChangelogService is the inbound port for issue field-level history.

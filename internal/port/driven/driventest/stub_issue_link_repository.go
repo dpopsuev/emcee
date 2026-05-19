@@ -26,3 +26,11 @@ func (s *StubIssueLinkRepository) CreateIssueLink(_ context.Context, input domai
 	s.CreateIssueLinkCalls = append(s.CreateIssueLinkCalls, input)
 	return s.Err
 }
+
+func (s *StubIssueLinkRepository) DeleteIssueLink(_ context.Context, _, _, _ string) error {
+	return s.Err
+}
+
+func (s *StubIssueLinkRepository) ListLinkTypes(_ context.Context) ([]domain.IssueLinkType, error) {
+	return nil, s.Err
+}

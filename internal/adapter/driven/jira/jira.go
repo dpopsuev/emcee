@@ -35,6 +35,7 @@ var (
 	ErrProjectUpdate       = errors.New("project update not supported via Jira REST API v2")
 	ErrLabelCreateImplicit = errors.New("labels in Jira are created implicitly by adding them to issues")
 	ErrNoTransition        = errors.New("no transition found matching status")
+	ErrLinkNotFound        = errors.New("no matching link found")
 )
 
 // Compile-time interface compliance checks.
@@ -550,6 +551,7 @@ type jiraIssue struct {
 			Name string `json:"name"`
 		} `json:"components"`
 		IssueLinks []struct {
+			ID   string `json:"id"`
 			Type struct {
 				Name    string `json:"name"`
 				Inward  string `json:"inward"`
@@ -1015,16 +1017,63 @@ func (r *Repository) ListExternalLinks(ctx context.Context, key string) ([]domai
 // --- Issue link operations ---
 
 func (r *Repository) CreateIssueLink(ctx context.Context, input domain.IssueLinkInput) error {
+	linkType := input.Type
+	if linkType == "" {
+		linkType = "Related"
+	}
 	adapterdriven.LogWrite(ctx, BackendName, "create_issue_link",
-		slog.String("type", input.Type),
+		slog.String("type", linkType),
 		slog.String("inward", input.InwardKey),
 		slog.String("outward", input.OutwardKey))
 	body := map[string]any{
-		"type":         map[string]string{"name": input.Type},
+		"type":         map[string]string{"name": linkType},
 		"inwardIssue":  map[string]string{"key": input.InwardKey},
 		"outwardIssue": map[string]string{"key": input.OutwardKey},
 	}
-	return r.api(ctx, "POST", "/rest/api/2/issueLink", body, nil)
+	return r.api(ctx, "POST", "/rest/api/3/issueLink", body, nil)
+}
+
+func (r *Repository) DeleteIssueLink(ctx context.Context, inwardKey, outwardKey, linkType string) error {
+	adapterdriven.LogWrite(ctx, BackendName, "delete_issue_link",
+		slog.String("inward", inwardKey),
+		slog.String("outward", outwardKey),
+		slog.String("type", linkType))
+	// Fetch the inward issue to find the matching link ID.
+	var raw jiraIssue
+	if err := r.api(ctx, "GET", fmt.Sprintf("/rest/api/3/issue/%s?fields=issuelinks", inwardKey), nil, &raw); err != nil {
+		return err
+	}
+	for _, link := range raw.Fields.IssueLinks {
+		if link.OutwardIssue != nil && link.OutwardIssue.Key == outwardKey &&
+			(linkType == "" || strings.EqualFold(link.Type.Name, linkType)) {
+			return r.api(ctx, "DELETE", "/rest/api/3/issueLink/"+link.ID, nil, nil)
+		}
+		if link.InwardIssue != nil && link.InwardIssue.Key == outwardKey &&
+			(linkType == "" || strings.EqualFold(link.Type.Name, linkType)) {
+			return r.api(ctx, "DELETE", "/rest/api/3/issueLink/"+link.ID, nil, nil)
+		}
+	}
+	return fmt.Errorf("%w between %s and %s", ErrLinkNotFound, inwardKey, outwardKey)
+}
+
+func (r *Repository) ListLinkTypes(ctx context.Context) ([]domain.IssueLinkType, error) {
+	adapterdriven.LogOp(ctx, BackendName, "list_link_types")
+	var result struct {
+		IssueLinkTypes []struct {
+			ID      string `json:"id"`
+			Name    string `json:"name"`
+			Inward  string `json:"inward"`
+			Outward string `json:"outward"`
+		} `json:"issueLinkTypes"`
+	}
+	if err := r.api(ctx, "GET", "/rest/api/3/issueLinkType", nil, &result); err != nil {
+		return nil, err
+	}
+	types := make([]domain.IssueLinkType, len(result.IssueLinkTypes))
+	for i, t := range result.IssueLinkTypes {
+		types[i] = domain.IssueLinkType{ID: t.ID, Name: t.Name, Inward: t.Inward, Outward: t.Outward}
+	}
+	return types, nil
 }
 
 // --- Changelog ---

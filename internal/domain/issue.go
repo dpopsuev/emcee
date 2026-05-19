@@ -177,6 +177,14 @@ type IssueLinkInput struct {
 	OutwardKey string `json:"outward_key"`
 }
 
+// IssueLinkType describes a named link type (e.g. Blocks, Related).
+type IssueLinkType struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Inward  string `json:"inward"`
+	Outward string `json:"outward"`
+}
+
 // PRReview represents a pull request review.
 type PRReview struct {
 	ID     string `json:"id"`

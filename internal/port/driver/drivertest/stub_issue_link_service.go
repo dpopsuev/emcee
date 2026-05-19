@@ -23,3 +23,11 @@ func (s *StubIssueLinkService) LinkIssue(_ context.Context, _ string, input doma
 	s.LinkIssueCalls = append(s.LinkIssueCalls, input)
 	return s.Err
 }
+
+func (s *StubIssueLinkService) UnlinkIssue(_ context.Context, _, _, _, _ string) error {
+	return s.Err
+}
+
+func (s *StubIssueLinkService) ListLinkTypes(_ context.Context, _ string) ([]domain.IssueLinkType, error) {
+	return nil, s.Err
+}

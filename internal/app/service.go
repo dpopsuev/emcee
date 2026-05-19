@@ -790,6 +790,22 @@ func (s *Service) LinkIssue(ctx context.Context, backend string, input domain.Is
 	return r.CreateIssueLink(ctx, input)
 }
 
+func (s *Service) UnlinkIssue(ctx context.Context, backend, inwardKey, outwardKey, linkType string) error {
+	r, ok := s.issueLinkRepos[backend]
+	if !ok {
+		return s.notSupportedErr(backend, "issue_links")
+	}
+	return r.DeleteIssueLink(ctx, inwardKey, outwardKey, linkType)
+}
+
+func (s *Service) ListLinkTypes(ctx context.Context, backend string) ([]domain.IssueLinkType, error) {
+	r, ok := s.issueLinkRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "issue_links")
+	}
+	return r.ListLinkTypes(ctx)
+}
+
 // --- Stage operations ---
 
 func (s *Service) StageItem(backend string, input domain.CreateInput, reason string) string {
