@@ -330,6 +330,14 @@ func (r *Repository) Update(ctx context.Context, key string, input domain.Update
 		}
 		fields["fixVersions"] = fv
 	}
+	// Custom fields: resolve semantic name → fieldId, apply type coercion.
+	for semantic, value := range input.CustomFields {
+		fieldID, ok := r.customFields[semantic]
+		if !ok {
+			continue // unmapped field, skip silently
+		}
+		fields[fieldID] = coerceCustomFieldValue(semantic, value)
+	}
 
 	if len(fields) > 0 {
 		body := map[string]any{"fields": fields}
@@ -594,8 +602,16 @@ func (j *jiraIssue) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// applyCustomFields extracts sprint, story_points, and target_version from the raw
-// field map using the caller-supplied field ID mapping.
+// handledByTypedField lists semantic names that are mapped to typed Issue fields.
+// Any manifest field NOT in this set falls through to Issue.CustomFields.
+var handledByTypedField = map[string]bool{
+	"sprint":         true,
+	"story_points":   true,
+	"target_version": true,
+}
+
+// applyCustomFields extracts manifest-mapped fields from the raw field map.
+// Known semantic names populate typed Issue fields; all others go to CustomFields.
 func (j *jiraIssue) applyCustomFields(issue *domain.Issue, customFields map[string]string) {
 	if sprintID, ok := customFields["sprint"]; ok {
 		issue.Sprint = extractSprint(j.RawFields[sprintID])
@@ -608,6 +624,23 @@ func (j *jiraIssue) applyCustomFields(issue *domain.Issue, customFields map[stri
 	}
 	if tvID, ok := customFields["target_version"]; ok {
 		issue.TargetVersions = extractNameList(j.RawFields[tvID])
+	}
+	// Remaining manifest fields → CustomFields as raw string values.
+	for semantic, fieldID := range customFields {
+		if handledByTypedField[semantic] {
+			continue
+		}
+		raw, ok := j.RawFields[fieldID]
+		if !ok || raw == nil || string(raw) == "null" {
+			continue
+		}
+		var s string
+		if json.Unmarshal(raw, &s) == nil {
+			if issue.CustomFields == nil {
+				issue.CustomFields = make(map[string]string)
+			}
+			issue.CustomFields[semantic] = s
+		}
 	}
 }
 
@@ -644,6 +677,28 @@ func extractNameList(raw json.RawMessage) []string {
 		names = append(names, item.Name)
 	}
 	return names
+}
+
+// coerceCustomFieldValue converts a string value to the appropriate Jira API type
+// based on the semantic field name.
+func coerceCustomFieldValue(semantic, value string) any {
+	switch semantic {
+	case "story_points":
+		var f float64
+		if _, err := fmt.Sscanf(value, "%f", &f); err == nil {
+			return f
+		}
+	case "target_versions":
+		parts := strings.Split(value, ",")
+		versions := make([]map[string]string, 0, len(parts))
+		for _, p := range parts {
+			if t := strings.TrimSpace(p); t != "" {
+				versions = append(versions, map[string]string{"name": t})
+			}
+		}
+		return versions
+	}
+	return value
 }
 
 func (j *jiraIssue) toDomain(customFields map[string]string) domain.Issue {

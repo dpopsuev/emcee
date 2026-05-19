@@ -127,6 +127,10 @@ func IssueToViewRecord(ref string, issue *Issue) ViewRecord {
 	if issue.Parent != nil {
 		fields["parent"] = issue.Parent.Key
 	}
+	// Merge arbitrary manifest-mapped custom fields.
+	for k, v := range issue.CustomFields {
+		fields[k] = v
+	}
 	return ViewRecord{
 		Ref:      ref,
 		Fields:   fields,
@@ -171,6 +175,10 @@ func FieldValueFromIssue(field string, issue *Issue) string {
 			return issue.Parent.Key
 		}
 		return ""
+	}
+	// Fallback: check arbitrary custom fields.
+	if issue.CustomFields != nil {
+		return issue.CustomFields[field]
 	}
 	return ""
 }

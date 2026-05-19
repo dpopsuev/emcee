@@ -91,32 +91,35 @@ type IssueParent struct {
 
 // Issue is the canonical domain object — the unified representation of a work item
 // regardless of which platform it lives on.
+// CustomFields holds manifest-mapped fields that don't have a typed representation
+// (e.g. any KnownField added beyond the built-in sprint/story_points/target_version).
 type Issue struct {
-	Ref            string         `json:"ref"`
-	ID             string         `json:"id"`
-	Key            string         `json:"key"`
-	Title          string         `json:"title"`
-	Description    string         `json:"description,omitempty"`
-	Status         Status         `json:"status"`
-	Priority       Priority       `json:"priority"`
-	Labels         []string       `json:"labels,omitempty"`
-	Assignee       string         `json:"assignee,omitempty"`
-	Reporter       string         `json:"reporter,omitempty"`
-	Project        string         `json:"project,omitempty"`
-	IssueType      string         `json:"issue_type,omitempty"`
-	Resolution     string         `json:"resolution,omitempty"`
-	Parent         *IssueParent   `json:"parent,omitempty"`
-	Sprint         string         `json:"sprint,omitempty"`
-	StoryPoints    *float64       `json:"story_points,omitempty"`
-	FixVersions    []string       `json:"fix_versions,omitempty"`
-	TargetVersions []string       `json:"target_versions,omitempty"`
-	Components     []string       `json:"components,omitempty"`
-	Comments       []Comment      `json:"comments,omitempty"`
-	IssueLinks     []IssueLink    `json:"issue_links,omitempty"`
-	ExternalLinks  []ExternalLink `json:"external_links,omitempty"`
-	CreatedAt      time.Time      `json:"created_at"`
-	UpdatedAt      time.Time      `json:"updated_at"`
-	URL            string         `json:"url,omitempty"`
+	Ref            string            `json:"ref"`
+	ID             string            `json:"id"`
+	Key            string            `json:"key"`
+	Title          string            `json:"title"`
+	Description    string            `json:"description,omitempty"`
+	Status         Status            `json:"status"`
+	Priority       Priority          `json:"priority"`
+	Labels         []string          `json:"labels,omitempty"`
+	Assignee       string            `json:"assignee,omitempty"`
+	Reporter       string            `json:"reporter,omitempty"`
+	Project        string            `json:"project,omitempty"`
+	IssueType      string            `json:"issue_type,omitempty"`
+	Resolution     string            `json:"resolution,omitempty"`
+	Parent         *IssueParent      `json:"parent,omitempty"`
+	Sprint         string            `json:"sprint,omitempty"`
+	StoryPoints    *float64          `json:"story_points,omitempty"`
+	FixVersions    []string          `json:"fix_versions,omitempty"`
+	TargetVersions []string          `json:"target_versions,omitempty"`
+	CustomFields   map[string]string `json:"custom_fields,omitempty"`
+	Components     []string          `json:"components,omitempty"`
+	Comments       []Comment         `json:"comments,omitempty"`
+	IssueLinks     []IssueLink       `json:"issue_links,omitempty"`
+	ExternalLinks  []ExternalLink    `json:"external_links,omitempty"`
+	CreatedAt      time.Time         `json:"created_at"`
+	UpdatedAt      time.Time         `json:"updated_at"`
+	URL            string            `json:"url,omitempty"`
 }
 
 type CreateInput struct {
@@ -145,6 +148,9 @@ type UpdateInput struct {
 	Components  []string  `json:"components,omitempty"`
 	FixVersions []string  `json:"fix_versions,omitempty"`
 	Resolution  *string   `json:"resolution,omitempty"`
+	// CustomFields carries manifest-named fields (e.g. story_points, target_versions)
+	// keyed by semantic name; the adapter resolves them to backend field IDs.
+	CustomFields map[string]string `json:"custom_fields,omitempty"`
 }
 
 // IssueLink represents a link between two Jira issues.

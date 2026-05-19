@@ -208,7 +208,30 @@ func (vs *ViewStore) buildUpdateInput(vr *domain.ViewRecord, cs *domain.ChangeSe
 	if dirty["fix_versions"] {
 		input.FixVersions = splitCSV(vr.Fields["fix_versions"])
 	}
+	// Route any remaining dirty fields (e.g. sprint, story_points, target_versions,
+	// or arbitrary manifest fields) to CustomFields for adapter-level resolution.
+	for field := range dirty {
+		if standardUpdateFields[field] {
+			continue
+		}
+		if input.CustomFields == nil {
+			input.CustomFields = make(map[string]string)
+		}
+		input.CustomFields[field] = vr.Fields[field]
+	}
 	return input
+}
+
+// standardUpdateFields lists field names handled by the typed UpdateInput fields.
+var standardUpdateFields = map[string]bool{
+	"title":        true,
+	"description":  true,
+	"status":       true,
+	"priority":     true,
+	"assignee":     true,
+	"labels":       true,
+	"components":   true,
+	"fix_versions": true,
 }
 
 // fieldConflict returns the name of the first dirty field that was also changed
