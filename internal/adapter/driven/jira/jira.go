@@ -971,3 +971,53 @@ func (r *Repository) CreateIssueLink(ctx context.Context, input domain.IssueLink
 	}
 	return r.api(ctx, "POST", "/rest/api/2/issueLink", body, nil)
 }
+
+// --- Changelog ---
+
+var _ driven.ChangelogRepository = (*Repository)(nil)
+
+func (r *Repository) ListChangelog(ctx context.Context, key string, limit int) ([]domain.ChangelogEntry, error) {
+	adapterdriven.LogOp(ctx, BackendName, "list_changelog", slog.String(adapterdriven.LogKeyIssueKey, key))
+	if limit <= 0 {
+		limit = defaultLimit
+	}
+	path := fmt.Sprintf("/rest/api/3/issue/%s/changelog?maxResults=%d", key, limit)
+
+	var result struct {
+		Values []struct {
+			ID     string `json:"id"`
+			Author struct {
+				DisplayName string `json:"displayName"`
+			} `json:"author"`
+			Created string `json:"created"`
+			Items   []struct {
+				Field     string `json:"field"`
+				FieldID   string `json:"fieldId"`
+				FromValue string `json:"fromString"`
+				ToValue   string `json:"toString"`
+			} `json:"items"`
+		} `json:"values"`
+	}
+	if err := r.api(ctx, "GET", path, nil, &result); err != nil {
+		return nil, err
+	}
+
+	entries := make([]domain.ChangelogEntry, 0, len(result.Values))
+	for _, v := range result.Values {
+		entry := domain.ChangelogEntry{
+			ID:     v.ID,
+			Author: v.Author.DisplayName,
+		}
+		entry.Created, _ = time.Parse("2006-01-02T15:04:05.000-0700", v.Created)
+		for _, item := range v.Items {
+			entry.Items = append(entry.Items, domain.ChangelogItem{
+				Field:     item.Field,
+				FieldID:   item.FieldID,
+				FromValue: item.FromValue,
+				ToValue:   item.ToValue,
+			})
+		}
+		entries = append(entries, entry)
+	}
+	return entries, nil
+}

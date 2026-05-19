@@ -84,6 +84,11 @@ type IssueLinkService interface {
 	LinkIssue(ctx context.Context, backend string, input domain.IssueLinkInput) error
 }
 
+// ChangelogService is the inbound port for issue field-level history.
+type ChangelogService interface {
+	ListChangelog(ctx context.Context, ref string, limit int) ([]domain.ChangelogEntry, error)
+}
+
 // FieldService is the inbound port for field metadata discovery.
 type FieldService interface {
 	ListFields(ctx context.Context, backend string) ([]domain.Field, error)

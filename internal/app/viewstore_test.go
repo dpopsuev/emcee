@@ -162,14 +162,8 @@ func TestViewPush(t *testing.T) {
 
 	_, _ = svc.ViewPull(ctx, "test:PROJ-1")
 	_ = svc.ViewMutate("test:PROJ-1", "status", "done")
-
-	stub.Issue = &domain.Issue{
-		Key:       "PROJ-1",
-		Title:     "Fix bug",
-		Status:    domain.StatusDone,
-		Priority:  domain.PriorityHigh,
-		UpdatedAt: time.Date(2026, 5, 10, 12, 0, 0, 0, time.UTC),
-	}
+	// Stub stays at StatusTodo (pulled state) — remote hasn't changed the same field,
+	// so conflict check passes. Update then returns the same stub as post-update.
 
 	issue, err := svc.ViewPush(ctx, "test:PROJ-1")
 	if err != nil {
@@ -247,13 +241,14 @@ func TestViewPush_ConflictDetection(t *testing.T) {
 	svc, stub := newViewTestService(t)
 	ctx := context.Background()
 
-	_, _ = svc.ViewPull(ctx, "test:PROJ-1")
+	_, _ = svc.ViewPull(ctx, "test:PROJ-1") // pulled status = "todo"
 	_ = svc.ViewMutate("test:PROJ-1", "status", "done")
 
+	// Simulate a concurrent remote change to the SAME field (status → in_progress).
 	stub.Issue = &domain.Issue{
 		Key:       "PROJ-1",
 		Title:     "Fix bug",
-		Status:    domain.StatusTodo,
+		Status:    domain.StatusInProgress, // remote changed status independently
 		UpdatedAt: time.Date(2026, 5, 11, 15, 0, 0, 0, time.UTC),
 	}
 
@@ -280,9 +275,9 @@ func TestViewPushAll(t *testing.T) {
 
 	_ = svc.ViewMutate("test:PROJ-1", "status", "done")
 	_ = svc.ViewMutate("test:PROJ-2", "assignee", "bob")
-
+	// Keep stub at pulled state so field-level conflict check finds no remote changes.
 	stub.Issue = &domain.Issue{
-		Key: "PROJ-1", Title: "Fix bug", Status: domain.StatusDone,
+		Key: "PROJ-1", Title: "Fix bug", Status: domain.StatusTodo,
 		UpdatedAt: fixedTime,
 	}
 

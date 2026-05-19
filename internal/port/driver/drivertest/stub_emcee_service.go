@@ -18,6 +18,7 @@ type StubEmceeService struct {
 	StubHealthService
 	StubCommentService
 	StubStageService
+	StubChangelogService
 	StubFieldService
 	StubJQLService
 	StubPRService

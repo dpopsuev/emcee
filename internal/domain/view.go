@@ -2,6 +2,8 @@ package domain
 
 import (
 	"errors"
+	"fmt"
+	"strings"
 	"time"
 )
 
@@ -103,14 +105,27 @@ func (dt *DirtyTracker) IsDirty() bool {
 }
 
 // IssueToViewRecord converts a domain Issue to a ViewRecord with structured fields.
+// All multi-value fields (labels, components, etc.) are stored as comma-separated strings.
 func IssueToViewRecord(ref string, issue *Issue) ViewRecord {
 	fields := map[string]string{
-		"title":       issue.Title,
-		"description": issue.Description,
-		"status":      string(issue.Status),
-		"priority":    issue.Priority.String(),
-		"assignee":    issue.Assignee,
-		"url":         issue.URL,
+		"title":           issue.Title,
+		"description":     issue.Description,
+		"status":          string(issue.Status),
+		"priority":        issue.Priority.String(),
+		"assignee":        issue.Assignee,
+		"reporter":        issue.Reporter,
+		"url":             issue.URL,
+		"sprint":          issue.Sprint,
+		"labels":          strings.Join(issue.Labels, ","),
+		"components":      strings.Join(issue.Components, ","),
+		"fix_versions":    strings.Join(issue.FixVersions, ","),
+		"target_versions": strings.Join(issue.TargetVersions, ","),
+	}
+	if issue.StoryPoints != nil {
+		fields["story_points"] = fmt.Sprintf("%g", *issue.StoryPoints)
+	}
+	if issue.Parent != nil {
+		fields["parent"] = issue.Parent.Key
 	}
 	return ViewRecord{
 		Ref:      ref,
@@ -118,6 +133,46 @@ func IssueToViewRecord(ref string, issue *Issue) ViewRecord {
 		Version:  issue.UpdatedAt.Format(time.RFC3339),
 		PulledAt: time.Now(),
 	}
+}
+
+// FieldValueFromIssue extracts a single field value from an Issue using the
+// same mapping as IssueToViewRecord. Used by Push() for per-field conflict detection.
+func FieldValueFromIssue(field string, issue *Issue) string {
+	switch field {
+	case "title":
+		return issue.Title
+	case "description":
+		return issue.Description
+	case "status":
+		return string(issue.Status)
+	case "priority":
+		return issue.Priority.String()
+	case "assignee":
+		return issue.Assignee
+	case "reporter":
+		return issue.Reporter
+	case "sprint":
+		return issue.Sprint
+	case "labels":
+		return strings.Join(issue.Labels, ",")
+	case "components":
+		return strings.Join(issue.Components, ",")
+	case "fix_versions":
+		return strings.Join(issue.FixVersions, ",")
+	case "target_versions":
+		return strings.Join(issue.TargetVersions, ",")
+	case "story_points":
+		if issue.StoryPoints != nil {
+			return fmt.Sprintf("%g", *issue.StoryPoints)
+		}
+		return ""
+	case "parent":
+		if issue.Parent != nil {
+			return issue.Parent.Key
+		}
+		return ""
+	}
+	return ""
 }
 
 // ViewDiff represents the difference between local and remote state.

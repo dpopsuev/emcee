@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
+	"strings"
 	"sync"
 	"time"
 
@@ -141,9 +142,10 @@ func (vs *ViewStore) Push(ctx context.Context, svc *Service, ref string) (*domai
 	if fetchErr != nil {
 		return nil, fetchErr
 	}
-	remoteVersion := remote.UpdatedAt.Format(time.RFC3339)
-	if remoteVersion != vr.Version {
-		return nil, fmt.Errorf("%w: pulled version %s, remote version %s", domain.ErrStaleView, vr.Version, remoteVersion)
+	// Field-level conflict detection: only reject if a dirty field was also
+	// changed remotely since we pulled. Concurrent edits to different fields are allowed.
+	if conflict := fieldConflict(cs, remote); conflict != "" {
+		return nil, fmt.Errorf("%w: field %q changed remotely since pull", domain.ErrStaleView, conflict)
 	}
 
 	input := vs.buildUpdateInput(vr, cs)
@@ -197,7 +199,41 @@ func (vs *ViewStore) buildUpdateInput(vr *domain.ViewRecord, cs *domain.ChangeSe
 		v := vr.Fields["assignee"]
 		input.Assignee = &v
 	}
+	if dirty["labels"] {
+		input.Labels = splitCSV(vr.Fields["labels"])
+	}
+	if dirty["components"] {
+		input.Components = splitCSV(vr.Fields["components"])
+	}
+	if dirty["fix_versions"] {
+		input.FixVersions = splitCSV(vr.Fields["fix_versions"])
+	}
 	return input
+}
+
+// fieldConflict returns the name of the first dirty field that was also changed
+// on the remote since the record was pulled, or "" if there is no conflict.
+func fieldConflict(cs *domain.ChangeSet, remote *domain.Issue) string {
+	for _, c := range cs.Changes {
+		if domain.FieldValueFromIssue(c.Field, remote) != c.OldValue {
+			return c.Field
+		}
+	}
+	return ""
+}
+
+func splitCSV(s string) []string {
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if t := strings.TrimSpace(p); t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
 }
 
 // PushAll flushes all dirty records to their backends.

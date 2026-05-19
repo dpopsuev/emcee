@@ -51,6 +51,7 @@ type Repository struct {
 	comments    driven.CommentRepository
 	launches    driven.LaunchRepository
 	fields      driven.FieldRepository
+	changelog   driven.ChangelogRepository
 	jql         driven.JQLRepository
 	docs        driven.DocumentRepository
 	projects    driven.ProjectRepository
@@ -131,6 +132,10 @@ func New(inner driven.IssueRepository, opts ...Option) *Repository {
 	if v, ok := inner.(driven.PRReviewRepository); ok {
 		r.prReviews = v
 		r.caps = append(r.caps, "pr_reviews")
+	}
+	if v, ok := inner.(driven.ChangelogRepository); ok {
+		r.changelog = v
+		r.caps = append(r.caps, "changelog")
 	}
 	for _, o := range opts {
 		o(r)
@@ -377,6 +382,15 @@ func (r *Repository) ListFields(ctx context.Context) ([]domain.Field, error) {
 		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
 	}
 	return r.fields.ListFields(ctx)
+}
+
+// --- Passthrough: ChangelogRepository ---
+
+func (r *Repository) ListChangelog(ctx context.Context, key string, limit int) ([]domain.ChangelogEntry, error) {
+	if r.changelog == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.changelog.ListChangelog(ctx, key, limit)
 }
 
 // --- Passthrough: JQLRepository ---

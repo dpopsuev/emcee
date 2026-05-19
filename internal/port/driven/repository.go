@@ -114,6 +114,12 @@ type FieldRepository interface {
 	ListFields(ctx context.Context) ([]domain.Field, error)
 }
 
+// ChangelogRepository is the outbound port for issue field-level history.
+type ChangelogRepository interface {
+	Name() string
+	ListChangelog(ctx context.Context, key string, limit int) ([]domain.ChangelogEntry, error)
+}
+
 // JQLRepository is the outbound port for raw JQL query passthrough (Jira-specific).
 type JQLRepository interface {
 	Name() string

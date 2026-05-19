@@ -46,6 +46,7 @@ type Service struct {
 	issueLinkRepos map[string]driven.IssueLinkRepository
 	gistRepos      map[string]driven.GistRepository
 	prReviewRepos  map[string]driven.PRReviewRepository
+	changelogRepos map[string]driven.ChangelogRepository
 	extractor      driven.LinkExtractor
 	graphStore     driven.GraphStore
 	ledger         driven.Ledger
@@ -76,6 +77,7 @@ func NewService(repos ...driven.IssueRepository) *Service {
 		issueLinkRepos: make(map[string]driven.IssueLinkRepository),
 		gistRepos:      make(map[string]driven.GistRepository),
 		prReviewRepos:  make(map[string]driven.PRReviewRepository),
+		changelogRepos: make(map[string]driven.ChangelogRepository),
 		stage:          NewStageStore(),
 		view:           NewViewStore(),
 	}
@@ -123,6 +125,9 @@ func NewService(repos ...driven.IssueRepository) *Service {
 		}
 		if prr, ok := r.(driven.PRReviewRepository); ok {
 			s.prReviewRepos[name] = prr
+		}
+		if clr, ok := r.(driven.ChangelogRepository); ok {
+			s.changelogRepos[name] = clr
 		}
 	}
 	return s
@@ -175,6 +180,9 @@ func (s *Service) AddBackend(r driven.IssueRepository) {
 	}
 	if prr, ok := r.(driven.PRReviewRepository); ok {
 		s.prReviewRepos[name] = prr
+	}
+	if clr, ok := r.(driven.ChangelogRepository); ok {
+		s.changelogRepos[name] = clr
 	}
 }
 
@@ -590,6 +598,18 @@ func (s *Service) ListFields(ctx context.Context, backend string) ([]domain.Fiel
 		return nil, s.notSupportedErr(backend, "fields")
 	}
 	return r.ListFields(ctx)
+}
+
+func (s *Service) ListChangelog(ctx context.Context, ref string, limit int) ([]domain.ChangelogEntry, error) {
+	backend, key, err := ParseRef(ref)
+	if err != nil {
+		return nil, err
+	}
+	r, ok := s.changelogRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "changelog")
+	}
+	return r.ListChangelog(ctx, key, limit)
 }
 
 func (s *Service) DiscoverFields(ctx context.Context, backend, configDir string) (map[string]string, error) {
