@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -184,6 +186,40 @@ func Serve(svc EmceeService) error {
 		WithInstructions(serverInstructions)
 	RegisterTools(srv, svc)
 	return srv.Serve(context.Background(), &sdkmcp.StdioTransport{})
+}
+
+// ServeHTTP starts the MCP server over HTTP/SSE on the given address (e.g. ":8080").
+// GET /sse  — SSE event stream (MCP session)
+// POST /sse — client→server messages
+// GET /health — backend health as JSON
+func ServeHTTP(addr string, svc EmceeService) error {
+	srv := mcpserver.NewServer(serverName, serverVersion).
+		WithInstructions(serverInstructions).
+		WithInitTimeout(0) // no watchdog for persistent HTTP server
+	RegisterTools(srv, svc)
+
+	sseSrv := srv.SDK()
+	sseHandler := sdkmcp.NewSSEHandler(func(*http.Request) *sdkmcp.Server { return sseSrv }, nil)
+
+	mux := http.NewServeMux()
+	mux.Handle("/sse", sseHandler)
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		status := svc.Health()
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(status)
+	})
+
+	httpSrv := &http.Server{
+		Addr:              addr,
+		Handler:           mux,
+		ReadHeaderTimeout: 30 * time.Second,
+	}
+	slog.Info("emcee HTTP/SSE server listening", slog.String("addr", addr))
+	return httpSrv.ListenAndServe()
 }
 
 // RegisterTools registers all emcee MCP tools on the given server.

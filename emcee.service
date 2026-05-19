@@ -1,0 +1,15 @@
+[Unit]
+Description=Emcee MCP server (HTTP/SSE)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=%h/go/bin/emcee serve --http :8811
+Restart=on-failure
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=emcee
+
+[Install]
+WantedBy=default.target

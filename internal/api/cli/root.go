@@ -909,14 +909,19 @@ var jqlCmd = &cobra.Command{
 
 // --- Serve command ---
 
+var serveHTTPAddr string
+
 var serveCmd = &cobra.Command{
 	Use:   "serve",
-	Short: "Start MCP server over stdio",
-	Long:  "Starts emcee as an MCP (Model Context Protocol) server over stdio, exposing issue management tools to AI agents.",
+	Short: "Start MCP server (stdio by default, HTTP/SSE with --http)",
+	Long:  "Starts emcee as an MCP server. Defaults to stdio transport. Use --http :8080 to run as a persistent HTTP/SSE server.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		svc, err := newService()
 		if err != nil {
 			return err
+		}
+		if serveHTTPAddr != "" {
+			return mcpserver.ServeHTTP(serveHTTPAddr, svc)
 		}
 		return mcpserver.Serve(svc)
 	},
@@ -979,6 +984,7 @@ func init() {
 	importCmd.Flags().StringVar(&flagProjectID, "project-id", "", "Project ID")
 	importCmd.Flags().StringVar(&flagAssignee, "assignee", "", "Assignee name")
 
+	serveCmd.Flags().StringVar(&serveHTTPAddr, "http", "", "Listen address for HTTP/SSE transport (e.g. :8080). Omit for stdio.")
 	rootCmd.AddCommand(listCmd, getCmd, createCmd, updateCmd, searchCmd, serveCmd)
 	rootCmd.AddCommand(docCmd, projectCmd, initiativeCmd, labelCmd)
 	// Bulk update
