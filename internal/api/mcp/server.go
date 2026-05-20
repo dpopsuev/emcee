@@ -188,21 +188,22 @@ func Serve(svc EmceeService) error {
 	return srv.Serve(context.Background(), &sdkmcp.StdioTransport{})
 }
 
-// ServeHTTP starts the MCP server over HTTP/SSE on the given address (e.g. ":8080").
-// GET /sse  — SSE event stream (MCP session)
-// POST /sse — client→server messages
-// GET /health — backend health as JSON
+// ServeHTTP starts the MCP server over HTTP on the given address (e.g. ":8080").
+// POST /mcp — stateless StreamableHTTP transport (MCP 2025-03-26)
+// GET  /health — backend health as JSON
 func ServeHTTP(addr string, svc EmceeService) error {
 	srv := mcpserver.NewServer(serverName, serverVersion).
 		WithInstructions(serverInstructions).
-		WithInitTimeout(0) // no watchdog for persistent HTTP server
+		WithInitTimeout(0)
 	RegisterTools(srv, svc)
 
-	sseSrv := srv.SDK()
-	sseHandler := sdkmcp.NewSSEHandler(func(*http.Request) *sdkmcp.Server { return sseSrv }, nil)
+	mcpHandler := sdkmcp.NewStreamableHTTPHandler(
+		func(*http.Request) *sdkmcp.Server { return srv.SDK() },
+		&sdkmcp.StreamableHTTPOptions{Stateless: true},
+	)
 
 	mux := http.NewServeMux()
-	mux.Handle("/sse", sseHandler)
+	mux.Handle("/mcp", mcpHandler)
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -218,7 +219,7 @@ func ServeHTTP(addr string, svc EmceeService) error {
 		Handler:           mux,
 		ReadHeaderTimeout: 30 * time.Second,
 	}
-	slog.Info("emcee HTTP/SSE server listening", slog.String("addr", addr))
+	slog.Info("emcee MCP server listening", slog.String("addr", addr))
 	return httpSrv.ListenAndServe()
 }
 
