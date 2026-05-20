@@ -36,14 +36,14 @@ func TestViewPull(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ViewPull: %v", err)
 	}
-	if vr.Ref != "test:PROJ-1" {
-		t.Errorf("ref = %q, want test:PROJ-1", vr.Ref)
+	if vr.(*domain.ViewRecord).Ref != "test:PROJ-1" {
+		t.Errorf("ref = %q, want test:PROJ-1", vr.(*domain.ViewRecord).Ref)
 	}
-	if vr.Fields["title"] != "Fix bug" {
-		t.Errorf("title = %q, want 'Fix bug'", vr.Fields["title"])
+	if vr.(*domain.ViewRecord).Fields["title"] != "Fix bug" {
+		t.Errorf("title = %q, want 'Fix bug'", vr.(*domain.ViewRecord).Fields["title"])
 	}
-	if vr.Fields["status"] != "todo" {
-		t.Errorf("status = %q, want 'todo'", vr.Fields["status"])
+	if vr.(*domain.ViewRecord).Fields["status"] != "todo" {
+		t.Errorf("status = %q, want 'todo'", vr.(*domain.ViewRecord).Fields["status"])
 	}
 }
 
@@ -63,8 +63,8 @@ func TestViewPull_IdentityMap(t *testing.T) {
 	}
 
 	vr, _ := svc.ViewGet("test:PROJ-1")
-	if vr.Fields["title"] != "Updated title" {
-		t.Errorf("expected re-pull to update, got %q", vr.Fields["title"])
+	if vr.(*domain.ViewRecord).Fields["title"] != "Updated title" {
+		t.Errorf("expected re-pull to update, got %q", vr.(*domain.ViewRecord).Fields["title"])
 	}
 }
 
@@ -91,8 +91,8 @@ func TestViewMutate(t *testing.T) {
 	}
 
 	vr, _ := svc.ViewGet("test:PROJ-1")
-	if vr.Fields["status"] != "done" {
-		t.Errorf("status = %q, want 'done'", vr.Fields["status"])
+	if vr.(*domain.ViewRecord).Fields["status"] != "done" {
+		t.Errorf("status = %q, want 'done'", vr.(*domain.ViewRecord).Fields["status"])
 	}
 }
 
@@ -218,9 +218,9 @@ func TestViewList(t *testing.T) {
 	}
 	_, _ = svc.ViewPull(ctx, "test:PROJ-2")
 
-	list := svc.ViewList()
-	if len(list) != 2 {
-		t.Errorf("expected 2 records, got %d", len(list))
+	list := svc.ViewList().(application.ViewListResult)
+	if len(list.Issues) != 2 {
+		t.Errorf("expected 2 records, got %d", len(list.Issues))
 	}
 }
 
@@ -304,9 +304,9 @@ func TestViewReset(t *testing.T) {
 
 	svc.ViewReset()
 
-	list := svc.ViewList()
-	if len(list) != 0 {
-		t.Errorf("expected empty list after reset, got %d", len(list))
+	list := svc.ViewList().(application.ViewListResult)
+	if len(list.Issues) != 0 {
+		t.Errorf("expected empty list after reset, got %d", len(list.Issues))
 	}
 	dirty := svc.ViewDirty()
 	if len(dirty) != 0 {

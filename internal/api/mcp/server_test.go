@@ -141,7 +141,7 @@ func newTestServer(t *testing.T) (*sdkmcp.ClientSession, *stub.StubEmceeService)
 	}
 	svc.ViewRecords = map[string]*domain.ViewRecord{}
 	svc.ViewChanges = map[string]*domain.ChangeSet{}
-	svc.ViewPullFunc = func(_ context.Context, ref string) (*domain.ViewRecord, error) {
+	svc.ViewPullFunc = func(_ context.Context, ref string) (any, error) {
 		vr := &domain.ViewRecord{
 			Ref: ref,
 			Fields: map[string]string{

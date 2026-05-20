@@ -54,12 +54,14 @@ type Service struct {
 	crawlAllowList []string // backend names to recurse into (empty = all)
 	stage          *StageStore
 	view           *ViewStore
+	launchView     *LaunchViewStore
 	mu             sync.RWMutex
 }
 
 // NewService creates the application service with the given repositories.
 // Repositories that implement additional interfaces (DocumentRepository, etc.)
 // are automatically registered for those capabilities.
+//
 //nolint:funlen
 func NewService(repos ...repository.IssueRepository) *Service {
 	s := &Service{
@@ -81,6 +83,7 @@ func NewService(repos ...repository.IssueRepository) *Service {
 		changelogRepos: make(map[string]repository.ChangelogRepository),
 		stage:          NewStageStore(),
 		view:           NewViewStore(),
+		launchView:     newLaunchViewStore(),
 	}
 	for _, r := range repos {
 		name := r.Name()
@@ -672,6 +675,13 @@ func (s *Service) GetLaunch(ctx context.Context, backend, id string) (*domain.La
 }
 
 func (s *Service) ListTestItems(ctx context.Context, backend, launchID string, filter domain.TestItemFilter) ([]domain.TestItem, error) {
+	ref := backend + ":" + launchID
+	if items, ok := s.launchView.GetItems(ref, filter.Status); ok {
+		if filter.Limit > 0 && len(items) > filter.Limit {
+			items = items[:filter.Limit]
+		}
+		return items, nil
+	}
 	r, ok := s.launchRepos[backend]
 	if !ok {
 		return nil, s.notSupportedErr(backend, "launches")
@@ -868,11 +878,21 @@ func (s *Service) BulkUpdateIssues(ctx context.Context, backend string, inputs [
 
 // --- View operations (Local Materialized View) ---
 
-func (s *Service) ViewPull(ctx context.Context, ref string) (*domain.ViewRecord, error) {
+// ViewPull fetches an entity by ref and caches it locally.
+// For issue refs (jira:KEY, github:owner/repo#N) — pulls into issue ViewStore.
+// For launch refs (reportportal:ID) — pulls launch + all items into LaunchViewStore.
+func (s *Service) ViewPull(ctx context.Context, ref string) (any, error) {
+	if backend, id, ok := splitLaunchRef(ref); ok {
+		return s.launchView.Pull(ctx, backend, id, s.launchRepos)
+	}
 	return s.view.Pull(ctx, s, ref)
 }
 
-func (s *Service) ViewGet(ref string) (*domain.ViewRecord, error) {
+// ViewGet returns a cached entity without hitting the backend.
+func (s *Service) ViewGet(ref string) (any, error) {
+	if _, _, ok := splitLaunchRef(ref); ok {
+		return s.launchView.Get(ref)
+	}
 	return s.view.Get(ref)
 }
 
@@ -892,8 +912,16 @@ func (s *Service) ViewPushAll(ctx context.Context) ([]string, []string) {
 	return s.view.PushAll(ctx, s)
 }
 
-func (s *Service) ViewList() []domain.ViewRecord {
-	return s.view.List()
+type ViewListResult struct {
+	Issues   []domain.ViewRecord        `json:"issues"`
+	Launches []domain.LaunchViewSummary `json:"launches"`
+}
+
+func (s *Service) ViewList() any {
+	return ViewListResult{
+		Issues:   s.view.List(),
+		Launches: s.launchView.List(),
+	}
 }
 
 func (s *Service) ViewDirty() []*domain.ChangeSet {
@@ -901,11 +929,25 @@ func (s *Service) ViewDirty() []*domain.ChangeSet {
 }
 
 func (s *Service) ViewDrop(ref string) {
+	if _, _, ok := splitLaunchRef(ref); ok {
+		s.launchView.Drop(ref)
+		return
+	}
 	s.view.Drop(ref)
 }
 
 func (s *Service) ViewReset() {
 	s.view.Reset()
+	s.launchView.Reset()
+}
+
+// splitLaunchRef checks if ref is a reportportal launch ref (e.g. "reportportal:37337").
+func splitLaunchRef(ref string) (backend, id string, ok bool) {
+	const rpPrefix = "reportportal:"
+	if !strings.HasPrefix(ref, rpPrefix) {
+		return "", "", false
+	}
+	return "reportportal", ref[len(rpPrefix):], true
 }
 
 // --- Service options ---

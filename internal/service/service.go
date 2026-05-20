@@ -152,12 +152,12 @@ type LedgerService interface {
 // ViewService is the inbound port for the local materialized view.
 // Identity Map + Unit of Work + Optimistic Offline Lock.
 type ViewService interface {
-	ViewPull(ctx context.Context, ref string) (*domain.ViewRecord, error)
-	ViewGet(ref string) (*domain.ViewRecord, error)
+	ViewPull(ctx context.Context, ref string) (any, error)
+	ViewGet(ref string) (any, error)
 	ViewMutate(ref, field, value string) error
 	ViewDiff(ref string) (*domain.ViewDiff, error)
 	ViewPush(ctx context.Context, ref string) (*domain.Issue, error)
-	ViewList() []domain.ViewRecord
+	ViewList() any
 	ViewDirty() []*domain.ChangeSet
 	ViewPushAll(ctx context.Context) (pushed []string, errs []string)
 	ViewDrop(ref string)

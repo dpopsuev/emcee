@@ -10,11 +10,11 @@ import (
 type StubViewService struct {
 	ViewRecords  map[string]*domain.ViewRecord
 	ViewChanges  map[string]*domain.ChangeSet
-	ViewPullFunc func(ctx context.Context, ref string) (*domain.ViewRecord, error)
+	ViewPullFunc func(ctx context.Context, ref string) (any, error)
 	PushFunc     func(ctx context.Context, ref string) (*domain.Issue, error)
 }
 
-func (s *StubViewService) ViewPull(ctx context.Context, ref string) (*domain.ViewRecord, error) {
+func (s *StubViewService) ViewPull(ctx context.Context, ref string) (any, error) {
 	if s.ViewPullFunc != nil {
 		return s.ViewPullFunc(ctx, ref)
 	}
@@ -26,7 +26,7 @@ func (s *StubViewService) ViewPull(ctx context.Context, ref string) (*domain.Vie
 	return nil, domain.ErrRecordNotFound
 }
 
-func (s *StubViewService) ViewGet(ref string) (*domain.ViewRecord, error) {
+func (s *StubViewService) ViewGet(ref string) (any, error) {
 	if s.ViewRecords != nil {
 		if vr, ok := s.ViewRecords[ref]; ok {
 			return vr, nil
@@ -84,7 +84,7 @@ func (s *StubViewService) ViewPush(ctx context.Context, ref string) (*domain.Iss
 	return &domain.Issue{Ref: ref, Title: "pushed"}, nil
 }
 
-func (s *StubViewService) ViewList() []domain.ViewRecord {
+func (s *StubViewService) ViewList() any {
 	result := make([]domain.ViewRecord, 0, len(s.ViewRecords))
 	for _, vr := range s.ViewRecords {
 		result = append(result, *vr)
