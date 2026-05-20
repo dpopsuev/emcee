@@ -198,7 +198,7 @@ func resultText(t *testing.T, result *sdkmcp.CallToolResult) string {
 
 func TestEmceeList(t *testing.T) {
 	session, _ := newTestServer(t)
-	result := callTool(t, session, "emcee", map[string]any{"action": "list", "backend": "test"})
+	result := callTool(t, session, "issue", map[string]any{"action": "list", "backend": "test"})
 	if result.IsError {
 		t.Fatalf("error: %s", resultText(t, result))
 	}
@@ -213,7 +213,7 @@ func TestEmceeList(t *testing.T) {
 
 func TestEmceeGet(t *testing.T) {
 	session, _ := newTestServer(t)
-	result := callTool(t, session, "emcee", map[string]any{"action": "get", "ref": "test:T-1"})
+	result := callTool(t, session, "issue", map[string]any{"action": "get", "ref": "test:T-1"})
 	if result.IsError {
 		t.Fatalf("error: %s", resultText(t, result))
 	}
@@ -228,7 +228,7 @@ func TestEmceeGet(t *testing.T) {
 
 func TestEmceeGetMissingRef(t *testing.T) {
 	session, _ := newTestServer(t)
-	result := callTool(t, session, "emcee", map[string]any{"action": "get"})
+	result := callTool(t, session, "issue", map[string]any{"action": "get"})
 	if !result.IsError {
 		t.Fatal("expected error for missing ref")
 	}
@@ -237,7 +237,7 @@ func TestEmceeGetMissingRef(t *testing.T) {
 func TestEmceeCreate(t *testing.T) {
 	session, svc := newTestServer(t)
 	svc.StubIssueService.Issue = &domain.Issue{Ref: "test:NEW-1", Key: "NEW-1", Title: "New thing"}
-	result := callTool(t, session, "emcee", map[string]any{"action": "create", "backend": "test", "title": "New thing"})
+	result := callTool(t, session, "issue", map[string]any{"action": "create", "backend": "test", "title": "New thing"})
 	if result.IsError {
 		t.Fatalf("error: %s", resultText(t, result))
 	}
@@ -253,7 +253,7 @@ func TestEmceeCreate(t *testing.T) {
 func TestEmceeUpdate(t *testing.T) {
 	session, svc := newTestServer(t)
 	svc.StubIssueService.Issue = &domain.Issue{Ref: "test:T-1", Key: "T-1", Title: "Updated"}
-	result := callTool(t, session, "emcee", map[string]any{"action": "update", "ref": "test:T-1", "title": "Updated"})
+	result := callTool(t, session, "issue", map[string]any{"action": "update", "ref": "test:T-1", "title": "Updated"})
 	if result.IsError {
 		t.Fatalf("error: %s", resultText(t, result))
 	}
@@ -261,7 +261,7 @@ func TestEmceeUpdate(t *testing.T) {
 
 func TestEmceeSearch(t *testing.T) {
 	session, _ := newTestServer(t)
-	result := callTool(t, session, "emcee", map[string]any{"action": "search", "backend": "test", "query": "first"})
+	result := callTool(t, session, "issue", map[string]any{"action": "search", "backend": "test", "query": "first"})
 	if result.IsError {
 		t.Fatalf("error: %s", resultText(t, result))
 	}
@@ -270,7 +270,7 @@ func TestEmceeSearch(t *testing.T) {
 func TestEmceeBulkCreate(t *testing.T) {
 	session, _ := newTestServer(t)
 	issues := `[{"title":"Bulk 1"},{"title":"Bulk 2"}]`
-	result := callTool(t, session, "emcee", map[string]any{"action": "bulk_create", "backend": "test", "issues": issues})
+	result := callTool(t, session, "issue", map[string]any{"action": "bulk_create", "backend": "test", "issues": issues})
 	if result.IsError {
 		t.Fatalf("error: %s", resultText(t, result))
 	}
@@ -286,7 +286,7 @@ func TestEmceeBulkCreate(t *testing.T) {
 func TestEmceeBulkUpdate(t *testing.T) {
 	session, _ := newTestServer(t)
 	issues := `[{"ref":"test:T-1","title":"Updated 1"},{"ref":"test:T-2","title":"Updated 2"}]`
-	result := callTool(t, session, "emcee", map[string]any{"action": "bulk_update", "backend": "test", "issues": issues})
+	result := callTool(t, session, "issue", map[string]any{"action": "bulk_update", "backend": "test", "issues": issues})
 	if result.IsError {
 		t.Fatalf("error: %s", resultText(t, result))
 	}
@@ -301,7 +301,7 @@ func TestEmceeBulkUpdate(t *testing.T) {
 
 func TestEmceeUnknownAction(t *testing.T) {
 	session, _ := newTestServer(t)
-	result := callTool(t, session, "emcee", map[string]any{"action": "invalid"})
+	result := callTool(t, session, "issue", map[string]any{"action": "invalid"})
 	if !result.IsError {
 		t.Fatal("expected error for unknown action")
 	}
@@ -442,7 +442,7 @@ func TestHealthToolDegraded(t *testing.T) {
 
 func TestEmceePRs(t *testing.T) {
 	session, svc := newTestServer(t)
-	result := callTool(t, session, "emcee", map[string]any{
+	result := callTool(t, session, "issue", map[string]any{
 		"action":  "prs",
 		"backend": "github",
 		"author":  "alice",
@@ -475,7 +475,7 @@ func TestEmceePRs(t *testing.T) {
 
 func TestEmceeFields(t *testing.T) {
 	session, svc := newTestServer(t)
-	result := callTool(t, session, "emcee", map[string]any{"action": "fields", "backend": "jira"})
+	result := callTool(t, session, "issue", map[string]any{"action": "fields", "backend": "jira"})
 	if result.IsError {
 		t.Fatalf("error: %s", resultText(t, result))
 	}
@@ -493,7 +493,7 @@ func TestEmceeFields(t *testing.T) {
 
 func TestEmceeJQL(t *testing.T) {
 	session, svc := newTestServer(t)
-	result := callTool(t, session, "emcee", map[string]any{
+	result := callTool(t, session, "issue", map[string]any{
 		"action":  "jql",
 		"backend": "jira",
 		"query":   "project = PROJ AND status = Open",
@@ -523,7 +523,7 @@ func TestEmceeJQL(t *testing.T) {
 
 func TestEmceeJQLMissingQuery(t *testing.T) {
 	session, _ := newTestServer(t)
-	result := callTool(t, session, "emcee", map[string]any{"action": "jql", "backend": "jira"})
+	result := callTool(t, session, "issue", map[string]any{"action": "jql", "backend": "jira"})
 	if !result.IsError {
 		t.Fatal("expected error for missing query")
 	}
@@ -533,7 +533,7 @@ func TestEmceeJQLMissingQuery(t *testing.T) {
 
 func TestEmceeTriage(t *testing.T) {
 	session, svc := newTestServer(t)
-	result := callTool(t, session, "emcee", map[string]any{"action": "triage", "ref": "test:T-1"})
+	result := callTool(t, session, "admin", map[string]any{"action": "triage", "ref": "test:T-1"})
 	if result.IsError {
 		t.Fatalf("error: %s", resultText(t, result))
 	}
@@ -564,7 +564,7 @@ func TestEmceeTriage(t *testing.T) {
 
 func TestEmceeTriageMissingRef(t *testing.T) {
 	session, _ := newTestServer(t)
-	result := callTool(t, session, "emcee", map[string]any{"action": "triage"})
+	result := callTool(t, session, "admin", map[string]any{"action": "triage"})
 	if !result.IsError {
 		t.Fatal("expected error for missing ref")
 	}
@@ -574,7 +574,7 @@ func TestEmceeTriageMissingRef(t *testing.T) {
 
 func TestEmceeTriageConfig(t *testing.T) {
 	session, _ := newTestServer(t)
-	result := callTool(t, session, "emcee", map[string]any{"action": "triage_config"})
+	result := callTool(t, session, "admin", map[string]any{"action": "triage_config"})
 	if result.IsError {
 		t.Fatalf("error: %s", resultText(t, result))
 	}
@@ -592,7 +592,7 @@ func TestEmceeTriageConfig(t *testing.T) {
 
 func TestEmceeTriageConfigSet(t *testing.T) {
 	session, svc := newTestServer(t)
-	result := callTool(t, session, "emcee", map[string]any{
+	result := callTool(t, session, "admin", map[string]any{
 		"action": "triage_config_set",
 		"limit":  float64(20),
 		"issues": `["jira","gitlab"]`,
@@ -651,7 +651,7 @@ func TestManageBackendRemoveMissingName(t *testing.T) {
 
 func TestEmceeListSpyRecording(t *testing.T) {
 	session, svc := newTestServer(t)
-	_ = callTool(t, session, "emcee", map[string]any{"action": "list", "backend": "test", "status": "done", "limit": float64(10)})
+	_ = callTool(t, session, "issue", map[string]any{"action": "list", "backend": "test", "status": "done", "limit": float64(10)})
 	if len(svc.StubIssueService.ListCalls) != 1 {
 		t.Fatalf("ListCalls = %d, want 1", len(svc.StubIssueService.ListCalls))
 	}
@@ -679,17 +679,17 @@ func TestToolsList(t *testing.T) {
 	for _, tool := range tools.Tools {
 		names[tool.Name] = true
 	}
-	for _, want := range []string{"emcee", "emcee_manage", "emcee_health"} {
+	for _, want := range []string{"issue", "view", "launch", "doc", "admin", "emcee_manage", "emcee_health"} {
 		if !names[want] {
 			t.Errorf("missing tool %q in tools/list (got %v)", want, names)
 		}
 	}
-	if len(tools.Tools) != 3 {
-		t.Errorf("got %d tools, want 3", len(tools.Tools))
+	if len(tools.Tools) != 7 {
+		t.Errorf("got %d tools, want 7", len(tools.Tools))
 	}
 	// Verify schemas have required field
 	for _, tool := range tools.Tools {
-		if tool.Name == "emcee" || tool.Name == "emcee_manage" {
+		if tool.Name == "issue" || tool.Name == "view" || tool.Name == "launch" || tool.Name == "doc" || tool.Name == "admin" || tool.Name == "emcee_manage" {
 			schema, _ := json.Marshal(tool.InputSchema)
 			if len(schema) < 10 {
 				t.Errorf("tool %s has empty schema", tool.Name)
@@ -703,7 +703,7 @@ func TestToolsList(t *testing.T) {
 
 func TestEmceeLedgerList(t *testing.T) {
 	session, svc := newTestServer(t)
-	result := callTool(t, session, "emcee", map[string]any{"action": "ledger_list", "backend": "jira"})
+	result := callTool(t, session, "admin", map[string]any{"action": "ledger_list", "backend": "jira"})
 	if result.IsError {
 		t.Fatalf("error: %s", resultText(t, result))
 	}
@@ -725,7 +725,7 @@ func TestEmceeLedgerList(t *testing.T) {
 
 func TestEmceeLedgerGet(t *testing.T) {
 	session, svc := newTestServer(t)
-	result := callTool(t, session, "emcee", map[string]any{"action": "ledger_get", "ref": "jira:BUG-1"})
+	result := callTool(t, session, "admin", map[string]any{"action": "ledger_get", "ref": "jira:BUG-1"})
 	if result.IsError {
 		t.Fatalf("error: %s", resultText(t, result))
 	}
@@ -746,7 +746,7 @@ func TestEmceeLedgerGet(t *testing.T) {
 
 func TestEmceeLedgerGetMissingRef(t *testing.T) {
 	session, _ := newTestServer(t)
-	result := callTool(t, session, "emcee", map[string]any{"action": "ledger_get"})
+	result := callTool(t, session, "admin", map[string]any{"action": "ledger_get"})
 	if !result.IsError {
 		t.Fatal("expected error for missing ref")
 	}
@@ -754,7 +754,7 @@ func TestEmceeLedgerGetMissingRef(t *testing.T) {
 
 func TestEmceeLedgerStats(t *testing.T) {
 	session, svc := newTestServer(t)
-	result := callTool(t, session, "emcee", map[string]any{"action": "ledger_stats"})
+	result := callTool(t, session, "admin", map[string]any{"action": "ledger_stats"})
 	if result.IsError {
 		t.Fatalf("error: %s", resultText(t, result))
 	}
@@ -775,7 +775,7 @@ func TestEmceeLedgerStats(t *testing.T) {
 
 func TestEmceeLedgerSearch(t *testing.T) {
 	session, svc := newTestServer(t)
-	result := callTool(t, session, "emcee", map[string]any{
+	result := callTool(t, session, "admin", map[string]any{
 		"action": "ledger_search",
 		"query":  "Bug",
 		"limit":  float64(10),
@@ -803,7 +803,7 @@ func TestEmceeLedgerSearch(t *testing.T) {
 
 func TestEmceeLedgerSearchMissingQuery(t *testing.T) {
 	session, _ := newTestServer(t)
-	result := callTool(t, session, "emcee", map[string]any{"action": "ledger_search"})
+	result := callTool(t, session, "admin", map[string]any{"action": "ledger_search"})
 	if !result.IsError {
 		t.Fatal("expected error for missing query")
 	}
@@ -811,7 +811,7 @@ func TestEmceeLedgerSearchMissingQuery(t *testing.T) {
 
 func TestEmceeLedgerIngest(t *testing.T) {
 	session, svc := newTestServer(t)
-	result := callTool(t, session, "emcee", map[string]any{
+	result := callTool(t, session, "admin", map[string]any{
 		"action":      "ledger_ingest",
 		"ref":         "jira:NEW-1",
 		"backend":     "jira",
@@ -840,7 +840,7 @@ func TestEmceeLedgerIngest(t *testing.T) {
 
 func TestEmceeLedgerIngestMissingRef(t *testing.T) {
 	session, _ := newTestServer(t)
-	result := callTool(t, session, "emcee", map[string]any{"action": "ledger_ingest", "title": "No ref"})
+	result := callTool(t, session, "admin", map[string]any{"action": "ledger_ingest", "title": "No ref"})
 	if !result.IsError {
 		t.Fatal("expected error for missing ref")
 	}
@@ -848,7 +848,7 @@ func TestEmceeLedgerIngestMissingRef(t *testing.T) {
 
 func TestEmceeLedgerSimilar(t *testing.T) {
 	session, svc := newTestServer(t)
-	result := callTool(t, session, "emcee", map[string]any{
+	result := callTool(t, session, "admin", map[string]any{
 		"action": "ledger_similar",
 		"ref":    "jira:BUG-1",
 		"limit":  float64(5),
@@ -873,7 +873,7 @@ func TestEmceeLedgerSimilar(t *testing.T) {
 
 func TestEmceeLedgerSimilarMissingRef(t *testing.T) {
 	session, _ := newTestServer(t)
-	result := callTool(t, session, "emcee", map[string]any{"action": "ledger_similar"})
+	result := callTool(t, session, "admin", map[string]any{"action": "ledger_similar"})
 	if !result.IsError {
 		t.Fatal("expected error for missing ref")
 	}
@@ -883,7 +883,7 @@ func TestEmceeLedgerSimilarMissingRef(t *testing.T) {
 
 func TestEmceeGetIncludesIssueLinks(t *testing.T) {
 	session, _ := newTestServer(t)
-	result := callTool(t, session, "emcee", map[string]any{"action": "get", "ref": "test:T-1"})
+	result := callTool(t, session, "issue", map[string]any{"action": "get", "ref": "test:T-1"})
 	if result.IsError {
 		t.Fatalf("error: %s", resultText(t, result))
 	}
@@ -901,7 +901,7 @@ func TestEmceeGetIncludesIssueLinks(t *testing.T) {
 
 func TestEmceeGetIncludesExternalLinks(t *testing.T) {
 	session, _ := newTestServer(t)
-	result := callTool(t, session, "emcee", map[string]any{"action": "get", "ref": "test:T-1"})
+	result := callTool(t, session, "issue", map[string]any{"action": "get", "ref": "test:T-1"})
 	if result.IsError {
 		t.Fatalf("error: %s", resultText(t, result))
 	}
@@ -919,8 +919,8 @@ func TestEmceeGetIncludesExternalLinks(t *testing.T) {
 
 func TestEmceeLinkIssue(t *testing.T) {
 	session, svc := newTestServer(t)
-	result := callTool(t, session, "emcee", map[string]any{
-		"action":     "link_issue",
+	result := callTool(t, session, "issue", map[string]any{
+		"action":     "link",
 		"ref":        "test:T-1",
 		"query":      "T-2",
 		"issue_type": "Blocks",
@@ -941,7 +941,7 @@ func TestEmceeLinkIssue(t *testing.T) {
 
 func TestEmceeLaunches(t *testing.T) {
 	session, _ := newTestServer(t)
-	result := callTool(t, session, "emcee", map[string]any{"action": "launches", "backend": "reportportal"})
+	result := callTool(t, session, "launch", map[string]any{"action": "list", "backend": "reportportal"})
 	if result.IsError {
 		t.Fatalf("error: %s", resultText(t, result))
 	}
@@ -956,7 +956,7 @@ func TestEmceeLaunches(t *testing.T) {
 
 func TestEmceeLaunchGet(t *testing.T) {
 	session, _ := newTestServer(t)
-	result := callTool(t, session, "emcee", map[string]any{"action": "launch_get", "backend": "reportportal", "ref": "1"})
+	result := callTool(t, session, "launch", map[string]any{"action": "get", "backend": "reportportal", "ref": "1"})
 	if result.IsError {
 		t.Fatalf("error: %s", resultText(t, result))
 	}
@@ -971,7 +971,7 @@ func TestEmceeLaunchGet(t *testing.T) {
 
 func TestEmceeTestItems(t *testing.T) {
 	session, _ := newTestServer(t)
-	result := callTool(t, session, "emcee", map[string]any{"action": "test_items", "backend": "reportportal", "ref": "1"})
+	result := callTool(t, session, "launch", map[string]any{"action": "items", "backend": "reportportal", "ref": "1"})
 	if result.IsError {
 		t.Fatalf("error: %s", resultText(t, result))
 	}
@@ -986,7 +986,7 @@ func TestEmceeTestItems(t *testing.T) {
 
 func TestEmceeTestItemGet(t *testing.T) {
 	session, _ := newTestServer(t)
-	result := callTool(t, session, "emcee", map[string]any{"action": "test_item_get", "backend": "reportportal", "ref": "10"})
+	result := callTool(t, session, "launch", map[string]any{"action": "item_get", "backend": "reportportal", "ref": "10"})
 	if result.IsError {
 		t.Fatalf("error: %s", resultText(t, result))
 	}
@@ -1001,7 +1001,7 @@ func TestEmceeTestItemGet(t *testing.T) {
 
 func TestEmceeBulkTestItemGet(t *testing.T) {
 	session, svc := newTestServer(t)
-	result := callTool(t, session, "emcee", map[string]any{"action": "bulk_test_item_get", "backend": "reportportal", "issues": `["10","11"]`})
+	result := callTool(t, session, "launch", map[string]any{"action": "bulk_item_get", "backend": "reportportal", "issues": `["10","11"]`})
 	if result.IsError {
 		t.Fatalf("error: %s", resultText(t, result))
 	}
@@ -1019,7 +1019,7 @@ func TestEmceeBulkTestItemGet(t *testing.T) {
 
 func TestEmceeTestItemsNoDuplicates(t *testing.T) {
 	session, _ := newTestServer(t)
-	result := callTool(t, session, "emcee", map[string]any{"action": "test_items", "backend": "reportportal", "ref": "1"})
+	result := callTool(t, session, "launch", map[string]any{"action": "items", "backend": "reportportal", "ref": "1"})
 	if result.IsError {
 		t.Fatalf("error: %s", resultText(t, result))
 	}
@@ -1039,7 +1039,7 @@ func TestEmceeTestItemsNoDuplicates(t *testing.T) {
 func TestEmceeDefectUpdate(t *testing.T) {
 	session, svc := newTestServer(t)
 	updates := `[{"test_item_id":"10","issue_type":"pb001","comment":"product bug"}]`
-	result := callTool(t, session, "emcee", map[string]any{"action": "defect_update", "backend": "reportportal", "issues": updates})
+	result := callTool(t, session, "launch", map[string]any{"action": "defect_update", "backend": "reportportal", "issues": updates})
 	if result.IsError {
 		t.Fatalf("error: %s", resultText(t, result))
 	}
@@ -1052,7 +1052,7 @@ func TestEmceeDefectUpdate(t *testing.T) {
 
 func TestEmceePRReviews(t *testing.T) {
 	session, _ := newTestServer(t)
-	result := callTool(t, session, "emcee", map[string]any{"action": "pr_reviews", "backend": "github", "ref": "42"})
+	result := callTool(t, session, "issue", map[string]any{"action": "pr_reviews", "backend": "github", "ref": "42"})
 	if result.IsError {
 		t.Fatalf("error: %s", resultText(t, result))
 	}
@@ -1067,7 +1067,7 @@ func TestEmceePRReviews(t *testing.T) {
 
 func TestEmceePRComments(t *testing.T) {
 	session, _ := newTestServer(t)
-	result := callTool(t, session, "emcee", map[string]any{"action": "pr_comments", "backend": "github", "ref": "42"})
+	result := callTool(t, session, "issue", map[string]any{"action": "pr_comments", "backend": "github", "ref": "42"})
 	if result.IsError {
 		t.Fatalf("error: %s", resultText(t, result))
 	}
@@ -1084,7 +1084,7 @@ func TestEmceePRComments(t *testing.T) {
 
 func TestEmceeViewPull(t *testing.T) {
 	session, _ := newTestServer(t)
-	result := callTool(t, session, "emcee", map[string]any{"action": "view_pull", "ref": "test:T-1"})
+	result := callTool(t, session, "view", map[string]any{"action": "pull", "ref": "test:T-1"})
 	if result.IsError {
 		t.Fatalf("error: %s", resultText(t, result))
 	}
@@ -1102,9 +1102,9 @@ func TestEmceeViewPull(t *testing.T) {
 
 func TestEmceeViewGet(t *testing.T) {
 	session, _ := newTestServer(t)
-	callTool(t, session, "emcee", map[string]any{"action": "view_pull", "ref": "test:T-1"})
+	callTool(t, session, "view", map[string]any{"action": "pull", "ref": "test:T-1"})
 
-	result := callTool(t, session, "emcee", map[string]any{"action": "view_get", "ref": "test:T-1"})
+	result := callTool(t, session, "view", map[string]any{"action": "get", "ref": "test:T-1"})
 	if result.IsError {
 		t.Fatalf("error: %s", resultText(t, result))
 	}
@@ -1119,10 +1119,10 @@ func TestEmceeViewGet(t *testing.T) {
 
 func TestEmceeViewMutate(t *testing.T) {
 	session, _ := newTestServer(t)
-	callTool(t, session, "emcee", map[string]any{"action": "view_pull", "ref": "test:T-1"})
+	callTool(t, session, "view", map[string]any{"action": "pull", "ref": "test:T-1"})
 
-	result := callTool(t, session, "emcee", map[string]any{
-		"action": "view_mutate", "ref": "test:T-1",
+	result := callTool(t, session, "view", map[string]any{
+		"action": "mutate", "ref": "test:T-1",
 		"query": "status", "body": "done",
 	})
 	if result.IsError {
@@ -1139,13 +1139,13 @@ func TestEmceeViewMutate(t *testing.T) {
 
 func TestEmceeViewDiff(t *testing.T) {
 	session, _ := newTestServer(t)
-	callTool(t, session, "emcee", map[string]any{"action": "view_pull", "ref": "test:T-1"})
-	callTool(t, session, "emcee", map[string]any{
-		"action": "view_mutate", "ref": "test:T-1",
+	callTool(t, session, "view", map[string]any{"action": "pull", "ref": "test:T-1"})
+	callTool(t, session, "view", map[string]any{
+		"action": "mutate", "ref": "test:T-1",
 		"query": "status", "body": "done",
 	})
 
-	result := callTool(t, session, "emcee", map[string]any{"action": "view_diff", "ref": "test:T-1"})
+	result := callTool(t, session, "view", map[string]any{"action": "diff", "ref": "test:T-1"})
 	if result.IsError {
 		t.Fatalf("error: %s", resultText(t, result))
 	}
@@ -1160,13 +1160,13 @@ func TestEmceeViewDiff(t *testing.T) {
 
 func TestEmceeViewPush(t *testing.T) {
 	session, _ := newTestServer(t)
-	callTool(t, session, "emcee", map[string]any{"action": "view_pull", "ref": "test:T-1"})
-	callTool(t, session, "emcee", map[string]any{
-		"action": "view_mutate", "ref": "test:T-1",
+	callTool(t, session, "view", map[string]any{"action": "pull", "ref": "test:T-1"})
+	callTool(t, session, "view", map[string]any{
+		"action": "mutate", "ref": "test:T-1",
 		"query": "status", "body": "done",
 	})
 
-	result := callTool(t, session, "emcee", map[string]any{"action": "view_push", "ref": "test:T-1"})
+	result := callTool(t, session, "view", map[string]any{"action": "push", "ref": "test:T-1"})
 	if result.IsError {
 		t.Fatalf("error: %s", resultText(t, result))
 	}
@@ -1178,9 +1178,9 @@ func TestEmceeViewPush(t *testing.T) {
 
 func TestEmceeViewList(t *testing.T) {
 	session, _ := newTestServer(t)
-	callTool(t, session, "emcee", map[string]any{"action": "view_pull", "ref": "test:T-1"})
+	callTool(t, session, "view", map[string]any{"action": "pull", "ref": "test:T-1"})
 
-	result := callTool(t, session, "emcee", map[string]any{"action": "view_list"})
+	result := callTool(t, session, "view", map[string]any{"action": "list"})
 	if result.IsError {
 		t.Fatalf("error: %s", resultText(t, result))
 	}
@@ -1195,13 +1195,13 @@ func TestEmceeViewList(t *testing.T) {
 
 func TestEmceeViewDirty(t *testing.T) {
 	session, _ := newTestServer(t)
-	callTool(t, session, "emcee", map[string]any{"action": "view_pull", "ref": "test:T-1"})
-	callTool(t, session, "emcee", map[string]any{
-		"action": "view_mutate", "ref": "test:T-1",
+	callTool(t, session, "view", map[string]any{"action": "pull", "ref": "test:T-1"})
+	callTool(t, session, "view", map[string]any{
+		"action": "mutate", "ref": "test:T-1",
 		"query": "status", "body": "done",
 	})
 
-	result := callTool(t, session, "emcee", map[string]any{"action": "view_dirty"})
+	result := callTool(t, session, "view", map[string]any{"action": "dirty"})
 	if result.IsError {
 		t.Fatalf("error: %s", resultText(t, result))
 	}
@@ -1216,14 +1216,14 @@ func TestEmceeViewDirty(t *testing.T) {
 
 func TestEmceeViewDrop(t *testing.T) {
 	session, _ := newTestServer(t)
-	callTool(t, session, "emcee", map[string]any{"action": "view_pull", "ref": "test:T-1"})
+	callTool(t, session, "view", map[string]any{"action": "pull", "ref": "test:T-1"})
 
-	result := callTool(t, session, "emcee", map[string]any{"action": "view_drop", "ref": "test:T-1"})
+	result := callTool(t, session, "view", map[string]any{"action": "drop", "ref": "test:T-1"})
 	if result.IsError {
 		t.Fatalf("error: %s", resultText(t, result))
 	}
 
-	getResult := callTool(t, session, "emcee", map[string]any{"action": "view_get", "ref": "test:T-1"})
+	getResult := callTool(t, session, "view", map[string]any{"action": "get", "ref": "test:T-1"})
 	if !getResult.IsError {
 		t.Error("expected error after drop")
 	}
@@ -1231,14 +1231,14 @@ func TestEmceeViewDrop(t *testing.T) {
 
 func TestEmceeViewReset(t *testing.T) {
 	session, _ := newTestServer(t)
-	callTool(t, session, "emcee", map[string]any{"action": "view_pull", "ref": "test:T-1"})
+	callTool(t, session, "view", map[string]any{"action": "pull", "ref": "test:T-1"})
 
-	result := callTool(t, session, "emcee", map[string]any{"action": "view_reset"})
+	result := callTool(t, session, "view", map[string]any{"action": "reset"})
 	if result.IsError {
 		t.Fatalf("error: %s", resultText(t, result))
 	}
 
-	listResult := callTool(t, session, "emcee", map[string]any{"action": "view_list"})
+	listResult := callTool(t, session, "view", map[string]any{"action": "list"})
 	var records []domain.ViewRecord
 	if err := json.Unmarshal([]byte(resultText(t, listResult)), &records); err != nil {
 		t.Fatalf("unmarshal: %v", err)

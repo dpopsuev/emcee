@@ -70,115 +70,11 @@ type EmceeService interface {
 	service.ViewService
 }
 
-const serverInstructions = `Emcee — All Ceremonies in one place. Unified issue tracker across Linear, GitHub, GitLab, Jira, and Report Portal. Ref format: "backend:key" (e.g. "jira:PROJ-42"). Backend is required for list/create/search actions.
-
-## emcee tool — actions and required params:
-
-Issues:
-  list        — backend, [status, assignee, limit]
-  get         — ref → returns issue with comments inline
-  create      — backend, title, [description, status, priority, assignee, parent_id, project_id, issue_type, versions, fix_versions, components]
-  update      — ref, [title, description, status, priority, assignee, components, fix_versions, resolution]
-  search      — backend, query, [limit]
-  children    — ref
-
-Bulk:
-  bulk_create — backend, issues (JSON array of create inputs)
-  bulk_update — backend, issues (JSON array of {ref, title?, status?, priority?})
-
-Comments:
-  comments    — ref → list comments on an issue
-  comment_add — ref, body → add comment without overwriting description
-
-Staging (pre-submission cache, all backends):
-  stage       — backend, title, [all create fields] → returns stage_id
-  stage_list  — (no params) → list all staged items
-  stage_show  — stage_id → preview staged payload
-  stage_patch — stage_id, [title, description, status, priority, assignee]
-  stage_drop  — stage_id → discard staged item
-  push        — stage_id → submit to backend, re-stages on failure
-  push_all    — (no params) → push all staged items to their backends
-
-Report Portal:
-  launches    — backend=reportportal, [query (name filter), status, limit]
-  launch_get  — backend=reportportal, ref (launch ID)
-  test_items  — backend=reportportal, ref (launch ID), [status, limit]
-  test_item_get — backend=reportportal, ref (item ID)
-  bulk_test_item_get — backend=reportportal, issues (JSON array of test item ID strings)
-  defect_update — backend=reportportal, issues (JSON array of {test_item_id, issue_type, comment?})
-  dashboards    — backend=reportportal → list dashboards
-  dashboard_get — backend=reportportal, ref (dashboard ID) → get dashboard details
-  dashboard_create — backend=reportportal, title (name), [description] → create dashboard
-  widget_add    — backend=reportportal, ref (dashboard ID), title (widget name), issue_type (widget type), [limit (width), query (height)]
-
-Triage (Defect Lifecycle):
-  triage       — ref (seed artifact, e.g. jira:OCPBUGS-123), [limit (max depth, default 3)] → cross-backend correlation graph
-  triage_config — (no params) → current crawl settings (rate_limit, allow_list)
-  triage_config_set — [limit (rate limit req/s), issues (JSON array of allowed backend names)] → update crawl settings
-
-Issue Links:
-  link_issue  — backend=jira, ref (inward key, e.g. jira:PROJ-1), target_ref (outward key, e.g. jira:PROJ-2 or PROJ-2), issue_type (link type: Blocks, Relates, Clones)
-
-Pull Requests / Merge Requests:
-  prs         — backend, [author, status, merged_after (YYYY-MM-DD), merged_before (YYYY-MM-DD), repo (override: owner/repo or namespace/project), limit]
-  pr_reviews  — backend=github, ref (PR number) → list reviews (APPROVED, CHANGES_REQUESTED, etc.)
-  pr_comments — backend=github, ref (PR number) → list review comments on diff lines
-
-Ledger (cross-backend artifact index, populated from get/list/search):
-  ledger_list    — [backend, status, components (via components param), limit] → list seen artifacts
-  ledger_get     — ref → get a single artifact record
-  ledger_search  — query (full-text search across all fields), [limit] → ranked results
-  ledger_similar — ref (seed artifact), [limit] → find similar artifacts by content overlap
-  ledger_ingest  — ref, backend, title, [description, status, components] → actively deposit an artifact
-  ledger_stats   — (no params) → totals and by-backend counts
-
-Doc Operations:
-  doc_parse       — query (markdown content) → parse into section tree with links + code blocks
-  doc_links       — query (markdown content) → check dead links, extract link graph edges
-  doc_diff        — query (old markdown), body (new markdown) → structural diff between versions
-  doc_audit       — query (markdown content) → duplicate code blocks, section weights, bloat analysis
-  doc_terms       — query (markdown content), body (comma-separated terms) → term usage + inconsistencies
-  doc_validate    — query (markdown content), body (comma-separated required section titles) → template validation
-  doc_declarations — query (markdown content) → extract Go type/func/const declarations from code blocks
-  doc_sync_gist   — backend=github, title (filename), query (content), [ref (gist ID for update)] → create or update a GitHub Gist
-  doc_sync_jira   — ref (jira:KEY), query (markdown content) → update Jira issue description
-
-Local View (Identity Map + Unit of Work — pull issues, mutate locally, push changes):
-  view_pull   — ref → fetch from backend into local view (or refresh)
-  view_get    — ref → read local copy (no API call)
-  view_mutate — ref, field, value → mutate a local field in the view
-  view_diff   — ref → show local changes vs pulled state
-  view_push   — ref → flush dirty fields to backend (only changed fields)
-  view_push_all — (no params) → flush all dirty records to their backends
-  view_list   — (no params) → all records in the local view
-  view_dirty  — (no params) → all pending change sets
-  view_drop   — ref → remove from local view
-  view_reset  — (no params) → clear entire local view
-
-Discovery:
-  changelog       — ref, [limit] → field-level audit history (author, timestamp, from/to per field)
-  fields          — backend → list all available fields (Jira: all custom field IDs + names)
-  fields_discover — backend → discover semantic field mappings, write manifest to ~/.config/emcee/fields/<backend>.yaml
-  jql         — backend=jira, query (raw JQL string), [limit]
-
-## emcee_manage tool — supporting entities:
-  doc_list, doc_create, project_list, project_create, project_update,
-  initiative_list, initiative_create, label_list, label_create
-  All take: action, backend, + entity-specific params.
-
-## Enums:
-  status: backlog, todo, in_progress, in_review, done, canceled
-  priority: urgent, high, medium, low
-  backends: linear, github, gitlab, jira
-  backend names can be instance names (e.g. jenkins-ci, jira-prod) when configured via config.yaml with type: field
-  backend is required — no default
-
-## Notes:
-  - create auto-stages on failure — error includes stage_id for retry
-  - get returns comments inline (no separate call needed)
-  - responses are cached with TTL; repeated reads are fast
-  - versions, fix_versions, components are comma-separated strings (Jira)
-  - issue_type defaults to "Task" on Jira if not specified`
+const serverInstructions = "Emcee — issue tracking, test analytics, and knowledge management. " +
+	"5 tools: issue (CRUD), view (local cache), launch (Report Portal), doc (documents), admin (meta/triage/ledger). " +
+	"Start with admin(action=help). Ref format: backend:key (e.g. jira:PROJ-42). " +
+	"Typical: issue(list) → view(pull) → view(mutate) → view(push). " +
+	"For RP: launch(pull, ref=37337) → launch(items, status=FAILED) → launch(defect_update)."
 
 // Serve starts the MCP server over stdio, exposing issue management tools.
 func Serve(svc EmceeService) error {
@@ -225,71 +121,148 @@ func ServeHTTP(addr string, svc EmceeService) error {
 
 // RegisterTools registers all emcee MCP tools on the given server.
 func RegisterTools(srv *mcpserver.Server, svc EmceeService) {
-	srv.ToolWithSchema(
-		server.ToolMeta{
-			Name:        "emcee",
-			Description: "Issue management across all backends. Actions: list, get, create, update, search, children, bulk_create, bulk_update, comments, comment_add, stage, stage_list, stage_show, stage_patch, stage_drop, push, push_all, launches, launch_get, test_items, search_test_items, test_item_get, bulk_test_item_get, defect_update, link_issue, dashboards, dashboard_get, dashboard_create, widget_add, doc_parse, doc_links, doc_diff, doc_audit, doc_terms, doc_validate, doc_declarations, doc_sync_gist, doc_sync_jira, pr_reviews, pr_comments, fields, jql, prs, ledger_list, ledger_get, ledger_search, ledger_similar, ledger_ingest, ledger_stats, view_pull, view_get, view_mutate, view_diff, view_push, view_push_all, view_list, view_dirty, view_drop, view_reset.",
-			Keywords:    []string{"issue", "ticket", "bug", "task", "comment", "stage", "push", "linear", "github", "jira", "gitlab"},
-			Categories:  []string{"issue-management"},
-		},
-		emceeSchema,
-		emceeHandler(svc),
-	)
-	srv.ToolWithSchema(
-		server.ToolMeta{
-			Name:        "emcee_manage",
-			Description: "Supporting entities and backend management. Actions: doc_list, doc_create, project_list, project_create, project_update, initiative_list, initiative_create, label_list, label_create, config_reload, backend_remove. All take action + backend + entity-specific params.",
-			Keywords:    []string{"document", "project", "initiative", "label", "epic"},
-			Categories:  []string{"issue-management", "project-management"},
-		},
-		manageSchema,
-		manageHandler(svc),
-	)
-	srv.Tool(
-		server.ToolMeta{
-			Name:        "emcee_health",
-			Description: "Check emcee backend health and configuration status",
-			Keywords:    []string{"health", "status", "diagnostics"},
-			Categories:  []string{"operations"},
-		},
-		healthHandler(svc),
-	)
+	srv.ToolWithSchema(server.ToolMeta{
+		Name:        "issue",
+		Description: "Issue CRUD across all backends. list | get | create | update | search | children | bulk_create | bulk_update | comments | comment_add | link | unlink | link_types | stage | stage_list | stage_show | stage_patch | stage_drop | push | push_all | fields | jql | prs | pr_reviews | pr_comments | changelog",
+		Keywords:    []string{"issue", "ticket", "bug", "task", "jira", "linear", "github", "gitlab", "comment", "stage", "push", "jql", "pr"},
+		Categories:  []string{"issue-management"},
+	}, issueSchema, issueHandler(svc))
+
+	srv.ToolWithSchema(server.ToolMeta{
+		Name:        "view",
+		Description: "Local materialized view (Identity Map + Unit of Work). pull | get | mutate | diff | push | push_all | list | dirty | drop | reset. Works for issue refs (jira:KEY) and launch refs (reportportal:ID).",
+		Keywords:    []string{"view", "pull", "local", "cache", "mutate", "diff", "push"},
+		Categories:  []string{"issue-management"},
+	}, viewSchema, viewHandler(svc))
+
+	srv.ToolWithSchema(server.ToolMeta{
+		Name:        "launch",
+		Description: "Report Portal launches, test items, defects, dashboards. pull | list | get | items | search_items | item_get | bulk_item_get | defect_update | dashboards | dashboard_get | dashboard_create | widget_add",
+		Keywords:    []string{"launch", "test", "reportportal", "defect", "ci", "dashboard"},
+		Categories:  []string{"test-analytics"},
+	}, launchSchema, launchHandler(svc))
+
+	srv.ToolWithSchema(server.ToolMeta{
+		Name:        "doc",
+		Description: "Document operations. parse | links | diff | audit | terms | validate | declarations | sync_gist | sync_jira",
+		Keywords:    []string{"doc", "markdown", "parse", "gist", "sync", "validate"},
+		Categories:  []string{"knowledge"},
+	}, docSchema, docHandler(svc))
+
+	srv.ToolWithSchema(server.ToolMeta{
+		Name:        "admin",
+		Description: "Meta: help | triage | triage_config | triage_config_set | changelog | fields_discover | ledger_list | ledger_get | ledger_search | ledger_similar | ledger_ingest | ledger_stats. Start here.",
+		Keywords:    []string{"help", "triage", "ledger", "discover", "admin"},
+		Categories:  []string{"operations"},
+	}, adminSchema, adminHandler(svc))
+
+	srv.ToolWithSchema(server.ToolMeta{
+		Name:        "emcee_manage",
+		Description: "Supporting entities: doc_list, doc_create, project_list, project_create, project_update, initiative_list, initiative_create, label_list, label_create, config_reload, backend_remove.",
+		Keywords:    []string{"document", "project", "initiative", "label"},
+		Categories:  []string{"project-management"},
+	}, manageSchema, manageHandler(svc))
+
+	srv.Tool(server.ToolMeta{
+		Name:        "emcee_health",
+		Description: "Check emcee backend health and configuration status",
+		Keywords:    []string{"health", "status"},
+		Categories:  []string{"operations"},
+	}, healthHandler(svc))
 }
 
 // --- Schemas ---
 
-var emceeSchema = json.RawMessage(`{
+var issueSchema = json.RawMessage(`{
 	"type": "object",
 	"properties": {
-		"action":      {"type": "string", "enum": ["list","get","create","update","search","children","bulk_create","bulk_update","comments","comment_add","stage","stage_list","stage_show","stage_patch","stage_drop","push","push_all","link_issue","unlink_issue","list_link_types","launches","launch_get","test_items","search_test_items","test_item_get","bulk_test_item_get","defect_update","dashboards","dashboard_get","dashboard_create","widget_add","doc_parse","doc_links","doc_diff","doc_audit","doc_terms","doc_validate","doc_declarations","doc_sync_gist","doc_sync_jira","pr_reviews","pr_comments","triage","triage_config","triage_config_set","changelog","fields","fields_discover","jql","prs","ledger_list","ledger_get","ledger_search","ledger_similar","ledger_ingest","ledger_stats","view_pull","view_get","view_mutate","view_diff","view_push","view_push_all","view_list","view_dirty","view_drop","view_reset"], "description": "Action to perform"},
-		"backend":     {"type": "string", "description": "Backend name (required for list/create/search)"},
-		"ref":         {"type": "string", "description": "Issue ref for get/update/children (e.g. linear:PROJ-42)"},
-		"title":       {"type": "string", "description": "Issue title (create)"},
-		"description": {"type": "string", "description": "Issue description (create/update)"},
-		"status":      {"type": "string", "description": "Status: backlog, todo, in_progress, in_review, done, canceled"},
-		"priority":    {"type": "string", "description": "Priority: urgent, high, medium, low"},
-		"assignee":    {"type": "string", "description": "Assignee name (create/list filter)"},
-		"parent_id":   {"type": "string", "description": "Parent issue ID for sub-issues (create)"},
-		"project_id":  {"type": "string", "description": "Project ID (create)"},
-		"query":       {"type": "string", "description": "Search query text (search)"},
-		"field":       {"type": "string", "description": "Field name to mutate (view_mutate)"},
-		"value":       {"type": "string", "description": "New field value (view_mutate)"},
-		"target_ref":  {"type": "string", "description": "Target issue ref for link_issue (e.g. PROJ-2 or jira:PROJ-2)"},
-		"limit":       {"type": "number", "description": "Max results (list/search)"},
-		"issues":      {"type": "string", "description": "JSON array for bulk_create/bulk_update"},
-		"body":        {"type": "string", "description": "Comment body text (comment_add)"},
-		"stage_id":    {"type": "string", "description": "Stage ID for stage_show/stage_patch/stage_drop/push"},
-		"issue_type":  {"type": "string", "description": "Issue type (create): Bug, Task, Story, Spike, etc. (Jira)"},
-		"versions":    {"type": "string", "description": "Comma-separated affected versions (create, Jira): e.g. 4.16,4.17"},
-		"fix_versions":{"type": "string", "description": "Comma-separated fix versions (create, Jira): e.g. 4.16.60"},
-		"components":  {"type": "string", "description": "Comma-separated components (create, Jira)"},
-		"author":      {"type": "string", "description": "Author username (prs filter)"},
-		"merged_after": {"type": "string", "description": "Date filter for PRs (YYYY-MM-DD)"},
-		"merged_before":{"type": "string", "description": "Date filter for PRs (YYYY-MM-DD)"},
-		"repo":         {"type": "string", "description": "Repository override for PRs (e.g. owner/repo for GitHub, namespace/project for GitLab)"},
-		"resolution":   {"type": "string", "description": "Resolution when closing (Jira): Done, Won't Fix, Duplicate, Cannot Reproduce, etc."},
-		"page":         {"type": "number", "description": "0-based page number for pagination (launches, test_items, search_test_items)"},
-		"include_logs": {"type": "boolean", "description": "Fetch failure_message for FAILED test items (test_items, search_test_items). Adds one request per failed item."}
+		"action":       {"type": "string", "enum": ["list","get","create","update","search","children","bulk_create","bulk_update","comments","comment_add","link","unlink","link_types","stage","stage_list","stage_show","stage_patch","stage_drop","push","push_all","fields","jql","prs","pr_reviews","pr_comments","changelog"], "description": "Action to perform"},
+		"backend":      {"type": "string", "description": "Backend name (list/create/search/jql/prs/fields)"},
+		"ref":          {"type": "string", "description": "Issue ref e.g. jira:PROJ-42"},
+		"title":        {"type": "string", "description": "Issue title (create/stage)"},
+		"description":  {"type": "string", "description": "Issue description"},
+		"status":       {"type": "string", "description": "backlog | todo | in_progress | in_review | done | canceled"},
+		"priority":     {"type": "string", "description": "urgent | high | medium | low"},
+		"assignee":     {"type": "string", "description": "Assignee name"},
+		"parent_id":    {"type": "string", "description": "Parent issue ID (create)"},
+		"project_id":   {"type": "string", "description": "Project ID (create)"},
+		"issue_type":   {"type": "string", "description": "Issue type (Jira: Bug/Task/Story) or link type (link: Blocks/Relates)"},
+		"target_ref":   {"type": "string", "description": "Target ref for link (e.g. jira:PROJ-2)"},
+		"query":        {"type": "string", "description": "Search query or raw JQL string"},
+		"limit":        {"type": "number", "description": "Max results"},
+		"issues":       {"type": "string", "description": "JSON array for bulk_create / bulk_update"},
+		"body":         {"type": "string", "description": "Comment body (comment_add)"},
+		"stage_id":     {"type": "string", "description": "Stage ID (stage_show/patch/drop/push)"},
+		"versions":     {"type": "string", "description": "Affected versions, comma-separated (Jira)"},
+		"fix_versions": {"type": "string", "description": "Fix versions, comma-separated (Jira)"},
+		"components":   {"type": "string", "description": "Components, comma-separated (Jira)"},
+		"resolution":   {"type": "string", "description": "Resolution on close (Jira): Done, Won't Fix, Duplicate, Cannot Reproduce"},
+		"author":       {"type": "string", "description": "Author filter (prs)"},
+		"merged_after": {"type": "string", "description": "Date lower bound for prs (YYYY-MM-DD)"},
+		"merged_before":{"type": "string", "description": "Date upper bound for prs (YYYY-MM-DD)"},
+		"repo":         {"type": "string", "description": "Repo override for prs (owner/repo or namespace/project)"}
+	},
+	"required": ["action"]
+}`)
+
+var viewSchema = json.RawMessage(`{
+	"type": "object",
+	"properties": {
+		"action": {"type": "string", "enum": ["pull","get","mutate","diff","push","push_all","list","dirty","drop","reset"], "description": "Action to perform"},
+		"ref":    {"type": "string", "description": "Issue ref (jira:KEY) or launch ref (reportportal:ID)"},
+		"field":  {"type": "string", "description": "Field name to mutate (mutate)"},
+		"value":  {"type": "string", "description": "New field value (mutate)"},
+		"body":   {"type": "string", "description": "Alias for value (mutate)"}
+	},
+	"required": ["action"]
+}`)
+
+var launchSchema = json.RawMessage(`{
+	"type": "object",
+	"properties": {
+		"action":       {"type": "string", "enum": ["pull","list","get","items","search_items","item_get","bulk_item_get","defect_update","dashboards","dashboard_get","dashboard_create","widget_add"], "description": "Action. pull caches launch+items locally; subsequent items calls are cache-first."},
+		"backend":      {"type": "string", "description": "Backend name (reportportal)"},
+		"ref":          {"type": "string", "description": "Launch ID (pull/list/get/items) or item ID (item_get) or dashboard ID"},
+		"query":        {"type": "string", "description": "Name filter (list) or dashboard description (dashboard_create)"},
+		"status":       {"type": "string", "description": "FAILED | PASSED | SKIPPED (items/search_items)"},
+		"limit":        {"type": "number", "description": "Max results or widget width"},
+		"page":         {"type": "number", "description": "0-based page number"},
+		"include_logs": {"type": "boolean", "description": "Fetch failure_message for FAILED items"},
+		"issues":       {"type": "string", "description": "JSON array: defect_update=[{test_item_id,issue_type,comment?}] or bulk_item_get=[id,...]"},
+		"title":        {"type": "string", "description": "Dashboard name or widget name"},
+		"description":  {"type": "string", "description": "Dashboard description"},
+		"issue_type":   {"type": "string", "description": "Widget type (widget_add)"}
+	},
+	"required": ["action"]
+}`)
+
+var docSchema = json.RawMessage(`{
+	"type": "object",
+	"properties": {
+		"action":   {"type": "string", "enum": ["parse","links","diff","audit","terms","validate","declarations","sync_gist","sync_jira"], "description": "Action to perform"},
+		"query":    {"type": "string", "description": "Markdown content (parse/links/diff/audit/terms/validate/declarations/sync_gist/sync_jira)"},
+		"body":     {"type": "string", "description": "New markdown for diff; comma-separated terms for terms; required section titles for validate"},
+		"ref":      {"type": "string", "description": "Gist ID for sync_gist update; Jira ref for sync_jira (e.g. jira:KEY)"},
+		"title":    {"type": "string", "description": "Gist filename (sync_gist)"},
+		"backend":  {"type": "string", "description": "Backend name (sync_gist=github, sync_jira=jira)"}
+	},
+	"required": ["action"]
+}`)
+
+var adminSchema = json.RawMessage(`{
+	"type": "object",
+	"properties": {
+		"action":      {"type": "string", "enum": ["help","triage","triage_config","triage_config_set","changelog","fields_discover","ledger_list","ledger_get","ledger_search","ledger_similar","ledger_ingest","ledger_stats"], "description": "Action. Start with help."},
+		"ref":         {"type": "string", "description": "Seed ref (triage/ledger_get/ledger_similar/ledger_ingest/changelog)"},
+		"backend":     {"type": "string", "description": "Backend name (fields_discover/ledger_list/ledger_ingest)"},
+		"query":       {"type": "string", "description": "Search query (ledger_search)"},
+		"limit":       {"type": "number", "description": "Max results or triage depth (default 3)"},
+		"issues":      {"type": "string", "description": "JSON allow-list of backend names (triage_config_set)"},
+		"title":       {"type": "string", "description": "Artifact title (ledger_ingest)"},
+		"description": {"type": "string", "description": "Artifact text (ledger_ingest)"},
+		"status":      {"type": "string", "description": "Status filter (ledger_list/ledger_ingest)"},
+		"issue_type":  {"type": "string", "description": "Type filter (ledger_list/ledger_ingest)"},
+		"components":  {"type": "string", "description": "Components, comma-separated (ledger_list/ledger_ingest)"}
 	},
 	"required": ["action"]
 }`)
@@ -346,7 +319,8 @@ type emceeArgs struct {
 }
 
 //nolint:gocyclo,funlen // dispatcher with many action cases
-func emceeHandler(svc EmceeService) server.Handler {
+//nolint:gocyclo,funlen // action dispatcher
+func issueHandler(svc EmceeService) server.Handler {
 	return func(ctx context.Context, input json.RawMessage) (string, error) {
 		var args emceeArgs
 		if err := json.Unmarshal(input, &args); err != nil {
@@ -633,7 +607,7 @@ func emceeHandler(svc EmceeService) server.Handler {
 
 		// --- Issue links ---
 
-		case "link_issue":
+		case "link":
 			if args.Ref == "" {
 				return "", errRefRequired
 			}
@@ -663,7 +637,7 @@ func emceeHandler(svc EmceeService) server.Handler {
 			}
 			return server.JSONResult(map[string]any{"linked": true, "type": input.Type, "inward": inwardKey, "outward": outwardKey})
 
-		case "unlink_issue":
+		case "unlink":
 			if args.Ref == "" {
 				return "", errRefRequired
 			}
@@ -683,7 +657,7 @@ func emceeHandler(svc EmceeService) server.Handler {
 			}
 			return server.JSONResult(map[string]any{"unlinked": true, "inward": inwardKey, "outward": outwardKey})
 
-		case "list_link_types":
+		case "link_types":
 			if args.Backend == "" {
 				return "", errBackendRequired
 			}
@@ -695,7 +669,244 @@ func emceeHandler(svc EmceeService) server.Handler {
 
 		// --- Report Portal ---
 
-		case "launches":
+		case "pr_reviews":
+			if args.Ref == "" {
+				return "", errRefRequired
+			}
+			prNum, err := strconv.Atoi(args.Ref)
+			if err != nil {
+				return "", fmt.Errorf("invalid PR number %q: %w", args.Ref, err)
+			}
+			reviews, err := svc.ListPRReviews(ctx, args.Backend, prNum)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(reviews)
+
+		case "pr_comments":
+			if args.Ref == "" {
+				return "", errRefRequired
+			}
+			prNum, err := strconv.Atoi(args.Ref)
+			if err != nil {
+				return "", fmt.Errorf("invalid PR number %q: %w", args.Ref, err)
+			}
+			comments, err := svc.ListPRComments(ctx, args.Backend, prNum)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(comments)
+
+		// --- Doc sync ---
+
+		case "changelog":
+			if args.Ref == "" {
+				return "", errRefRequired
+			}
+			entries, err := svc.ListChangelog(ctx, args.Ref, int(args.Limit))
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(entries)
+
+		case "fields":
+			fields, err := svc.ListFields(ctx, args.Backend)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(fields)
+
+		case "fields_discover":
+			if args.Backend == "" {
+				return "", errBackendRequired
+			}
+			mappings, err := svc.DiscoverFields(ctx, args.Backend, config.Dir())
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(map[string]any{
+				"backend":  args.Backend,
+				"manifest": config.DefaultPath(args.Backend),
+				"mappings": mappings,
+			})
+
+		case "jql":
+			if args.Query == "" {
+				return "", errQueryRequired
+			}
+			jqlLimit := int(args.Limit)
+			if jqlLimit == 0 {
+				jqlLimit = defaultListMax
+			}
+			issues, err := svc.SearchJQL(ctx, args.Backend, args.Query, jqlLimit)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(issues)
+
+		case "prs":
+			filter := domain.PRFilter{
+				Author:       args.Author,
+				State:        args.Status,
+				MergedAfter:  args.MergedAfter,
+				MergedBefore: args.MergedBefore,
+				Repo:         args.Repo,
+				Limit:        int(args.Limit),
+			}
+			prs, err := svc.ListPRs(ctx, args.Backend, filter)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(prs)
+
+		// --- Ledger actions ---
+
+		default:
+			return "", fmt.Errorf("%w %q", errUnknownAction, args.Action)
+		}
+	}
+}
+
+//nolint:gocyclo,funlen // action dispatcher
+func viewHandler(svc EmceeService) server.Handler {
+	return func(ctx context.Context, input json.RawMessage) (string, error) {
+		var args emceeArgs
+		if err := json.Unmarshal(input, &args); err != nil {
+			return "", fmt.Errorf("invalid arguments: %w", err)
+		}
+		_ = int(args.Limit) // limit unused in this handler
+
+		switch args.Action {
+		case "pull":
+			if args.Ref == "" {
+				return "", errRefRequired
+			}
+			vr, err := svc.ViewPull(ctx, args.Ref)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(vr)
+
+		case "get":
+			if args.Ref == "" {
+				return "", errRefRequired
+			}
+			vr, err := svc.ViewGet(args.Ref)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(vr)
+
+		case "mutate":
+			if args.Ref == "" {
+				return "", errRefRequired
+			}
+			// Accept dedicated field/value params; fall back to query/body for compat.
+			field := args.Field
+			if field == "" {
+				field = args.Query
+			}
+			if field == "" {
+				return "", errFieldRequired
+			}
+			value := args.Value
+			if value == "" {
+				value = args.Body
+			}
+			if err := svc.ViewMutate(args.Ref, field, value); err != nil {
+				return "", err
+			}
+			vr, err := svc.ViewGet(args.Ref)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(vr)
+
+		case "diff":
+			if args.Ref == "" {
+				return "", errRefRequired
+			}
+			diff, err := svc.ViewDiff(args.Ref)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(diff)
+
+		case "push":
+			if args.Ref == "" {
+				return "", errRefRequired
+			}
+			issue, err := svc.ViewPush(ctx, args.Ref)
+			if err != nil {
+				return "", err
+			}
+			if issue == nil {
+				return server.JSONResult(map[string]string{
+					"ref":     args.Ref,
+					"message": "no dirty fields to push",
+				})
+			}
+			return server.JSONResult(issue)
+
+		case "list":
+			records := svc.ViewList()
+			return server.JSONResult(records)
+
+		case "dirty":
+			changes := svc.ViewDirty()
+			return server.JSONResult(changes)
+
+		case "push_all":
+			pushed, errs := svc.ViewPushAll(ctx)
+			return server.JSONResult(map[string]any{
+				"pushed": pushed,
+				"errors": errs,
+			})
+
+		case "drop":
+			if args.Ref == "" {
+				return "", errRefRequired
+			}
+			svc.ViewDrop(args.Ref)
+			return server.JSONResult(map[string]string{
+				"ref":     args.Ref,
+				"message": "dropped from view",
+			})
+
+		case "reset":
+			svc.ViewReset()
+			return server.JSONResult(map[string]string{
+				"message": "view store reset",
+			})
+
+		default:
+			return "", fmt.Errorf("%w %q", errUnknownAction, args.Action)
+		}
+	}
+}
+
+//nolint:gocyclo,funlen // action dispatcher
+func launchHandler(svc EmceeService) server.Handler {
+	return func(ctx context.Context, input json.RawMessage) (string, error) {
+		var args emceeArgs
+		if err := json.Unmarshal(input, &args); err != nil {
+			return "", fmt.Errorf("invalid arguments: %w", err)
+		}
+		_ = int(args.Limit)
+
+		switch args.Action {
+		case "pull":
+			if args.Ref == "" {
+				return "", errRefRequired
+			}
+			ref := "reportportal:" + args.Ref
+			lv, err := svc.ViewPull(ctx, ref)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(lv)
+
+		case "list":
 			filter := domain.LaunchFilter{
 				Name:   args.Query,
 				Status: args.Status,
@@ -708,7 +919,7 @@ func emceeHandler(svc EmceeService) server.Handler {
 			}
 			return server.JSONResult(launches)
 
-		case "launch_get":
+		case "get":
 			if args.Ref == "" {
 				return "", errRefRequired
 			}
@@ -718,7 +929,7 @@ func emceeHandler(svc EmceeService) server.Handler {
 			}
 			return server.JSONResult(launch)
 
-		case "test_items":
+		case "items":
 			if args.Ref == "" {
 				return "", errRefRequired
 			}
@@ -735,7 +946,7 @@ func emceeHandler(svc EmceeService) server.Handler {
 			}
 			return server.JSONResult(items)
 
-		case "search_test_items":
+		case "search_items":
 			filter := domain.TestItemFilter{
 				Name:        args.Query,
 				Status:      args.Status,
@@ -749,7 +960,7 @@ func emceeHandler(svc EmceeService) server.Handler {
 			}
 			return server.JSONResult(items)
 
-		case "test_item_get":
+		case "item_get":
 			if args.Ref == "" {
 				return "", errRefRequired
 			}
@@ -759,7 +970,7 @@ func emceeHandler(svc EmceeService) server.Handler {
 			}
 			return server.JSONResult(item)
 
-		case "bulk_test_item_get":
+		case "bulk_item_get":
 			if args.Issues == "" {
 				return "", errIssuesRequired
 			}
@@ -837,14 +1048,30 @@ func emceeHandler(svc EmceeService) server.Handler {
 
 		// --- Doc operations ---
 
-		case "doc_parse":
+		default:
+			return "", fmt.Errorf("%w %q", errUnknownAction, args.Action)
+		}
+	}
+}
+
+//nolint:gocyclo,funlen // action dispatcher
+func docHandler(svc EmceeService) server.Handler {
+	return func(ctx context.Context, input json.RawMessage) (string, error) {
+		var args emceeArgs
+		if err := json.Unmarshal(input, &args); err != nil {
+			return "", fmt.Errorf("invalid arguments: %w", err)
+		}
+		_ = int(args.Limit) // limit unused in this handler
+
+		switch args.Action {
+		case "parse":
 			if args.Query == "" {
 				return "", errQueryRequired
 			}
 			tree := docparse.Parse([]byte(args.Query))
 			return server.JSONResult(tree)
 
-		case "doc_links":
+		case "links":
 			if args.Query == "" {
 				return "", errQueryRequired
 			}
@@ -853,7 +1080,7 @@ func emceeHandler(svc EmceeService) server.Handler {
 			edges := docparse.ExtractLinkEdges(tree)
 			return server.JSONResult(map[string]any{"links": tree.Links, "edges": edges})
 
-		case "doc_diff":
+		case "diff":
 			if args.Query == "" {
 				return "", errQueryRequired
 			}
@@ -865,7 +1092,7 @@ func emceeHandler(svc EmceeService) server.Handler {
 			diffs := docparse.VersionDiff(oldTree, newTree)
 			return server.JSONResult(diffs)
 
-		case "doc_audit":
+		case "audit":
 			if args.Query == "" {
 				return "", errQueryRequired
 			}
@@ -875,7 +1102,7 @@ func emceeHandler(svc EmceeService) server.Handler {
 				"weights":    docparse.AnalyzeBloat(tree),
 			})
 
-		case "doc_terms":
+		case "terms":
 			if args.Query == "" {
 				return "", errQueryRequired
 			}
@@ -888,7 +1115,7 @@ func emceeHandler(svc EmceeService) server.Handler {
 			inconsistencies := docparse.FindInconsistentTerms(args.Query, terms)
 			return server.JSONResult(map[string]any{"usage": usages, "inconsistencies": inconsistencies})
 
-		case "doc_validate":
+		case "validate":
 			if args.Query == "" {
 				return "", errQueryRequired
 			}
@@ -901,7 +1128,7 @@ func emceeHandler(svc EmceeService) server.Handler {
 			result := docparse.ValidateTemplate(tree, rules)
 			return server.JSONResult(result)
 
-		case "doc_declarations":
+		case "declarations":
 			if args.Query == "" {
 				return "", errQueryRequired
 			}
@@ -911,37 +1138,7 @@ func emceeHandler(svc EmceeService) server.Handler {
 
 		// --- PR reviews ---
 
-		case "pr_reviews":
-			if args.Ref == "" {
-				return "", errRefRequired
-			}
-			prNum, err := strconv.Atoi(args.Ref)
-			if err != nil {
-				return "", fmt.Errorf("invalid PR number %q: %w", args.Ref, err)
-			}
-			reviews, err := svc.ListPRReviews(ctx, args.Backend, prNum)
-			if err != nil {
-				return "", err
-			}
-			return server.JSONResult(reviews)
-
-		case "pr_comments":
-			if args.Ref == "" {
-				return "", errRefRequired
-			}
-			prNum, err := strconv.Atoi(args.Ref)
-			if err != nil {
-				return "", fmt.Errorf("invalid PR number %q: %w", args.Ref, err)
-			}
-			comments, err := svc.ListPRComments(ctx, args.Backend, prNum)
-			if err != nil {
-				return "", err
-			}
-			return server.JSONResult(comments)
-
-		// --- Doc sync ---
-
-		case "doc_sync_gist":
+		case "sync_gist":
 			if args.Title == "" {
 				return "", errTitleRequired
 			}
@@ -961,7 +1158,7 @@ func emceeHandler(svc EmceeService) server.Handler {
 			}
 			return server.JSONResult(map[string]string{"id": id, "url": url})
 
-		case "doc_sync_jira":
+		case "sync_jira":
 			if args.Ref == "" {
 				return "", errRefRequired
 			}
@@ -976,6 +1173,33 @@ func emceeHandler(svc EmceeService) server.Handler {
 			return server.JSONResult(map[string]string{"updated": issue.Ref, "url": issue.URL})
 
 		// --- Triage ---
+
+		default:
+			return "", fmt.Errorf("%w %q", errUnknownAction, args.Action)
+		}
+	}
+}
+
+//nolint:gocyclo,funlen // action dispatcher
+func adminHandler(svc EmceeService) server.Handler {
+	return func(ctx context.Context, input json.RawMessage) (string, error) {
+		var args emceeArgs
+		if err := json.Unmarshal(input, &args); err != nil {
+			return "", fmt.Errorf("invalid arguments: %w", err)
+		}
+		_ = int(args.Limit)
+
+		switch args.Action {
+		case "help":
+			var sb strings.Builder
+			sb.WriteString("Emcee tools:\n\n")
+			sb.WriteString("  issue    list|get|create|update|search|bulk_*|comments|stage|push|link|jql|prs|fields|changelog\n")
+			sb.WriteString("  view     pull|get|mutate|diff|push|push_all|list|dirty|drop|reset\n")
+			sb.WriteString("  launch   pull|list|get|items|search_items|defect_update|dashboards\n")
+			sb.WriteString("  doc      parse|links|diff|audit|terms|validate|declarations|sync_gist|sync_jira\n")
+			sb.WriteString("  admin    help|triage|triage_config|changelog|fields_discover|ledger_*\n")
+			sb.WriteString("\nRef: backend:key (e.g. jira:PROJ-42). backend required for list/create/search.\n")
+			return server.JSONResult(map[string]string{"help": sb.String()})
 
 		case "triage":
 			if args.Ref == "" {
@@ -1008,23 +1232,6 @@ func emceeHandler(svc EmceeService) server.Handler {
 
 		// --- Field discovery + JQL ---
 
-		case "changelog":
-			if args.Ref == "" {
-				return "", errRefRequired
-			}
-			entries, err := svc.ListChangelog(ctx, args.Ref, int(args.Limit))
-			if err != nil {
-				return "", err
-			}
-			return server.JSONResult(entries)
-
-		case "fields":
-			fields, err := svc.ListFields(ctx, args.Backend)
-			if err != nil {
-				return "", err
-			}
-			return server.JSONResult(fields)
-
 		case "fields_discover":
 			if args.Backend == "" {
 				return "", errBackendRequired
@@ -1038,37 +1245,6 @@ func emceeHandler(svc EmceeService) server.Handler {
 				"manifest": config.DefaultPath(args.Backend),
 				"mappings": mappings,
 			})
-
-		case "jql":
-			if args.Query == "" {
-				return "", errQueryRequired
-			}
-			jqlLimit := int(args.Limit)
-			if jqlLimit == 0 {
-				jqlLimit = defaultListMax
-			}
-			issues, err := svc.SearchJQL(ctx, args.Backend, args.Query, jqlLimit)
-			if err != nil {
-				return "", err
-			}
-			return server.JSONResult(issues)
-
-		case "prs":
-			filter := domain.PRFilter{
-				Author:       args.Author,
-				State:        args.Status,
-				MergedAfter:  args.MergedAfter,
-				MergedBefore: args.MergedBefore,
-				Repo:         args.Repo,
-				Limit:        int(args.Limit),
-			}
-			prs, err := svc.ListPRs(ctx, args.Backend, filter)
-			if err != nil {
-				return "", err
-			}
-			return server.JSONResult(prs)
-
-		// --- Ledger actions ---
 
 		case "ledger_list":
 			filter := domain.LedgerFilter{
@@ -1150,108 +1326,6 @@ func emceeHandler(svc EmceeService) server.Handler {
 			return server.JSONResult(stats)
 
 		// --- View (Local Materialized View) ---
-
-		case "view_pull":
-			if args.Ref == "" {
-				return "", errRefRequired
-			}
-			vr, err := svc.ViewPull(ctx, args.Ref)
-			if err != nil {
-				return "", err
-			}
-			return server.JSONResult(vr)
-
-		case "view_get":
-			if args.Ref == "" {
-				return "", errRefRequired
-			}
-			vr, err := svc.ViewGet(args.Ref)
-			if err != nil {
-				return "", err
-			}
-			return server.JSONResult(vr)
-
-		case "view_mutate":
-			if args.Ref == "" {
-				return "", errRefRequired
-			}
-			// Accept dedicated field/value params; fall back to query/body for compat.
-			field := args.Field
-			if field == "" {
-				field = args.Query
-			}
-			if field == "" {
-				return "", errFieldRequired
-			}
-			value := args.Value
-			if value == "" {
-				value = args.Body
-			}
-			if err := svc.ViewMutate(args.Ref, field, value); err != nil {
-				return "", err
-			}
-			vr, err := svc.ViewGet(args.Ref)
-			if err != nil {
-				return "", err
-			}
-			return server.JSONResult(vr)
-
-		case "view_diff":
-			if args.Ref == "" {
-				return "", errRefRequired
-			}
-			diff, err := svc.ViewDiff(args.Ref)
-			if err != nil {
-				return "", err
-			}
-			return server.JSONResult(diff)
-
-		case "view_push":
-			if args.Ref == "" {
-				return "", errRefRequired
-			}
-			issue, err := svc.ViewPush(ctx, args.Ref)
-			if err != nil {
-				return "", err
-			}
-			if issue == nil {
-				return server.JSONResult(map[string]string{
-					"ref":     args.Ref,
-					"message": "no dirty fields to push",
-				})
-			}
-			return server.JSONResult(issue)
-
-		case "view_list":
-			records := svc.ViewList()
-			return server.JSONResult(records)
-
-		case "view_dirty":
-			changes := svc.ViewDirty()
-			return server.JSONResult(changes)
-
-		case "view_push_all":
-			pushed, errs := svc.ViewPushAll(ctx)
-			return server.JSONResult(map[string]any{
-				"pushed": pushed,
-				"errors": errs,
-			})
-
-		case "view_drop":
-			if args.Ref == "" {
-				return "", errRefRequired
-			}
-			svc.ViewDrop(args.Ref)
-			return server.JSONResult(map[string]string{
-				"ref":     args.Ref,
-				"message": "dropped from view",
-			})
-
-		case "view_reset":
-			svc.ViewReset()
-			return server.JSONResult(map[string]string{
-				"message": "view store reset",
-			})
 
 		default:
 			return "", fmt.Errorf("%w %q", errUnknownAction, args.Action)
