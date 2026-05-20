@@ -557,6 +557,13 @@ func (r *Repository) ListTestItems(ctx context.Context, launchID string, filter 
 	return r.launches.ListTestItems(ctx, launchID, filter)
 }
 
+func (r *Repository) SearchTestItems(ctx context.Context, filter domain.TestItemFilter) ([]domain.TestItem, error) {
+	if r.launches == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.launches.SearchTestItems(ctx, filter)
+}
+
 func (r *Repository) GetTestItem(ctx context.Context, id string) (*domain.TestItem, error) {
 	if r.launches == nil {
 		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
