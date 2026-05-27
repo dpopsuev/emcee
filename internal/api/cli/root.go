@@ -913,8 +913,8 @@ var serveHTTPAddr string
 
 var serveCmd = &cobra.Command{
 	Use:   "serve",
-	Short: "Start MCP server (stdio by default, HTTP/SSE with --http)",
-	Long:  "Starts emcee as an MCP server. Defaults to stdio transport. Use --http :8080 to run as a persistent HTTP/SSE server.",
+	Short: "Start MCP server (stdio by default, Streamable HTTP with --http)",
+	Long:  "Starts emcee as an MCP server. Defaults to stdio transport. Use --http :8080 to run as a stateless Streamable HTTP server (POST /mcp, MCP 2025-03-26).",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		svc, err := newService()
 		if err != nil {
@@ -984,7 +984,7 @@ func init() {
 	importCmd.Flags().StringVar(&flagProjectID, "project-id", "", "Project ID")
 	importCmd.Flags().StringVar(&flagAssignee, "assignee", "", "Assignee name")
 
-	serveCmd.Flags().StringVar(&serveHTTPAddr, "http", "", "Listen address for HTTP/SSE transport (e.g. :8080). Omit for stdio.")
+	serveCmd.Flags().StringVar(&serveHTTPAddr, "http", "", "Listen address for Streamable HTTP transport (e.g. :8080). Omit for stdio.")
 	rootCmd.AddCommand(listCmd, getCmd, createCmd, updateCmd, searchCmd, serveCmd)
 	rootCmd.AddCommand(docCmd, projectCmd, initiativeCmd, labelCmd)
 	// Bulk update

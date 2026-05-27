@@ -1,5 +1,5 @@
 [Unit]
-Description=Emcee MCP server (HTTP/SSE)
+Description=Emcee MCP server (Streamable HTTP)
 After=network.target
 
 [Service]
