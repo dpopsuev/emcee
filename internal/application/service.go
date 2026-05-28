@@ -26,6 +26,7 @@ var (
 	ErrUnknownBackend      = errors.New("unknown backend")
 	ErrInvalidRef          = errors.New("invalid ref")
 	ErrNotSupported        = errors.New("operation not supported by backend")
+	ErrBackendRequired     = errors.New("backend not specified")
 	ErrTriageNotConfigured = errors.New("triage not configured: missing graph store")
 )
 
@@ -649,11 +650,41 @@ func (s *Service) SearchJQL(ctx context.Context, backend, jql string, limit int)
 // --- PR/MR operations ---
 
 func (s *Service) ListPRs(ctx context.Context, backend string, filter domain.PRFilter) ([]domain.PullRequest, error) {
+	if backend == "" {
+		backend = s.inferPRBackend()
+		if backend == "" {
+			return nil, s.prBackendRequiredErr()
+		}
+	}
 	r, ok := s.prRepos[backend]
 	if !ok {
 		return nil, s.notSupportedErr(backend, "pull requests")
 	}
 	return r.ListPRs(ctx, filter)
+}
+
+// inferPRBackend returns the sole PR-capable backend name when exactly one is
+// configured, enabling backend-free calls like prs(repo="owner/repo").
+func (s *Service) inferPRBackend() string {
+	if len(s.prRepos) == 1 {
+		for name := range s.prRepos {
+			return name
+		}
+	}
+	return ""
+}
+
+// prBackendRequiredErr builds an actionable error that lists the available
+// PR-capable backends (or advises the user to configure one).
+func (s *Service) prBackendRequiredErr() error {
+	if len(s.prRepos) == 0 {
+		return fmt.Errorf("%w: no PR-capable backends are configured — add a GitHub or GitLab backend first", ErrBackendRequired)
+	}
+	names := make([]string, 0, len(s.prRepos))
+	for name := range s.prRepos {
+		names = append(names, "backend="+name)
+	}
+	return fmt.Errorf("%w: use %s to query pull requests", ErrBackendRequired, strings.Join(names, " or "))
 }
 
 // --- Launch operations (Report Portal) ---
@@ -724,6 +755,12 @@ func (s *Service) UpdateDefects(ctx context.Context, backend string, updates []d
 // --- PR review operations ---
 
 func (s *Service) ListPRReviews(ctx context.Context, backend string, prNumber int) ([]domain.PRReview, error) {
+	if backend == "" {
+		backend = s.inferPRReviewBackend()
+		if backend == "" {
+			return nil, s.prReviewBackendRequiredErr()
+		}
+	}
 	r, ok := s.prReviewRepos[backend]
 	if !ok {
 		return nil, s.notSupportedErr(backend, "pr_reviews")
@@ -732,11 +769,37 @@ func (s *Service) ListPRReviews(ctx context.Context, backend string, prNumber in
 }
 
 func (s *Service) ListPRComments(ctx context.Context, backend string, prNumber int) ([]domain.PRComment, error) {
+	if backend == "" {
+		backend = s.inferPRReviewBackend()
+		if backend == "" {
+			return nil, s.prReviewBackendRequiredErr()
+		}
+	}
 	r, ok := s.prReviewRepos[backend]
 	if !ok {
 		return nil, s.notSupportedErr(backend, "pr_reviews")
 	}
 	return r.ListPRComments(ctx, prNumber)
+}
+
+func (s *Service) inferPRReviewBackend() string {
+	if len(s.prReviewRepos) == 1 {
+		for name := range s.prReviewRepos {
+			return name
+		}
+	}
+	return ""
+}
+
+func (s *Service) prReviewBackendRequiredErr() error {
+	if len(s.prReviewRepos) == 0 {
+		return fmt.Errorf("%w: no PR-capable backends are configured — add a GitHub or GitLab backend first", ErrBackendRequired)
+	}
+	names := make([]string, 0, len(s.prReviewRepos))
+	for name := range s.prReviewRepos {
+		names = append(names, "backend="+name)
+	}
+	return fmt.Errorf("%w: use %s to query pull request reviews", ErrBackendRequired, strings.Join(names, " or "))
 }
 
 // --- Gist operations ---
