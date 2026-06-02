@@ -225,6 +225,8 @@ var launchSchema = json.RawMessage(`{
 		"ref":          {"type": "string", "description": "Launch ID (pull/list/get/items) or item ID (item_get) or dashboard ID"},
 		"query":        {"type": "string", "description": "Name filter (list) or dashboard description (dashboard_create)"},
 		"status":       {"type": "string", "description": "FAILED | PASSED | SKIPPED (items/search_items)"},
+		"since":        {"type": "string", "description": "RFC3339 lower bound on launch start time (list)"},
+		"before":       {"type": "string", "description": "RFC3339 upper bound on launch start time (list)"},
 		"limit":        {"type": "number", "description": "Max results or widget width"},
 		"page":         {"type": "number", "description": "0-based page number"},
 		"include_logs": {"type": "boolean", "description": "Fetch failure_message for FAILED items"},
@@ -312,6 +314,8 @@ type emceeArgs struct {
 	ComponentsStr  string  `json:"components"`
 	Resolution     string  `json:"resolution"`
 	Page           float64 `json:"page"`
+	Since          string  `json:"since"`
+	Before         string  `json:"before"`
 	IncludeLogs    bool    `json:"include_logs"`
 	TargetRef      string  `json:"target_ref"`
 	Field          string  `json:"field"`
@@ -912,6 +916,20 @@ func launchHandler(svc EmceeService) server.Handler {
 				Status: args.Status,
 				Limit:  int(args.Limit),
 				Page:   int(args.Page),
+			}
+			if args.Since != "" {
+				t, err := time.Parse(time.RFC3339, args.Since)
+				if err != nil {
+					return "", fmt.Errorf("invalid since: %w", err)
+				}
+				filter.StartAfter = t
+			}
+			if args.Before != "" {
+				t, err := time.Parse(time.RFC3339, args.Before)
+				if err != nil {
+					return "", fmt.Errorf("invalid before: %w", err)
+				}
+				filter.StartBefore = t
 			}
 			launches, err := svc.ListLaunches(ctx, args.Backend, filter)
 			if err != nil {

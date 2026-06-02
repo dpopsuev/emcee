@@ -159,7 +159,11 @@ type rpLaunch struct {
 	Owner       string          `json:"owner"`
 	StartTime   json.RawMessage `json:"startTime"`
 	EndTime     json.RawMessage `json:"endTime"`
-	Statistics  struct {
+	Attributes  []struct {
+		Key   string `json:"key"`
+		Value string `json:"value"`
+	} `json:"attributes"`
+	Statistics struct {
 		Executions struct {
 			Total   int `json:"total"`
 			Passed  int `json:"passed"`
@@ -191,6 +195,12 @@ func (l *rpLaunch) toDomain(baseURL, project string) domain.Launch {
 	for category, counts := range l.Statistics.Defects {
 		if total, ok := counts["total"]; ok {
 			launch.Statistics.Defects[category] = total
+		}
+	}
+	if len(l.Attributes) > 0 {
+		launch.Attributes = make([]domain.LaunchAttribute, 0, len(l.Attributes))
+		for _, a := range l.Attributes {
+			launch.Attributes = append(launch.Attributes, domain.LaunchAttribute{Key: a.Key, Value: a.Value})
 		}
 	}
 	return launch
@@ -239,6 +249,17 @@ func (r *Repository) ListLaunches(ctx context.Context, filter domain.LaunchFilte
 	}
 	if filter.Status != "" {
 		path += "&filter.eq.status=" + strings.ToUpper(filter.Status)
+	}
+	if !filter.StartAfter.IsZero() || !filter.StartBefore.IsZero() {
+		after := int64(0)
+		if !filter.StartAfter.IsZero() {
+			after = filter.StartAfter.UnixMilli()
+		}
+		before := int64(0)
+		if !filter.StartBefore.IsZero() {
+			before = filter.StartBefore.UnixMilli()
+		}
+		path += fmt.Sprintf("&filter.btw.startTime=%d,%d", after, before)
 	}
 
 	var result struct {

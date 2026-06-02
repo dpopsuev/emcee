@@ -44,7 +44,7 @@ func (ls *LaunchViewStore) Pull(ctx context.Context, backend, id string, repos m
 		return nil, fmt.Errorf("get launch: %w", err)
 	}
 
-	items, err := lr.ListTestItems(ctx, id, domain.TestItemFilter{Limit: 500})
+	items, err := lr.ListTestItems(ctx, id, domain.TestItemFilter{Limit: 500, IncludeLogs: true})
 	if err != nil {
 		return nil, fmt.Errorf("list test items: %w", err)
 	}

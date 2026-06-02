@@ -4,15 +4,22 @@ import "time"
 
 // Launch represents a test execution run in Report Portal.
 type Launch struct {
-	ID          string           `json:"id"`
-	Name        string           `json:"name"`
-	Status      string           `json:"status"`
-	Description string           `json:"description,omitempty"`
-	Owner       string           `json:"owner,omitempty"`
-	StartTime   time.Time        `json:"start_time"`
-	EndTime     time.Time        `json:"end_time,omitempty"`
-	Statistics  LaunchStatistics `json:"statistics"`
-	URL         string           `json:"url,omitempty"`
+	ID          string            `json:"id"`
+	Name        string            `json:"name"`
+	Status      string            `json:"status"`
+	Description string            `json:"description,omitempty"`
+	Owner       string            `json:"owner,omitempty"`
+	StartTime   time.Time         `json:"start_time"`
+	EndTime     time.Time         `json:"end_time,omitempty"`
+	Statistics  LaunchStatistics  `json:"statistics"`
+	Attributes  []LaunchAttribute `json:"attributes,omitempty"`
+	URL         string            `json:"url,omitempty"`
+}
+
+// LaunchAttribute is a key-value tag on a launch — CI systems use these to embed build_url, job name, etc.
+type LaunchAttribute struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
 }
 
 // LaunchStatistics holds execution counts and defect breakdown.
@@ -26,10 +33,12 @@ type LaunchStatistics struct {
 
 // LaunchFilter controls which launches to list.
 type LaunchFilter struct {
-	Name   string `json:"name,omitempty"`
-	Status string `json:"status,omitempty"`
-	Limit  int    `json:"limit,omitempty"`
-	Page   int    `json:"page,omitempty"` // 0-based page number for pagination
+	Name        string    `json:"name,omitempty"`
+	Status      string    `json:"status,omitempty"`
+	StartAfter  time.Time `json:"start_after,omitempty"`  // list launches that started after this time
+	StartBefore time.Time `json:"start_before,omitempty"` // list launches that started before this time
+	Limit       int       `json:"limit,omitempty"`
+	Page        int       `json:"page,omitempty"` // 0-based page number for pagination
 }
 
 // TestItem represents a single test result within a launch.
