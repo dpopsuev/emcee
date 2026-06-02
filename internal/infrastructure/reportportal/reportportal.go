@@ -441,7 +441,7 @@ type rpLogEntry struct {
 }
 
 func (r *Repository) fetchErrorLogs(ctx context.Context, itemID string) string {
-	path := fmt.Sprintf("/log?filter.eq.item=%s&filter.in.level=ERROR,TRACE&page.size=10&page.sort=time,ASC", itemID)
+	path := fmt.Sprintf("/log?filter.eq.item=%s&filter.in.level=ERROR&filter.in.level=TRACE&page.size=10", itemID)
 	var result struct {
 		Content []rpLogEntry `json:"content"`
 	}
