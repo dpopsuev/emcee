@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dpopsuev/emcee/internal/domain"
@@ -58,7 +59,8 @@ type Repository struct {
 	token        string
 	project      string
 	client       *http.Client
-	customFields map[string]string // semantic name → field ID, populated from config + discovery
+	mu           sync.RWMutex
+	customFields map[string]string // display_name → field_id, populated from manifest + config
 }
 
 // New creates a Jira repository. configFields is the optional user-supplied mapping
@@ -80,10 +82,20 @@ func New(name, baseURL, email, token, project string, configFields map[string]st
 	}, nil
 }
 
+// SetCustomFields hot-swaps the field manifest mapping on the live repository.
+// Safe to call concurrently with ongoing requests.
+func (r *Repository) SetCustomFields(fields map[string]string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.customFields = fields
+}
+
 // buildFieldList returns the comma-separated fields param for issue GET/search,
 // including standard fields plus all custom field IDs from the manifest.
 func (r *Repository) buildFieldList() string {
 	const standard = "summary,status,priority,assignee,reporter,description,labels,created,updated,project,issuetype,resolution,fixVersions,components,issuelinks,parent"
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	if len(r.customFields) == 0 {
 		return standard
 	}
@@ -224,7 +236,10 @@ func (r *Repository) Get(ctx context.Context, key string) (*domain.Issue, error)
 	if err := r.api(ctx, "GET", path, nil, &raw); err != nil {
 		return nil, err
 	}
-	issue := raw.toDomain(r.customFields)
+	r.mu.RLock()
+	cf := r.customFields
+	r.mu.RUnlock()
+	issue := raw.toDomain(cf)
 	return &issue, nil
 }
 
@@ -322,13 +337,16 @@ func (r *Repository) Update(ctx context.Context, key string, input domain.Update
 		}
 		fields["fixVersions"] = fv
 	}
-	// Custom fields: resolve semantic name → fieldId, apply type coercion.
-	for semantic, value := range input.CustomFields {
-		fieldID, ok := r.customFields[semantic]
+	// Custom fields: resolve display name → fieldId, apply type coercion.
+	r.mu.RLock()
+	cf := r.customFields
+	r.mu.RUnlock()
+	for displayName, value := range input.CustomFields {
+		fieldID, ok := cf[displayName]
 		if !ok {
 			continue // unmapped field, skip silently
 		}
-		fields[fieldID] = coerceCustomFieldValue(semantic, value)
+		fields[fieldID] = coerceCustomFieldValue(displayName, value)
 	}
 
 	if len(fields) > 0 {
@@ -443,9 +461,12 @@ func (r *Repository) searchJQL(ctx context.Context, jql string, limit int) ([]do
 		return nil, err
 	}
 
+	r.mu.RLock()
+	cf := r.customFields
+	r.mu.RUnlock()
 	issues := make([]domain.Issue, 0, len(result.Issues))
 	for i := range result.Issues {
-		issues = append(issues, result.Issues[i].toDomain(r.customFields))
+		issues = append(issues, result.Issues[i].toDomain(cf))
 	}
 	return issues, nil
 }

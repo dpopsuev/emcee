@@ -1,6 +1,7 @@
 package jira
 
 import (
+	"context"
 	"os"
 
 	"github.com/dpopsuev/emcee/internal/config"
@@ -45,6 +46,32 @@ func init() {
 		if len(backend.Fields) > 0 {
 			manifest = manifest.Merge(backend.Fields)
 		}
-		return New(name, url, email, token, project, manifest.Mappings)
+		repo, err := New(name, url, email, token, project, manifest.Mappings)
+		if err != nil {
+			return nil, err
+		}
+
+		// Register a watcher so serveCmd can keep the manifest evergreen.
+		// The closure captures repo before cache.New() wraps it, so SetCustomFields
+		// reaches the live Repository directly.
+		fieldmanifest.RegisterWatcher(fieldmanifest.NewWatcher(
+			name,
+			config.Dir(),
+			fieldmanifest.DefaultTTL,
+			func(ctx context.Context) ([]fieldmanifest.NamedField, error) {
+				domainFields, err := repo.ListFields(ctx)
+				if err != nil {
+					return nil, err
+				}
+				named := make([]fieldmanifest.NamedField, len(domainFields))
+				for i, f := range domainFields {
+					named[i] = fieldmanifest.NamedField{ID: f.ID, Name: f.Name, Custom: f.Custom}
+				}
+				return named, nil
+			},
+			repo.SetCustomFields,
+		))
+
+		return repo, nil
 	})
 }

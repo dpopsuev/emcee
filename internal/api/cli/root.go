@@ -11,6 +11,9 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"os/signal"
+	"syscall"
+
 	// Blank imports trigger init() registration with the backend registry.
 	_ "github.com/dpopsuev/emcee/internal/infrastructure/github"
 	_ "github.com/dpopsuev/emcee/internal/infrastructure/gitlab"
@@ -22,6 +25,7 @@ import (
 	"github.com/dpopsuev/emcee/internal/application"
 	"github.com/dpopsuev/emcee/internal/config"
 	"github.com/dpopsuev/emcee/internal/domain"
+	"github.com/dpopsuev/emcee/internal/fieldmanifest"
 	infra "github.com/dpopsuev/emcee/internal/infrastructure"
 	adaptersqlite "github.com/dpopsuev/emcee/internal/infrastructure/sqlite"
 	"github.com/dpopsuev/emcee/internal/triage"
@@ -920,6 +924,19 @@ var serveCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+
+		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer cancel()
+
+		for _, w := range fieldmanifest.Watchers() {
+			if err := w.Check(ctx); err != nil {
+				fmt.Fprintf(os.Stderr, "warning: field manifest check failed: %v\n", err)
+			}
+		}
+		for _, w := range fieldmanifest.Watchers() {
+			go w.Run(ctx, fieldmanifest.DefaultRefreshInterval)
+		}
+
 		if serveHTTPAddr != "" {
 			return mcpserver.ServeHTTP(serveHTTPAddr, svc)
 		}
