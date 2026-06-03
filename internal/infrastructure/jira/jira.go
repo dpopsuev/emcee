@@ -80,27 +80,18 @@ func New(name, baseURL, email, token, project string, configFields map[string]st
 	}, nil
 }
 
-// customFieldIDs returns the resolved field IDs for the given semantic names,
-// silently omitting any that could not be resolved.
-func (r *Repository) customFieldIDs(names ...string) []string {
-	ids := make([]string, 0, len(names))
-	for _, n := range names {
-		if id, ok := r.customFields[n]; ok {
-			ids = append(ids, id)
-		}
-	}
-	return ids
-}
-
 // buildFieldList returns the comma-separated fields param for issue GET/search,
-// including standard fields plus any resolved custom field IDs.
+// including standard fields plus all custom field IDs from the manifest.
 func (r *Repository) buildFieldList() string {
 	const standard = "summary,status,priority,assignee,reporter,description,labels,created,updated,project,issuetype,resolution,fixVersions,components,issuelinks,parent"
-	custom := r.customFieldIDs("sprint", "story_points", "target_version")
-	if len(custom) == 0 {
+	if len(r.customFields) == 0 {
 		return standard
 	}
-	return standard + "," + strings.Join(custom, ",")
+	ids := make([]string, 0, len(r.customFields))
+	for _, id := range r.customFields {
+		ids = append(ids, id)
+	}
+	return standard + "," + strings.Join(ids, ",")
 }
 
 func (r *Repository) Name() string { return r.name }
@@ -604,44 +595,62 @@ func (j *jiraIssue) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// handledByTypedField lists semantic names that are mapped to typed Issue fields.
+// Jira display names for fields that have typed representations in domain.Issue.
+// These are matched against manifest keys (display_name → field_id) at runtime.
+const (
+	fieldDisplaySprint        = "Sprint"
+	fieldDisplayStoryPoints   = "Story Points"
+	fieldDisplayTargetVersion = "Target Version"
+)
+
+// handledByTypedField lists display names that map to typed Issue fields.
 // Any manifest field NOT in this set falls through to Issue.CustomFields.
 var handledByTypedField = map[string]bool{
-	"sprint":         true,
-	"story_points":   true,
-	"target_version": true,
+	fieldDisplaySprint:        true,
+	fieldDisplayStoryPoints:   true,
+	fieldDisplayTargetVersion: true,
 }
 
-// applyCustomFields extracts manifest-mapped fields from the raw field map.
-// Known semantic names populate typed Issue fields; all others go to CustomFields.
+// applyCustomFields extracts all manifest-mapped fields from the raw field map.
+// Fields with known display names populate typed Issue fields; all others go to
+// Issue.CustomFields keyed by display name. Array-type fields (e.g. version lists)
+// are joined as comma-separated strings.
 func (j *jiraIssue) applyCustomFields(issue *domain.Issue, customFields map[string]string) {
-	if sprintID, ok := customFields["sprint"]; ok {
+	if sprintID, ok := customFields[fieldDisplaySprint]; ok {
 		issue.Sprint = extractSprint(j.RawFields[sprintID])
 	}
-	if spID, ok := customFields["story_points"]; ok {
+	if spID, ok := customFields[fieldDisplayStoryPoints]; ok {
 		var v float64
 		if raw := j.RawFields[spID]; raw != nil && json.Unmarshal(raw, &v) == nil {
 			issue.StoryPoints = &v
 		}
 	}
-	if tvID, ok := customFields["target_version"]; ok {
+	if tvID, ok := customFields[fieldDisplayTargetVersion]; ok {
 		issue.TargetVersions = extractNameList(j.RawFields[tvID])
 	}
-	// Remaining manifest fields → CustomFields as raw string values.
-	for semantic, fieldID := range customFields {
-		if handledByTypedField[semantic] {
+	// All remaining manifest fields → CustomFields[display_name].
+	for displayName, fieldID := range customFields {
+		if handledByTypedField[displayName] {
 			continue
 		}
 		raw, ok := j.RawFields[fieldID]
 		if !ok || raw == nil || string(raw) == "null" {
 			continue
 		}
-		var s string
-		if json.Unmarshal(raw, &s) == nil {
+		// Try {name} array first (version-type fields).
+		if names := extractNameList(raw); names != nil {
 			if issue.CustomFields == nil {
 				issue.CustomFields = make(map[string]string)
 			}
-			issue.CustomFields[semantic] = s
+			issue.CustomFields[displayName] = strings.Join(names, ", ")
+			continue
+		}
+		var s string
+		if json.Unmarshal(raw, &s) == nil && s != "" {
+			if issue.CustomFields == nil {
+				issue.CustomFields = make(map[string]string)
+			}
+			issue.CustomFields[displayName] = s
 		}
 	}
 }
@@ -682,20 +691,20 @@ func extractNameList(raw json.RawMessage) []string {
 }
 
 // coerceCustomFieldValue converts a string value to the appropriate Jira API type
-// based on the semantic field name.
-func coerceCustomFieldValue(semantic, value string) any {
-	switch semantic {
-	case "sprint":
+// based on the field display name.
+func coerceCustomFieldValue(displayName, value string) any {
+	switch displayName {
+	case fieldDisplaySprint:
 		var id int
 		if _, err := fmt.Sscanf(value, "%d", &id); err == nil {
 			return id
 		}
-	case "story_points":
+	case fieldDisplayStoryPoints:
 		var f float64
 		if _, err := fmt.Sscanf(value, "%f", &f); err == nil {
 			return f
 		}
-	case "target_versions":
+	case fieldDisplayTargetVersion:
 		parts := strings.Split(value, ",")
 		versions := make([]map[string]string, 0, len(parts))
 		for _, p := range parts {

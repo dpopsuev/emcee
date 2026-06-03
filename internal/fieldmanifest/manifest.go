@@ -22,15 +22,6 @@ import (
 
 const manifestDir = "fields"
 
-// KnownFields is the canonical list of semantic field names emcee understands,
-// mapped to the display names used by Jira's field discovery API.
-// Discovery matches these display names to resolve field IDs.
-var KnownFields = map[string]string{
-	"sprint":         "Sprint",
-	"story_points":   "Story Points",
-	"target_version": "Target Version",
-}
-
 // Manifest holds the mapping from semantic field names to backend field IDs.
 type Manifest struct {
 	// Backend is the name this manifest belongs to (e.g. "jira").
@@ -116,18 +107,17 @@ func DefaultPath(backend, configDir string) string {
 	return filepath.Join(configDir, manifestDir, backend+".yaml")
 }
 
-// Discover builds a Manifest by matching display names from allFields against
-// KnownFields. allFields is the raw list returned by the backend's ListFields call.
-// Only fields whose display name matches a KnownFields entry are included.
+// Discover builds a Manifest from all custom fields returned by the backend.
+// allFields is the raw list returned by the backend's ListFields call.
+// Only custom fields (field.Custom == true) are stored; standard fields are
+// always requested by name and need no manifest entry.
+// Keys are display names (e.g. "Sprint", "Target Backport Versions") so the
+// manifest remains readable and backend-agnostic.
 func Discover(backend string, allFields []NamedField) *Manifest {
-	byName := make(map[string]string, len(allFields))
+	mappings := make(map[string]string, len(allFields))
 	for _, f := range allFields {
-		byName[f.Name] = f.ID
-	}
-	mappings := make(map[string]string, len(KnownFields))
-	for semantic, displayName := range KnownFields {
-		if id, found := byName[displayName]; found {
-			mappings[semantic] = id
+		if f.Custom {
+			mappings[f.Name] = f.ID
 		}
 	}
 	return &Manifest{
@@ -140,6 +130,7 @@ func Discover(backend string, allFields []NamedField) *Manifest {
 // NamedField is a minimal field descriptor used by Discover.
 // It is intentionally backend-agnostic; adapters map their types to this.
 type NamedField struct {
-	ID   string
-	Name string
+	ID     string
+	Name   string
+	Custom bool // true for custom fields; false for standard system fields
 }

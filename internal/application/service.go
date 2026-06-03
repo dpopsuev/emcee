@@ -628,7 +628,7 @@ func (s *Service) DiscoverFields(ctx context.Context, backend, configDir string)
 	}
 	named := make([]fieldmanifest.NamedField, len(domainFields))
 	for i, f := range domainFields {
-		named[i] = fieldmanifest.NamedField{ID: f.ID, Name: f.Name}
+		named[i] = fieldmanifest.NamedField{ID: f.ID, Name: f.Name, Custom: f.Custom}
 	}
 	manifest := fieldmanifest.Discover(backend, named)
 	if err := fieldmanifest.Save(backend, configDir, manifest); err != nil {
