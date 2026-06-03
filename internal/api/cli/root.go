@@ -13,6 +13,7 @@ import (
 
 	"os/signal"
 	"syscall"
+	"time"
 
 	// Blank imports trigger init() registration with the backend registry.
 	_ "github.com/dpopsuev/emcee/internal/infrastructure/github"
@@ -25,9 +26,9 @@ import (
 	"github.com/dpopsuev/emcee/internal/application"
 	"github.com/dpopsuev/emcee/internal/config"
 	"github.com/dpopsuev/emcee/internal/domain"
-	"github.com/dpopsuev/emcee/internal/fieldmanifest"
 	infra "github.com/dpopsuev/emcee/internal/infrastructure"
 	adaptersqlite "github.com/dpopsuev/emcee/internal/infrastructure/sqlite"
+	"github.com/dpopsuev/emcee/internal/poller"
 	"github.com/dpopsuev/emcee/internal/triage"
 	"github.com/spf13/cobra"
 )
@@ -928,13 +929,16 @@ var serveCmd = &cobra.Command{
 		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer cancel()
 
-		for _, w := range fieldmanifest.Watchers() {
+		configPoller := newConfigPoller(flagConfig, svc)
+		poller.Register("config", configPoller)
+
+		for _, w := range poller.All() {
 			if err := w.Check(ctx); err != nil {
-				fmt.Fprintf(os.Stderr, "warning: field manifest check failed: %v\n", err)
+				fmt.Fprintf(os.Stderr, "warning: startup check failed: %v\n", err)
 			}
 		}
-		for _, w := range fieldmanifest.Watchers() {
-			go w.Run(ctx, fieldmanifest.DefaultRefreshInterval)
+		for _, w := range poller.All() {
+			go w.Run(ctx, 30*time.Second)
 		}
 
 		if serveHTTPAddr != "" {
@@ -1025,4 +1029,45 @@ func init() {
 
 	// Stage flag on create
 	createCmd.Flags().BoolVar(&flagStage, "stage", false, "Stage locally instead of creating immediately")
+}
+
+// newConfigPoller returns a Poller that watches the config file for mtime
+// changes and calls ReloadConfig when the file has been modified.
+// configPath may be empty — in that case the default path is used and the
+// poller tracks its mtime. The interval passed to Run should be short (≤30s).
+func newConfigPoller(configPath string, svc *application.Service) *poller.Poller {
+	if configPath == "" {
+		configPath = config.DefaultPath("")
+	}
+	var lastMtime time.Time
+	if fi, err := os.Stat(configPath); err == nil {
+		lastMtime = fi.ModTime()
+	}
+
+	isStale := func() bool {
+		fi, err := os.Stat(configPath)
+		if err != nil {
+			return false
+		}
+		return fi.ModTime().After(lastMtime)
+	}
+
+	refresh := func(ctx context.Context) error {
+		added, removed, err := svc.ReloadConfig(configPath)
+		if err != nil {
+			return err
+		}
+		if fi, statErr := os.Stat(configPath); statErr == nil {
+			lastMtime = fi.ModTime()
+		}
+		if len(added) > 0 {
+			fmt.Fprintf(os.Stderr, "config reload: added backends: %v\n", added)
+		}
+		if len(removed) > 0 {
+			fmt.Fprintf(os.Stderr, "config reload: removed backends: %v\n", removed)
+		}
+		return nil
+	}
+
+	return poller.New("config", isStale, refresh)
 }

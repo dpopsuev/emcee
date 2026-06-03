@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -11,6 +12,23 @@ import (
 	"github.com/dpopsuev/emcee/internal/domain"
 	"github.com/dpopsuev/emcee/internal/repository"
 )
+
+// ErrStaleView is returned by Get when a non-terminal launch has not been
+// re-pulled within staleTTL. Callers should re-pull to get fresh data.
+var ErrStaleView = errors.New("launch view is stale")
+
+// staleTTL is the maximum age of a cached launch view for a non-terminal launch.
+// Terminal launches (PASSED, FAILED, STOPPED) are immutable and never stale.
+const staleTTL = 5 * time.Minute
+
+// terminalStatus reports whether a launch status can no longer change.
+func terminalStatus(status string) bool {
+	switch status {
+	case "PASSED", "FAILED", "STOPPED":
+		return true
+	}
+	return false
+}
 
 // Package-level sentinel for missing launch backend — reuses ErrNotSupported from service.go.
 // Declared here to avoid import cycles; the actual ErrNotSupported is in service.go.
@@ -70,12 +88,17 @@ func (ls *LaunchViewStore) Pull(ctx context.Context, backend, id string, repos m
 }
 
 // Get returns a cached LaunchView. Returns ErrRecordNotFound if not pulled.
+// Returns ErrStaleView (alongside the stale view) when a non-terminal launch
+// has not been refreshed within staleTTL — the caller should re-pull.
 func (ls *LaunchViewStore) Get(ref string) (*domain.LaunchView, error) {
 	ls.mu.RLock()
 	defer ls.mu.RUnlock()
 	lv, ok := ls.records[ref]
 	if !ok {
 		return nil, fmt.Errorf("%w: %s", domain.ErrRecordNotFound, ref)
+	}
+	if !terminalStatus(lv.Launch.Status) && time.Since(lv.PulledAt) > staleTTL {
+		return lv, ErrStaleView
 	}
 	return lv, nil
 }

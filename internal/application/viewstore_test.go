@@ -62,7 +62,7 @@ func TestViewPull_IdentityMap(t *testing.T) {
 		t.Fatalf("second pull: %v", err)
 	}
 
-	vr, _ := svc.ViewGet("test:PROJ-1")
+	vr, _ := svc.ViewGet(context.Background(), "test:PROJ-1")
 	if vr.(*domain.ViewRecord).Fields["title"] != "Updated title" {
 		t.Errorf("expected re-pull to update, got %q", vr.(*domain.ViewRecord).Fields["title"])
 	}
@@ -71,7 +71,7 @@ func TestViewPull_IdentityMap(t *testing.T) {
 func TestViewGet_NotFound(t *testing.T) {
 	svc, _ := newViewTestService(t)
 
-	_, err := svc.ViewGet("test:NONEXIST")
+	_, err := svc.ViewGet(context.Background(), "test:NONEXIST")
 	if err == nil {
 		t.Error("expected error for non-pulled ref")
 	}
@@ -90,7 +90,7 @@ func TestViewMutate(t *testing.T) {
 		t.Fatalf("mutate: %v", err)
 	}
 
-	vr, _ := svc.ViewGet("test:PROJ-1")
+	vr, _ := svc.ViewGet(context.Background(), "test:PROJ-1")
 	if vr.(*domain.ViewRecord).Fields["status"] != "done" {
 		t.Errorf("status = %q, want 'done'", vr.(*domain.ViewRecord).Fields["status"])
 	}
@@ -231,7 +231,7 @@ func TestViewDrop(t *testing.T) {
 	_, _ = svc.ViewPull(ctx, "test:PROJ-1")
 	svc.ViewDrop("test:PROJ-1")
 
-	_, err := svc.ViewGet("test:PROJ-1")
+	_, err := svc.ViewGet(context.Background(), "test:PROJ-1")
 	if err == nil {
 		t.Error("expected error after drop")
 	}

@@ -26,7 +26,7 @@ func (s *StubViewService) ViewPull(ctx context.Context, ref string) (any, error)
 	return nil, domain.ErrRecordNotFound
 }
 
-func (s *StubViewService) ViewGet(ref string) (any, error) {
+func (s *StubViewService) ViewGet(ctx context.Context, ref string) (any, error) {
 	if s.ViewRecords != nil {
 		if vr, ok := s.ViewRecords[ref]; ok {
 			return vr, nil

@@ -795,7 +795,7 @@ func viewHandler(svc EmceeService) server.Handler {
 			if args.Ref == "" {
 				return "", errRefRequired
 			}
-			vr, err := svc.ViewGet(args.Ref)
+			vr, err := svc.ViewGet(ctx, args.Ref)
 			if err != nil {
 				return "", err
 			}
@@ -820,7 +820,7 @@ func viewHandler(svc EmceeService) server.Handler {
 			if err := svc.ViewMutate(args.Ref, field, value); err != nil {
 				return "", err
 			}
-			vr, err := svc.ViewGet(args.Ref)
+			vr, err := svc.ViewGet(ctx, args.Ref)
 			if err != nil {
 				return "", err
 			}

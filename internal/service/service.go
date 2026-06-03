@@ -153,7 +153,7 @@ type LedgerService interface {
 // Identity Map + Unit of Work + Optimistic Offline Lock.
 type ViewService interface {
 	ViewPull(ctx context.Context, ref string) (any, error)
-	ViewGet(ref string) (any, error)
+	ViewGet(ctx context.Context, ref string) (any, error)
 	ViewMutate(ref, field, value string) error
 	ViewDiff(ref string) (*domain.ViewDiff, error)
 	ViewPush(ctx context.Context, ref string) (*domain.Issue, error)

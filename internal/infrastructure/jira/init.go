@@ -7,6 +7,7 @@ import (
 	"github.com/dpopsuev/emcee/internal/config"
 	"github.com/dpopsuev/emcee/internal/fieldmanifest"
 	infra "github.com/dpopsuev/emcee/internal/infrastructure"
+	"github.com/dpopsuev/emcee/internal/poller"
 	"github.com/dpopsuev/emcee/internal/repository"
 )
 
@@ -51,10 +52,10 @@ func init() {
 			return nil, err
 		}
 
-		// Register a watcher so serveCmd can keep the manifest evergreen.
+		// Register a poller so serveCmd can keep the manifest evergreen.
 		// The closure captures repo before cache.New() wraps it, so SetCustomFields
 		// reaches the live Repository directly.
-		fieldmanifest.RegisterWatcher(fieldmanifest.NewWatcher(
+		poller.Register("fields:"+name, fieldmanifest.NewManifestPoller(
 			name,
 			config.Dir(),
 			fieldmanifest.DefaultTTL,

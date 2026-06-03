@@ -952,9 +952,15 @@ func (s *Service) ViewPull(ctx context.Context, ref string) (any, error) {
 }
 
 // ViewGet returns a cached entity without hitting the backend.
-func (s *Service) ViewGet(ref string) (any, error) {
+// For launch refs, if the cached view is stale and the launch is non-terminal,
+// it re-pulls automatically before returning.
+func (s *Service) ViewGet(ctx context.Context, ref string) (any, error) {
 	if _, _, ok := splitLaunchRef(ref); ok {
-		return s.launchView.Get(ref)
+		lv, err := s.launchView.Get(ref)
+		if errors.Is(err, ErrStaleView) {
+			return s.ViewPull(ctx, ref)
+		}
+		return lv, err
 	}
 	return s.view.Get(ref)
 }
