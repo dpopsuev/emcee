@@ -39,6 +39,19 @@ type Backend struct {
 	//     story_points:  customfield_10028
 	//     target_version: customfield_10855
 	Fields map[string]string `yaml:"fields,omitempty"`
+	// Watch controls delta sync polling for this backend.
+	// Nothing is polled unless at least one field is set.
+	Watch WatchConfig `yaml:"watch,omitempty"`
+}
+
+// WatchConfig is the config-file representation of a delta sync scope.
+// Mirrors domain.WatchScope; converted at runtime via domain.WatchScope.
+type WatchConfig struct {
+	Projects     []string `yaml:"projects,omitempty"`
+	Labels       []string `yaml:"labels,omitempty"`
+	IssueTypes   []string `yaml:"issue_types,omitempty"`
+	NamePatterns []string `yaml:"name_patterns,omitempty"`
+	Statuses     []string `yaml:"statuses,omitempty"`
 }
 
 // ResolveType returns the backend type. If Type is set, returns it.

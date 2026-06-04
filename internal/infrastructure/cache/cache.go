@@ -54,6 +54,7 @@ type Repository struct {
 	changelog   repository.ChangelogRepository
 	issueLinks  repository.IssueLinkRepository
 	jql         repository.JQLRepository
+	delta       repository.DeltaSyncer
 	docs        repository.DocumentRepository
 	projects    repository.ProjectRepository
 	initiatives repository.InitiativeRepository
@@ -142,6 +143,9 @@ func New(inner repository.IssueRepository, opts ...Option) *Repository {
 	if v, ok := inner.(repository.IssueLinkRepository); ok {
 		r.issueLinks = v
 		r.caps = append(r.caps, "issue_links")
+	}
+	if v, ok := inner.(repository.DeltaSyncer); ok {
+		r.delta = v
 	}
 	for _, o := range opts {
 		o(r)
@@ -429,6 +433,15 @@ func (r *Repository) SearchJQL(ctx context.Context, jql string, limit int) ([]do
 		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
 	}
 	return r.jql.SearchJQL(ctx, jql, limit)
+}
+
+// --- Passthrough: DeltaSyncer ---
+
+func (r *Repository) ListUpdatedSince(ctx context.Context, since time.Time, scope domain.WatchScope, limit int) ([]domain.Issue, error) {
+	if r.delta == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.delta.ListUpdatedSince(ctx, since, scope, limit)
 }
 
 // --- Passthrough: DocumentRepository ---

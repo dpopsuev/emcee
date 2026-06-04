@@ -75,7 +75,26 @@ func newServiceFromConfig() (*application.Service, error) {
 	}
 	svc := application.NewService(repos...)
 	injectTriage(svc)
+	injectWatchScopes(cfg, svc)
 	return svc, nil
+}
+
+func injectWatchScopes(cfg *config.Config, svc *application.Service) {
+	scopes := make(map[string]domain.WatchScope)
+	for name, b := range cfg.Backends {
+		w := b.Watch
+		s := domain.WatchScope{
+			Projects:     w.Projects,
+			Labels:       w.Labels,
+			IssueTypes:   w.IssueTypes,
+			NamePatterns: w.NamePatterns,
+			Statuses:     w.Statuses,
+		}
+		if !s.IsEmpty() {
+			scopes[name] = s
+		}
+	}
+	svc.Apply(application.WithWatchScopes(scopes))
 }
 
 func newServiceFromEnv() (*application.Service, error) {

@@ -710,3 +710,46 @@ func (r *Repository) ListPRs(ctx context.Context, filter domain.PRFilter) ([]dom
 	}
 	return prs, nil
 }
+
+// --- Delta sync ---
+
+var _ repository.DeltaSyncer = (*Repository)(nil)
+
+// ListUpdatedSince returns issues updated after since across all repos in scope.Projects.
+// Each project must be "owner/repo". Labels filter is applied server-side.
+// An empty scope returns nothing.
+func (r *Repository) ListUpdatedSince(ctx context.Context, since time.Time, scope domain.WatchScope, limit int) ([]domain.Issue, error) {
+	infra.LogOp(ctx, BackendName, "list_updated_since")
+	if scope.IsEmpty() {
+		return nil, nil
+	}
+	if limit <= 0 {
+		limit = 50
+	}
+
+	var all []domain.Issue
+	repos := scope.Projects
+	if len(repos) == 0 && r.owner != "" && r.repo != "" {
+		repos = []string{r.owner + "/" + r.repo}
+	}
+
+	for _, repoPath := range repos {
+		parts := strings.SplitN(repoPath, "/", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		path := fmt.Sprintf("/repos/%s/%s/issues?state=open&sort=updated&direction=asc&per_page=%d&since=%s",
+			parts[0], parts[1], limit, url.QueryEscape(since.UTC().Format(time.RFC3339)))
+		if len(scope.Labels) > 0 {
+			path += "&labels=" + url.QueryEscape(strings.Join(scope.Labels, ","))
+		}
+		var raw []githubIssue
+		if err := r.api(ctx, "GET", path, nil, &raw); err != nil {
+			continue
+		}
+		for i := range raw {
+			all = append(all, raw[i].toDomain())
+		}
+	}
+	return all, nil
+}

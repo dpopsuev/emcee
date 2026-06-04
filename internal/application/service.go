@@ -51,6 +51,8 @@ type Service struct {
 	changelogRepos map[string]repository.ChangelogRepository
 	extractor      repository.LinkExtractor
 	graphStore     repository.GraphStore
+	deltaRepos     map[string]repository.DeltaSyncer
+	watchScopes    map[string]domain.WatchScope
 	ledger         repository.Ledger
 	cursor         poller.Cursor
 	crawlRateLimit float64  // requests per second (0 = unlimited)
@@ -78,6 +80,8 @@ func NewService(repos ...repository.IssueRepository) *Service {
 		launchRepos:    make(map[string]repository.LaunchRepository),
 		fieldRepos:     make(map[string]repository.FieldRepository),
 		jqlRepos:       make(map[string]repository.JQLRepository),
+		deltaRepos:     make(map[string]repository.DeltaSyncer),
+		watchScopes:    make(map[string]domain.WatchScope),
 		prRepos:        make(map[string]repository.PRRepository),
 		extLinkRepos:   make(map[string]repository.ExternalLinkRepository),
 		issueLinkRepos: make(map[string]repository.IssueLinkRepository),
@@ -117,6 +121,9 @@ func NewService(repos ...repository.IssueRepository) *Service {
 		}
 		if jr, ok := r.(repository.JQLRepository); ok {
 			s.jqlRepos[name] = jr
+		}
+		if ds, ok := r.(repository.DeltaSyncer); ok {
+			s.deltaRepos[name] = ds
 		}
 		if pr, ok := r.(repository.PRRepository); ok {
 			s.prRepos[name] = pr
@@ -173,6 +180,9 @@ func (s *Service) AddBackend(r repository.IssueRepository) {
 	if jr, ok := r.(repository.JQLRepository); ok {
 		s.jqlRepos[name] = jr
 	}
+	if ds, ok := r.(repository.DeltaSyncer); ok {
+		s.deltaRepos[name] = ds
+	}
 	if pr, ok := r.(repository.PRRepository); ok {
 		s.prRepos[name] = pr
 	}
@@ -210,6 +220,8 @@ func (s *Service) RemoveBackend(name string) bool {
 	delete(s.launchRepos, name)
 	delete(s.fieldRepos, name)
 	delete(s.jqlRepos, name)
+	delete(s.deltaRepos, name)
+	delete(s.watchScopes, name)
 	delete(s.prRepos, name)
 	delete(s.extLinkRepos, name)
 	delete(s.issueLinkRepos, name)
@@ -1046,6 +1058,12 @@ func WithCursor(c poller.Cursor) ServiceOption {
 	return func(s *Service) { s.cursor = c }
 }
 
+// WithWatchScopes sets the per-backend delta sync scopes.
+// Only backends with a non-empty WatchScope get a delta sync poller.
+func WithWatchScopes(scopes map[string]domain.WatchScope) ServiceOption {
+	return func(s *Service) { s.watchScopes = scopes }
+}
+
 // WithCrawlRateLimit sets the max requests per second during triage crawl.
 func WithCrawlRateLimit(rps float64) ServiceOption {
 	return func(s *Service) { s.crawlRateLimit = rps }
@@ -1160,8 +1178,8 @@ func issueToRecord(backend string, issue *domain.Issue) domain.ArtifactRecord {
 
 // --- Delta sync pollers ---
 
-// BuildPollers registers delta sync pollers for all capable backends.
-// Called from serveCmd after the service and cursor are fully wired.
+// BuildPollers registers delta sync pollers for backends that have a non-empty
+// WatchScope configured. Nothing is registered for backends without a watch: block.
 // Field manifest pollers are registered separately in each backend's init().
 func (s *Service) BuildPollers() {
 	cur := s.cursor
@@ -1174,49 +1192,66 @@ func (s *Service) BuildPollers() {
 	for k, v := range s.launchRepos {
 		launchRepos[k] = v
 	}
-	jqlRepos := make(map[string]repository.JQLRepository, len(s.jqlRepos))
-	for k, v := range s.jqlRepos {
-		jqlRepos[k] = v
+	deltaRepos := make(map[string]repository.DeltaSyncer, len(s.deltaRepos))
+	for k, v := range s.deltaRepos {
+		deltaRepos[k] = v
+	}
+	scopes := make(map[string]domain.WatchScope, len(s.watchScopes))
+	for k, v := range s.watchScopes {
+		scopes[k] = v
 	}
 	s.mu.RUnlock()
 
 	for name, repo := range launchRepos {
-		name, repo := name, repo
+		scope, ok := scopes[name]
+		if !ok || scope.IsEmpty() {
+			continue
+		}
+		name, repo, scope := name, repo, scope
 		poller.Register("launches:"+name, poller.New(
 			"launches:"+name,
 			func() bool { return true },
-			func(ctx context.Context) error { return s.syncLaunches(ctx, name, repo, cur) },
+			func(ctx context.Context) error { return s.syncLaunches(ctx, name, repo, scope, cur) },
 		))
 	}
-	for name, repo := range jqlRepos {
-		name, repo := name, repo
-		poller.Register("tickets:"+name, poller.New(
-			"tickets:"+name,
+
+	for name, repo := range deltaRepos {
+		scope, ok := scopes[name]
+		if !ok || scope.IsEmpty() {
+			continue
+		}
+		name, repo, scope := name, repo, scope
+		poller.Register("delta:"+name, poller.New(
+			"delta:"+name,
 			func() bool { return true },
-			func(ctx context.Context) error { return s.syncTickets(ctx, name, repo, cur) },
+			func(ctx context.Context) error { return s.syncIssues(ctx, name, repo, scope, cur) },
 		))
 	}
 }
 
-// syncLaunches fetches launches created after the cursor, auto-pulls FAILED ones,
-// and advances the cursor to the newest start time seen.
-func (s *Service) syncLaunches(ctx context.Context, backend string, repo repository.LaunchRepository, cur poller.Cursor) error {
+// syncLaunches fetches launches created after the cursor that match scope,
+// auto-pulls those matching configured statuses, and advances the cursor.
+func (s *Service) syncLaunches(ctx context.Context, backend string, repo repository.LaunchRepository, scope domain.WatchScope, cur poller.Cursor) error {
 	since := cur.Get("launches:" + backend)
 	launches, err := repo.ListLaunches(ctx, domain.LaunchFilter{StartAfter: since, Limit: 50})
 	if err != nil {
 		return fmt.Errorf("launch delta sync %s: %w", backend, err)
 	}
+
+	wantStatus := make(map[string]bool, len(scope.Statuses))
+	for _, s := range scope.Statuses {
+		wantStatus[s] = true
+	}
+
 	var newest time.Time
 	for _, launch := range launches {
 		if launch.StartTime.After(newest) {
 			newest = launch.StartTime
 		}
-		if launch.Status != "FAILED" {
+		if !matchesLaunchScope(launch, scope, wantStatus) {
 			continue
 		}
-		if _, err := s.launchView.Pull(ctx, backend, launch.ID, s.launchRepos); err != nil {
-			continue // non-fatal — log and move on
-		}
+		_, _ = s.launchView.Pull(ctx, backend, launch.ID, s.launchRepos)
 	}
 	if !newest.IsZero() && newest.After(since) {
 		return cur.Set("launches:"+backend, newest)
@@ -1224,22 +1259,36 @@ func (s *Service) syncLaunches(ctx context.Context, backend string, repo reposit
 	return nil
 }
 
-// syncTickets fetches issues updated after the cursor, upserts them into the
-// ledger, and advances the cursor to the newest updated time seen.
-func (s *Service) syncTickets(ctx context.Context, backend string, repo repository.JQLRepository, cur poller.Cursor) error {
+// matchesLaunchScope reports whether a launch satisfies the watch scope filters.
+func matchesLaunchScope(launch domain.Launch, scope domain.WatchScope, wantStatus map[string]bool) bool {
+	if len(wantStatus) > 0 && !wantStatus[launch.Status] {
+		return false
+	}
+	if len(scope.NamePatterns) > 0 {
+		matched := false
+		for _, pat := range scope.NamePatterns {
+			if strings.Contains(launch.Name, pat) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return false
+		}
+	}
+	return true
+}
+
+// syncIssues fetches issues updated after the cursor via DeltaSyncer,
+// upserts them into the ledger, and advances the cursor.
+func (s *Service) syncIssues(ctx context.Context, backend string, repo repository.DeltaSyncer, scope domain.WatchScope, cur poller.Cursor) error {
 	if s.ledger == nil {
 		return nil
 	}
-	since := cur.Get("tickets:" + backend)
-	var jql string
-	if since.IsZero() {
-		jql = "updated >= -1h ORDER BY updated ASC"
-	} else {
-		jql = fmt.Sprintf(`updated >= "%s" ORDER BY updated ASC`, since.UTC().Format("2006-01-02 15:04"))
-	}
-	issues, err := repo.SearchJQL(ctx, jql, 50)
+	since := cur.Get("delta:" + backend)
+	issues, err := repo.ListUpdatedSince(ctx, since, scope, 50)
 	if err != nil {
-		return fmt.Errorf("ticket delta sync %s: %w", backend, err)
+		return fmt.Errorf("issue delta sync %s: %w", backend, err)
 	}
 	var newest time.Time
 	for i := range issues {
@@ -1249,7 +1298,7 @@ func (s *Service) syncTickets(ctx context.Context, backend string, repo reposito
 		_ = s.ledger.Put(ctx, issueToRecord(backend, &issues[i]))
 	}
 	if !newest.IsZero() && newest.After(since) {
-		return cur.Set("tickets:"+backend, newest)
+		return cur.Set("delta:"+backend, newest)
 	}
 	return nil
 }

@@ -5,6 +5,7 @@ package repository
 
 import (
 	"context"
+	"time"
 
 	"github.com/dpopsuev/emcee/internal/domain"
 )
@@ -126,6 +127,15 @@ type ChangelogRepository interface {
 type JQLRepository interface {
 	Name() string
 	SearchJQL(ctx context.Context, jql string, limit int) ([]domain.Issue, error)
+}
+
+// DeltaSyncer is the outbound port for incremental issue sync.
+// Backends implement this using their native updated-since API:
+// Jira uses JQL updated>=, GitHub uses ?since=, GitLab uses ?updated_after=.
+// The scope filters what gets returned; an empty scope should return nothing.
+type DeltaSyncer interface {
+	Name() string
+	ListUpdatedSince(ctx context.Context, since time.Time, scope domain.WatchScope, limit int) ([]domain.Issue, error)
 }
 
 // PRRepository is the outbound port for pull request / merge request operations.

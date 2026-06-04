@@ -1111,6 +1111,45 @@ func (r *Repository) ListLinkTypes(ctx context.Context) ([]domain.IssueLinkType,
 	return types, nil
 }
 
+// --- Delta sync ---
+
+var _ repository.DeltaSyncer = (*Repository)(nil)
+
+// ListUpdatedSince returns issues updated after since, scoped by the WatchScope.
+// Projects, Labels, and IssueTypes are translated to JQL clauses.
+// An empty scope returns nothing — callers must set at least one field.
+func (r *Repository) ListUpdatedSince(ctx context.Context, since time.Time, scope domain.WatchScope, limit int) ([]domain.Issue, error) {
+	infra.LogOp(ctx, BackendName, "list_updated_since")
+	if scope.IsEmpty() {
+		return nil, nil
+	}
+	if limit <= 0 {
+		limit = defaultLimit
+	}
+
+	clauses := []string{fmt.Sprintf(`updated >= "%s"`, since.UTC().Format("2006-01-02 15:04"))}
+	if len(scope.Projects) > 0 {
+		quoted := make([]string, len(scope.Projects))
+		for i, p := range scope.Projects {
+			quoted[i] = `"` + p + `"`
+		}
+		clauses = append(clauses, "project IN ("+strings.Join(quoted, ",")+")")
+	}
+	if len(scope.IssueTypes) > 0 {
+		quoted := make([]string, len(scope.IssueTypes))
+		for i, t := range scope.IssueTypes {
+			quoted[i] = `"` + t + `"`
+		}
+		clauses = append(clauses, "issuetype IN ("+strings.Join(quoted, ",")+")")
+	}
+	for _, label := range scope.Labels {
+		clauses = append(clauses, `labels = "`+label+`"`)
+	}
+
+	jql := strings.Join(clauses, " AND ") + " ORDER BY updated ASC"
+	return r.searchJQL(ctx, jql, limit)
+}
+
 // --- Changelog ---
 
 var _ repository.ChangelogRepository = (*Repository)(nil)

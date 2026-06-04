@@ -709,3 +709,43 @@ func (r *Repository) ListPRs(ctx context.Context, filter domain.PRFilter) ([]dom
 	}
 	return prs, nil
 }
+
+// --- Delta sync ---
+
+var _ repository.DeltaSyncer = (*Repository)(nil)
+
+// ListUpdatedSince returns issues updated after since, scoped by WatchScope.
+// Projects must be "namespace/project" GitLab paths. Labels applied server-side.
+// An empty scope returns nothing.
+func (r *Repository) ListUpdatedSince(ctx context.Context, since time.Time, scope domain.WatchScope, limit int) ([]domain.Issue, error) {
+	infra.LogOp(ctx, BackendName, "list_updated_since")
+	if scope.IsEmpty() {
+		return nil, nil
+	}
+	if limit <= 0 {
+		limit = 50
+	}
+
+	projects := scope.Projects
+	if len(projects) == 0 {
+		projects = []string{r.projectID}
+	}
+
+	var all []domain.Issue
+	for _, proj := range projects {
+		pid := url.PathEscape(proj)
+		path := fmt.Sprintf("/api/v4/projects/%s/issues?per_page=%d&order_by=updated_at&sort=asc&updated_after=%s",
+			pid, limit, url.QueryEscape(since.UTC().Format(time.RFC3339)))
+		if len(scope.Labels) > 0 {
+			path += "&labels=" + url.QueryEscape(strings.Join(scope.Labels, ","))
+		}
+		var raw []gitlabIssue
+		if err := r.api(ctx, "GET", path, nil, &raw); err != nil {
+			continue
+		}
+		for i := range raw {
+			all = append(all, raw[i].toDomain())
+		}
+	}
+	return all, nil
+}
