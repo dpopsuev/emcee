@@ -16,6 +16,7 @@ import (
 	"github.com/dpopsuev/emcee/internal/domain"
 	"github.com/dpopsuev/emcee/internal/fieldmanifest"
 	infra "github.com/dpopsuev/emcee/internal/infrastructure"
+	"github.com/dpopsuev/emcee/internal/poller"
 	"github.com/dpopsuev/emcee/internal/repository"
 	"github.com/dpopsuev/emcee/internal/service"
 )
@@ -51,6 +52,7 @@ type Service struct {
 	extractor      repository.LinkExtractor
 	graphStore     repository.GraphStore
 	ledger         repository.Ledger
+	cursor         poller.Cursor
 	crawlRateLimit float64  // requests per second (0 = unlimited)
 	crawlAllowList []string // backend names to recurse into (empty = all)
 	stage          *StageStore
@@ -1039,6 +1041,11 @@ func WithLedger(l repository.Ledger) ServiceOption {
 	return func(s *Service) { s.ledger = l }
 }
 
+// WithCursor injects a Cursor for delta sync pollers.
+func WithCursor(c poller.Cursor) ServiceOption {
+	return func(s *Service) { s.cursor = c }
+}
+
 // WithCrawlRateLimit sets the max requests per second during triage crawl.
 func WithCrawlRateLimit(rps float64) ServiceOption {
 	return func(s *Service) { s.crawlRateLimit = rps }
@@ -1149,6 +1156,102 @@ func issueToRecord(backend string, issue *domain.Issue) domain.ArtifactRecord {
 		SeenAt:     time.Now(),
 		UpdatedAt:  issue.UpdatedAt,
 	}
+}
+
+// --- Delta sync pollers ---
+
+// BuildPollers registers delta sync pollers for all capable backends.
+// Called from serveCmd after the service and cursor are fully wired.
+// Field manifest pollers are registered separately in each backend's init().
+func (s *Service) BuildPollers() {
+	cur := s.cursor
+	if cur == nil {
+		cur = poller.NewNopCursor()
+	}
+
+	s.mu.RLock()
+	launchRepos := make(map[string]repository.LaunchRepository, len(s.launchRepos))
+	for k, v := range s.launchRepos {
+		launchRepos[k] = v
+	}
+	jqlRepos := make(map[string]repository.JQLRepository, len(s.jqlRepos))
+	for k, v := range s.jqlRepos {
+		jqlRepos[k] = v
+	}
+	s.mu.RUnlock()
+
+	for name, repo := range launchRepos {
+		name, repo := name, repo
+		poller.Register("launches:"+name, poller.New(
+			"launches:"+name,
+			func() bool { return true },
+			func(ctx context.Context) error { return s.syncLaunches(ctx, name, repo, cur) },
+		))
+	}
+	for name, repo := range jqlRepos {
+		name, repo := name, repo
+		poller.Register("tickets:"+name, poller.New(
+			"tickets:"+name,
+			func() bool { return true },
+			func(ctx context.Context) error { return s.syncTickets(ctx, name, repo, cur) },
+		))
+	}
+}
+
+// syncLaunches fetches launches created after the cursor, auto-pulls FAILED ones,
+// and advances the cursor to the newest start time seen.
+func (s *Service) syncLaunches(ctx context.Context, backend string, repo repository.LaunchRepository, cur poller.Cursor) error {
+	since := cur.Get("launches:" + backend)
+	launches, err := repo.ListLaunches(ctx, domain.LaunchFilter{StartAfter: since, Limit: 50})
+	if err != nil {
+		return fmt.Errorf("launch delta sync %s: %w", backend, err)
+	}
+	var newest time.Time
+	for _, launch := range launches {
+		if launch.StartTime.After(newest) {
+			newest = launch.StartTime
+		}
+		if launch.Status != "FAILED" {
+			continue
+		}
+		if _, err := s.launchView.Pull(ctx, backend, launch.ID, s.launchRepos); err != nil {
+			continue // non-fatal — log and move on
+		}
+	}
+	if !newest.IsZero() && newest.After(since) {
+		return cur.Set("launches:"+backend, newest)
+	}
+	return nil
+}
+
+// syncTickets fetches issues updated after the cursor, upserts them into the
+// ledger, and advances the cursor to the newest updated time seen.
+func (s *Service) syncTickets(ctx context.Context, backend string, repo repository.JQLRepository, cur poller.Cursor) error {
+	if s.ledger == nil {
+		return nil
+	}
+	since := cur.Get("tickets:" + backend)
+	var jql string
+	if since.IsZero() {
+		jql = "updated >= -1h ORDER BY updated ASC"
+	} else {
+		jql = fmt.Sprintf(`updated >= "%s" ORDER BY updated ASC`, since.UTC().Format("2006-01-02 15:04"))
+	}
+	issues, err := repo.SearchJQL(ctx, jql, 50)
+	if err != nil {
+		return fmt.Errorf("ticket delta sync %s: %w", backend, err)
+	}
+	var newest time.Time
+	for i := range issues {
+		if issues[i].UpdatedAt.After(newest) {
+			newest = issues[i].UpdatedAt
+		}
+		_ = s.ledger.Put(ctx, issueToRecord(backend, &issues[i]))
+	}
+	if !newest.IsZero() && newest.After(since) {
+		return cur.Set("tickets:"+backend, newest)
+	}
+	return nil
 }
 
 // extractBackend returns the backend portion of a "backend:key" ref.

@@ -95,6 +95,7 @@ func injectTriage(svc *application.Service) {
 		svc.Apply(application.WithLedger(triage.NewInMemoryLedger()))
 	} else {
 		svc.Apply(application.WithLedger(ledger))
+		svc.Apply(application.WithCursor(ledger.NewCursor()))
 	}
 	svc.Apply(
 		application.WithLinkExtractor(triage.NewRegexLinkExtractor(nil)),
@@ -931,6 +932,7 @@ var serveCmd = &cobra.Command{
 
 		configPoller := newConfigPoller(flagConfig, svc)
 		poller.Register("config", configPoller)
+		svc.BuildPollers()
 
 		for _, w := range poller.All() {
 			if err := w.Check(ctx); err != nil {

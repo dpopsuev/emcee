@@ -213,6 +213,10 @@ func defaultPath() string {
 
 func migrate(db *sql.DB) error {
 	_, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS poller_cursors (
+			name   TEXT PRIMARY KEY,
+			cursor INTEGER NOT NULL DEFAULT 0
+		);
 		CREATE TABLE IF NOT EXISTS artifacts (
 			ref        TEXT PRIMARY KEY,
 			backend    TEXT NOT NULL,
