@@ -755,7 +755,51 @@ func (s *Service) SearchTestItems(ctx context.Context, backend string, filter do
 	if !ok {
 		return nil, s.notSupportedErr(backend, "launches")
 	}
-	return r.SearchTestItems(ctx, filter)
+
+	// Resolve launch IDs from name / date-range when not given explicitly.
+	if len(filter.LaunchIDs) == 0 {
+		launches, err := r.ListLaunches(ctx, domain.LaunchFilter{
+			Name:        filter.LaunchName,
+			StartAfter:  filter.Since,
+			StartBefore: filter.Before,
+			Limit:       200,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("resolving launches for search_items: %w", err)
+		}
+		if len(launches) == 0 {
+			return nil, nil
+		}
+		for _, l := range launches {
+			filter.LaunchIDs = append(filter.LaunchIDs, l.ID)
+		}
+	}
+
+	// RP does not support cross-launch item queries without a saved filter.
+	// Fan out: query each launch individually and aggregate results.
+	limit := filter.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+	perLaunch := domain.TestItemFilter{
+		Name:        filter.Name,
+		Status:      filter.Status,
+		IssueType:   filter.IssueType,
+		Limit:       limit,
+		IncludeLogs: filter.IncludeLogs,
+	}
+	var all []domain.TestItem
+	for _, launchID := range filter.LaunchIDs {
+		items, err := r.ListTestItems(ctx, launchID, perLaunch)
+		if err != nil {
+			return nil, fmt.Errorf("items for launch %s: %w", launchID, err)
+		}
+		all = append(all, items...)
+		if len(all) >= limit {
+			break
+		}
+	}
+	return all, nil
 }
 
 func (s *Service) UpdateDefects(ctx context.Context, backend string, updates []domain.DefectUpdate) error {

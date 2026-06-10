@@ -56,14 +56,22 @@ type TestItem struct {
 	URL                  string                `json:"url,omitempty"`
 }
 
-// TestItemFilter controls which test items to list.
+// TestItemFilter controls which test items to list or search.
 type TestItemFilter struct {
 	Name        string `json:"name,omitempty"` // substring filter on test item name
 	Status      string `json:"status,omitempty"`
+	IssueType   string `json:"issue_type,omitempty"` // e.g. "ti001", "pb001", "ab001"
 	Type        string `json:"type,omitempty"`
 	Limit       int    `json:"limit,omitempty"`
 	Page        int    `json:"page,omitempty"`         // 0-based page number for pagination
 	IncludeLogs bool   `json:"include_logs,omitempty"` // fetch failure_message for FAILED items
+
+	// Cross-launch search fields. The application layer resolves LaunchName/Since/Before
+	// into LaunchIDs before calling the repository.
+	LaunchIDs  []string  `json:"launch_ids,omitempty"`  // resolved by application layer
+	LaunchName string    `json:"launch_name,omitempty"` // launch name substring filter
+	Since      time.Time `json:"since,omitempty"`       // launch start time lower bound
+	Before     time.Time `json:"before,omitempty"`      // launch start time upper bound
 }
 
 // ExternalSystemIssue links a test item defect to an external bug tracker (e.g. Jira).

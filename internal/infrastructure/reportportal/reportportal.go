@@ -353,6 +353,9 @@ func (r *Repository) ListTestItems(ctx context.Context, launchID string, filter 
 	if filter.Status != "" {
 		params.Set("filter.eq.status", strings.ToUpper(filter.Status))
 	}
+	if filter.IssueType != "" {
+		params.Set("filter.eq.issueType", filter.IssueType)
+	}
 	if filter.Name != "" {
 		params.Set("filter.cnt.name", filter.Name)
 	}
@@ -375,9 +378,15 @@ func (r *Repository) ListTestItems(ctx context.Context, launchID string, filter 
 	return items, nil
 }
 
-// SearchTestItems searches test items across all launches by name substring.
+// SearchTestItems searches test items across one or more launches.
+// LaunchIDs must be populated by the application layer before calling this method —
+// the RP API requires at least one launch ID (filter.in.launchId) or it returns 400.
 func (r *Repository) SearchTestItems(ctx context.Context, filter domain.TestItemFilter) ([]domain.TestItem, error) {
 	infra.LogOp(ctx, BackendName, "search_test_items")
+	if len(filter.LaunchIDs) == 0 {
+		return nil, fmt.Errorf("%w: SearchTestItems requires at least one launch ID; "+
+			"set Since/Before/LaunchName so the application layer can resolve them", ErrAPIError)
+	}
 	limit := filter.Limit
 	if limit <= 0 {
 		limit = defaultLimit
@@ -393,17 +402,23 @@ func (r *Repository) SearchTestItems(ctx context.Context, filter domain.TestItem
 		"page.size":             {strconv.Itoa(limit)},
 		"page.number":           {strconv.Itoa(page)},
 	}
-	if filter.Name != "" {
-		params.Set("filter.cnt.name", filter.Name)
-	}
 	if filter.Status != "" {
 		params.Set("filter.eq.status", strings.ToUpper(filter.Status))
 	}
+	if filter.IssueType != "" {
+		params.Set("filter.eq.issueType", filter.IssueType)
+	}
+	if filter.Name != "" {
+		params.Set("filter.cnt.name", filter.Name)
+	}
+	// RP requires literal commas for filter.in.* — url.Values.Encode() would
+	// produce %2C which RP rejects. Build the launchId param manually.
+	path := "/item?filter.in.launchId=" + strings.Join(filter.LaunchIDs, ",") + "&" + params.Encode()
 
 	var result struct {
 		Content []rpTestItem `json:"content"`
 	}
-	if err := r.api(ctx, "GET", "/item?"+params.Encode(), nil, &result); err != nil {
+	if err := r.api(ctx, "GET", path, nil, &result); err != nil {
 		return nil, err
 	}
 

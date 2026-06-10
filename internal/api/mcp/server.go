@@ -966,11 +966,26 @@ func launchHandler(svc EmceeService) server.Handler {
 
 		case "search_items":
 			filter := domain.TestItemFilter{
-				Name:        args.Query,
+				LaunchName:  args.Query,
 				Status:      args.Status,
+				IssueType:   args.IssueType,
 				Limit:       int(args.Limit),
 				Page:        int(args.Page),
 				IncludeLogs: args.IncludeLogs,
+			}
+			if args.Since != "" {
+				t, err := time.Parse(time.RFC3339, args.Since)
+				if err != nil {
+					return "", fmt.Errorf("invalid since (want RFC3339): %w", err)
+				}
+				filter.Since = t
+			}
+			if args.Before != "" {
+				t, err := time.Parse(time.RFC3339, args.Before)
+				if err != nil {
+					return "", fmt.Errorf("invalid before (want RFC3339): %w", err)
+				}
+				filter.Before = t
 			}
 			items, err := svc.SearchTestItems(ctx, args.Backend, filter)
 			if err != nil {
@@ -1263,7 +1278,10 @@ func adminHandler(svc EmceeService) server.Handler {
 			sb.WriteString("  get          backend ref                                   Fetch one launch by ID.\n")
 			sb.WriteString("  items        backend ref [status] [limit] [page] [include_logs]\n")
 			sb.WriteString("               status: FAILED|PASSED|SKIPPED. include_logs fetches failure_message.\n")
-			sb.WriteString("  search_items backend [status] [limit] [page]              Search items across launches.\n")
+			sb.WriteString("  search_items backend [query] [status] [issue_type] [since] [before] [limit] [page] [include_logs]\n")
+			sb.WriteString("               Cross-launch item search. query filters launch names (e.g. 'telco-ft-ran-ptp').\n")
+			sb.WriteString("               issue_type: ti001 (To Investigate) | pb001 (Product Bug) | ab001 (Automation Bug).\n")
+			sb.WriteString("               since/before are RFC3339 bounds on launch start time.\n")
 			sb.WriteString("  item_get     backend ref                                   Fetch one test item by ID.\n")
 			sb.WriteString("  bulk_item_get backend issues=JSON                          JSON array of item IDs.\n")
 			sb.WriteString("  defect_update backend issues=JSON                          JSON array of {test_item_id, issue_type, comment?}.\n")
