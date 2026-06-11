@@ -353,11 +353,11 @@ func (r *Repository) ListTestItems(ctx context.Context, launchID string, filter 
 		"page.size":             {strconv.Itoa(limit)},
 		"page.number":           {strconv.Itoa(page)},
 	}
-	if filter.Status != "" {
-		params.Set("filter.eq.status", strings.ToUpper(filter.Status))
+	if len(filter.Status) > 0 {
+		params.Set("filter.in.status", strings.ToUpper(strings.Join(filter.Status, ",")))
 	}
-	if filter.IssueType != "" {
-		params.Set("filter.eq.issueType", filter.IssueType)
+	if len(filter.IssueType) > 0 {
+		params.Set("filter.in.issueType", strings.Join(filter.IssueType, ","))
 	}
 	if filter.Name != "" {
 		params.Set("filter.cnt.name", filter.Name)
@@ -405,11 +405,11 @@ func (r *Repository) SearchTestItems(ctx context.Context, filter domain.TestItem
 		"page.size":             {strconv.Itoa(limit)},
 		"page.number":           {strconv.Itoa(page)},
 	}
-	if filter.Status != "" {
-		params.Set("filter.eq.status", strings.ToUpper(filter.Status))
+	if len(filter.Status) > 0 {
+		params.Set("filter.in.status", strings.ToUpper(strings.Join(filter.Status, ",")))
 	}
-	if filter.IssueType != "" {
-		params.Set("filter.eq.issueType", filter.IssueType)
+	if len(filter.IssueType) > 0 {
+		params.Set("filter.in.issueType", strings.Join(filter.IssueType, ","))
 	}
 	if filter.Name != "" {
 		params.Set("filter.cnt.name", filter.Name)

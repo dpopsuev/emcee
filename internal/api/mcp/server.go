@@ -225,10 +225,11 @@ var launchSchema = json.RawMessage(`{
 		"backend":      {"type": "string", "description": "Backend name (reportportal)"},
 		"ref":          {"type": "string", "description": "Launch ID (pull/list/get/items) or item ID (item_get) or dashboard ID"},
 		"query":        {"type": "string", "description": "Name filter (list) or dashboard description (dashboard_create)"},
-		"status":       {"type": "string", "description": "FAILED | PASSED | SKIPPED (items/search_items)"},
+		"status":       {"type": "string", "description": "FAILED | PASSED | SKIPPED — single value or comma-separated list (items/search_items)."},
 		"since":        {"type": "string", "description": "Lower time bound. RFC3339, named anchor (startOfWeek, startOfDay, startOfMonth, now), or relative offset (-7d, -2w, -1h)."},
 		"before":       {"type": "string", "description": "Upper time bound. RFC3339, named anchor (endOfWeek, endOfDay, endOfMonth, now), or relative offset (-1d, -1h)."},
 		"ci_lane":      {"type": "string", "description": "Exact ci-lane attribute filter for search_items (e.g. 'telco-ft-ran-ptp'). Excludes gm/gnrd launches at source."},
+		"issue_type":   {"type": "string", "description": "ti001 | pb001 | ab001 — single value or comma-separated list (search_items/defect_update)."},
 		"limit":        {"type": "number", "description": "Max results or widget width"},
 		"page":         {"type": "number", "description": "0-based page number"},
 		"include_logs": {"type": "boolean", "description": "Fetch failure_message for FAILED items"},
@@ -952,7 +953,7 @@ func launchHandler(svc EmceeService) server.Handler {
 			}
 			filter := domain.TestItemFilter{
 				Name:        args.Query,
-				Status:      args.Status,
+				Status:      splitCSV(args.Status),
 				Limit:       int(args.Limit),
 				Page:        int(args.Page),
 				IncludeLogs: args.IncludeLogs,
@@ -966,8 +967,8 @@ func launchHandler(svc EmceeService) server.Handler {
 		case "search_items":
 			filter := domain.TestItemFilter{
 				LaunchName:  args.Query,
-				Status:      args.Status,
-				IssueType:   args.IssueType,
+				Status:      splitCSV(args.Status),
+				IssueType:   splitCSV(args.IssueType),
 				Limit:       int(args.Limit),
 				Page:        int(args.Page),
 				IncludeLogs: args.IncludeLogs,

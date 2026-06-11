@@ -59,13 +59,13 @@ type TestItem struct {
 
 // TestItemFilter controls which test items to list or search.
 type TestItemFilter struct {
-	Name        string `json:"name,omitempty"` // substring filter on test item name
-	Status      string `json:"status,omitempty"`
-	IssueType   string `json:"issue_type,omitempty"` // e.g. "ti001", "pb001", "ab001"
-	Type        string `json:"type,omitempty"`
-	Limit       int    `json:"limit,omitempty"`
-	Page        int    `json:"page,omitempty"`         // 0-based page number for pagination
-	IncludeLogs bool   `json:"include_logs,omitempty"` // fetch failure_message for FAILED items
+	Name        string   `json:"name,omitempty"`       // substring filter on test item name
+	Status      []string `json:"status,omitempty"`     // FAILED | PASSED | SKIPPED — one or more
+	IssueType   []string `json:"issue_type,omitempty"` // ti001 | pb001 | ab001 — one or more
+	Type        string   `json:"type,omitempty"`
+	Limit       int      `json:"limit,omitempty"`
+	Page        int      `json:"page,omitempty"`         // 0-based page number for pagination
+	IncludeLogs bool     `json:"include_logs,omitempty"` // fetch failure_message for FAILED items
 
 	// Cross-launch search fields. The application layer resolves LaunchName/Since/Before
 	// into LaunchIDs before calling the repository.

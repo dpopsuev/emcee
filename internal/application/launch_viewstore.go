@@ -105,20 +105,24 @@ func (ls *LaunchViewStore) Get(ref string) (*domain.LaunchView, error) {
 
 // GetItems returns cached test items for a launch, with optional status filter.
 // Returns nil, false if the launch is not in the cache.
-func (ls *LaunchViewStore) GetItems(ref, status string) ([]domain.TestItem, bool) {
+// An empty statuses slice returns all items.
+func (ls *LaunchViewStore) GetItems(ref string, statuses []string) ([]domain.TestItem, bool) {
 	ls.mu.RLock()
 	defer ls.mu.RUnlock()
 	lv, ok := ls.records[ref]
 	if !ok {
 		return nil, false
 	}
-	if status == "" {
+	if len(statuses) == 0 {
 		return lv.Items, true
 	}
-	upper := strings.ToUpper(status)
+	allowed := make(map[string]bool, len(statuses))
+	for _, s := range statuses {
+		allowed[strings.ToUpper(s)] = true
+	}
 	var out []domain.TestItem
 	for _, it := range lv.Items {
-		if strings.ToUpper(it.Status) == upper {
+		if allowed[strings.ToUpper(it.Status)] {
 			out = append(out, it)
 		}
 	}
