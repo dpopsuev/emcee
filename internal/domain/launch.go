@@ -65,7 +65,8 @@ type TestItemFilter struct {
 	Type        string   `json:"type,omitempty"`
 	Limit       int      `json:"limit,omitempty"`
 	Page        int      `json:"page,omitempty"`         // 0-based page number for pagination
-	IncludeLogs bool     `json:"include_logs,omitempty"` // fetch failure_message for FAILED items
+	IncludeLogs   bool `json:"include_logs,omitempty"`   // fetch failure_message for FAILED items
+	IncludeSuites bool `json:"include_suites,omitempty"` // include suite/container nodes (hasChildren=true); required for tree
 
 	// Cross-launch search fields. The application layer resolves LaunchName/Since/Before
 	// into LaunchIDs before calling the repository.

@@ -346,12 +346,14 @@ func (r *Repository) ListTestItems(ctx context.Context, launchID string, filter 
 		page = 0
 	}
 	params := url.Values{
-		"filter.eq.launchId":    {launchID},
-		"filter.eq.hasChildren": {"false"},
-		"isLatest":              {"false"},
-		"launchesLimit":         {"0"},
-		"page.size":             {strconv.Itoa(limit)},
-		"page.number":           {strconv.Itoa(page)},
+		"filter.eq.launchId": {launchID},
+		"isLatest":           {"false"},
+		"launchesLimit":      {"0"},
+		"page.size":          {strconv.Itoa(limit)},
+		"page.number":        {strconv.Itoa(page)},
+	}
+	if !filter.IncludeSuites {
+		params.Set("filter.eq.hasChildren", "false")
 	}
 	if len(filter.Status) > 0 {
 		params.Set("filter.in.status", strings.ToUpper(strings.Join(filter.Status, ",")))
