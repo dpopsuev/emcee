@@ -251,8 +251,7 @@ func (r *Repository) ListLaunches(ctx context.Context, filter domain.LaunchFilte
 		path += "&filter.eq.status=" + strings.ToUpper(filter.Status)
 	}
 	for k, v := range filter.Attributes {
-		path += "&filter.eq.attributeKey=" + url.QueryEscape(k) +
-			"&filter.eq.attributeValue=" + url.QueryEscape(v)
+		path += "&filter.has.compositeAttribute=" + url.QueryEscape(k+":"+v)
 	}
 	if !filter.StartAfter.IsZero() || !filter.StartBefore.IsZero() {
 		after := int64(0)
