@@ -762,6 +762,7 @@ func (s *Service) SearchTestItems(ctx context.Context, backend string, filter do
 			Name:        filter.LaunchName,
 			StartAfter:  filter.Since,
 			StartBefore: filter.Before,
+			Attributes:  filter.LaunchAttributes,
 			Limit:       200,
 		})
 		if err != nil {

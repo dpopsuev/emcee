@@ -33,12 +33,13 @@ type LaunchStatistics struct {
 
 // LaunchFilter controls which launches to list.
 type LaunchFilter struct {
-	Name        string    `json:"name,omitempty"`
-	Status      string    `json:"status,omitempty"`
-	StartAfter  time.Time `json:"start_after,omitempty"`  // list launches that started after this time
-	StartBefore time.Time `json:"start_before,omitempty"` // list launches that started before this time
-	Limit       int       `json:"limit,omitempty"`
-	Page        int       `json:"page,omitempty"` // 0-based page number for pagination
+	Name        string            `json:"name,omitempty"`
+	Status      string            `json:"status,omitempty"`
+	StartAfter  time.Time         `json:"start_after,omitempty"`  // list launches that started after this time
+	StartBefore time.Time         `json:"start_before,omitempty"` // list launches that started before this time
+	Attributes  map[string]string `json:"attributes,omitempty"`   // exact attribute key=value filters (e.g. "ci-lane"="telco-ft-ran-ptp")
+	Limit       int               `json:"limit,omitempty"`
+	Page        int               `json:"page,omitempty"` // 0-based page number for pagination
 }
 
 // TestItem represents a single test result within a launch.
@@ -68,10 +69,11 @@ type TestItemFilter struct {
 
 	// Cross-launch search fields. The application layer resolves LaunchName/Since/Before
 	// into LaunchIDs before calling the repository.
-	LaunchIDs  []string  `json:"launch_ids,omitempty"`  // resolved by application layer
-	LaunchName string    `json:"launch_name,omitempty"` // launch name substring filter
-	Since      time.Time `json:"since,omitempty"`       // launch start time lower bound
-	Before     time.Time `json:"before,omitempty"`      // launch start time upper bound
+	LaunchIDs        []string          `json:"launch_ids,omitempty"`        // resolved by application layer
+	LaunchName       string            `json:"launch_name,omitempty"`       // launch name substring filter
+	LaunchAttributes map[string]string `json:"launch_attributes,omitempty"` // exact attribute filters (e.g. "ci-lane"="telco-ft-ran-ptp")
+	Since            time.Time         `json:"since,omitempty"`             // launch start time lower bound
+	Before           time.Time         `json:"before,omitempty"`            // launch start time upper bound
 }
 
 // ExternalSystemIssue links a test item defect to an external bug tracker (e.g. Jira).

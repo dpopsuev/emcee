@@ -228,6 +228,7 @@ var launchSchema = json.RawMessage(`{
 		"status":       {"type": "string", "description": "FAILED | PASSED | SKIPPED (items/search_items)"},
 		"since":        {"type": "string", "description": "Lower time bound. RFC3339, named anchor (startOfWeek, startOfDay, startOfMonth, now), or relative offset (-7d, -2w, -1h)."},
 		"before":       {"type": "string", "description": "Upper time bound. RFC3339, named anchor (endOfWeek, endOfDay, endOfMonth, now), or relative offset (-1d, -1h)."},
+		"ci_lane":      {"type": "string", "description": "Exact ci-lane attribute filter for search_items (e.g. 'telco-ft-ran-ptp'). Excludes gm/gnrd launches at source."},
 		"limit":        {"type": "number", "description": "Max results or widget width"},
 		"page":         {"type": "number", "description": "0-based page number"},
 		"include_logs": {"type": "boolean", "description": "Fetch failure_message for FAILED items"},
@@ -317,6 +318,7 @@ type emceeArgs struct {
 	Page           float64 `json:"page"`
 	Since          string  `json:"since"`
 	Before         string  `json:"before"`
+	CILane         string  `json:"ci_lane"`
 	IncludeLogs    bool    `json:"include_logs"`
 	TargetRef      string  `json:"target_ref"`
 	Field          string  `json:"field"`
@@ -970,6 +972,9 @@ func launchHandler(svc EmceeService) server.Handler {
 				Page:        int(args.Page),
 				IncludeLogs: args.IncludeLogs,
 			}
+			if args.CILane != "" {
+				filter.LaunchAttributes = map[string]string{"ci-lane": args.CILane}
+			}
 			if t, err := timeexpr.Parse(args.Since); err != nil {
 				return "", fmt.Errorf("invalid since: %w", err)
 			} else {
@@ -1271,8 +1276,9 @@ func adminHandler(svc EmceeService) server.Handler {
 			sb.WriteString("  get          backend ref                                   Fetch one launch by ID.\n")
 			sb.WriteString("  items        backend ref [status] [limit] [page] [include_logs]\n")
 			sb.WriteString("               status: FAILED|PASSED|SKIPPED. include_logs fetches failure_message.\n")
-			sb.WriteString("  search_items backend [query] [status] [issue_type] [since] [before] [limit] [page] [include_logs]\n")
-			sb.WriteString("               Cross-launch item search. query filters launch names (e.g. 'telco-ft-ran-ptp').\n")
+			sb.WriteString("  search_items backend [query] [ci_lane] [status] [issue_type] [since] [before] [limit] [page] [include_logs]\n")
+			sb.WriteString("               Cross-launch item search. query filters launch names (substring). ci_lane is an exact\n")
+			sb.WriteString("               attribute match — use this to exclude gm/gnrd (e.g. ci_lane=telco-ft-ran-ptp).\n")
 			sb.WriteString("               issue_type: ti001 (To Investigate) | pb001 (Product Bug) | ab001 (Automation Bug).\n")
 			sb.WriteString("               since/before accept RFC3339, named anchors (startOfWeek, endOfDay, now…), or offsets (-7d, -2w).\n")
 			sb.WriteString("  item_get     backend ref                                   Fetch one test item by ID.\n")
