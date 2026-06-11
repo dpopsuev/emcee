@@ -18,6 +18,7 @@ import (
 	"github.com/dpopsuev/emcee/internal/docparse"
 	"github.com/dpopsuev/emcee/internal/domain"
 	"github.com/dpopsuev/emcee/internal/service"
+	"github.com/dpopsuev/emcee/internal/timeexpr"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -225,8 +226,8 @@ var launchSchema = json.RawMessage(`{
 		"ref":          {"type": "string", "description": "Launch ID (pull/list/get/items) or item ID (item_get) or dashboard ID"},
 		"query":        {"type": "string", "description": "Name filter (list) or dashboard description (dashboard_create)"},
 		"status":       {"type": "string", "description": "FAILED | PASSED | SKIPPED (items/search_items)"},
-		"since":        {"type": "string", "description": "RFC3339 lower bound on launch start time (list)"},
-		"before":       {"type": "string", "description": "RFC3339 upper bound on launch start time (list)"},
+		"since":        {"type": "string", "description": "Lower time bound. RFC3339, named anchor (startOfWeek, startOfDay, startOfMonth, now), or relative offset (-7d, -2w, -1h)."},
+		"before":       {"type": "string", "description": "Upper time bound. RFC3339, named anchor (endOfWeek, endOfDay, endOfMonth, now), or relative offset (-1d, -1h)."},
 		"limit":        {"type": "number", "description": "Max results or widget width"},
 		"page":         {"type": "number", "description": "0-based page number"},
 		"include_logs": {"type": "boolean", "description": "Fetch failure_message for FAILED items"},
@@ -917,18 +918,14 @@ func launchHandler(svc EmceeService) server.Handler {
 				Limit:  int(args.Limit),
 				Page:   int(args.Page),
 			}
-			if args.Since != "" {
-				t, err := time.Parse(time.RFC3339, args.Since)
-				if err != nil {
-					return "", fmt.Errorf("invalid since: %w", err)
-				}
+			if t, err := timeexpr.Parse(args.Since); err != nil {
+				return "", fmt.Errorf("invalid since: %w", err)
+			} else {
 				filter.StartAfter = t
 			}
-			if args.Before != "" {
-				t, err := time.Parse(time.RFC3339, args.Before)
-				if err != nil {
-					return "", fmt.Errorf("invalid before: %w", err)
-				}
+			if t, err := timeexpr.Parse(args.Before); err != nil {
+				return "", fmt.Errorf("invalid before: %w", err)
+			} else {
 				filter.StartBefore = t
 			}
 			launches, err := svc.ListLaunches(ctx, args.Backend, filter)
@@ -973,18 +970,14 @@ func launchHandler(svc EmceeService) server.Handler {
 				Page:        int(args.Page),
 				IncludeLogs: args.IncludeLogs,
 			}
-			if args.Since != "" {
-				t, err := time.Parse(time.RFC3339, args.Since)
-				if err != nil {
-					return "", fmt.Errorf("invalid since (want RFC3339): %w", err)
-				}
+			if t, err := timeexpr.Parse(args.Since); err != nil {
+				return "", fmt.Errorf("invalid since: %w", err)
+			} else {
 				filter.Since = t
 			}
-			if args.Before != "" {
-				t, err := time.Parse(time.RFC3339, args.Before)
-				if err != nil {
-					return "", fmt.Errorf("invalid before (want RFC3339): %w", err)
-				}
+			if t, err := timeexpr.Parse(args.Before); err != nil {
+				return "", fmt.Errorf("invalid before: %w", err)
+			} else {
 				filter.Before = t
 			}
 			items, err := svc.SearchTestItems(ctx, args.Backend, filter)
@@ -1281,7 +1274,7 @@ func adminHandler(svc EmceeService) server.Handler {
 			sb.WriteString("  search_items backend [query] [status] [issue_type] [since] [before] [limit] [page] [include_logs]\n")
 			sb.WriteString("               Cross-launch item search. query filters launch names (e.g. 'telco-ft-ran-ptp').\n")
 			sb.WriteString("               issue_type: ti001 (To Investigate) | pb001 (Product Bug) | ab001 (Automation Bug).\n")
-			sb.WriteString("               since/before are RFC3339 bounds on launch start time.\n")
+			sb.WriteString("               since/before accept RFC3339, named anchors (startOfWeek, endOfDay, now…), or offsets (-7d, -2w).\n")
 			sb.WriteString("  item_get     backend ref                                   Fetch one test item by ID.\n")
 			sb.WriteString("  bulk_item_get backend issues=JSON                          JSON array of item IDs.\n")
 			sb.WriteString("  defect_update backend issues=JSON                          JSON array of {test_item_id, issue_type, comment?}.\n")
