@@ -122,3 +122,7 @@ func (s *StubLaunchService) CreateDashboard(_ context.Context, _ string, _ domai
 func (s *StubLaunchService) AddWidget(_ context.Context, _, _ string, _ domain.WidgetAddInput) (*domain.Widget, error) {
 	return s.Widget, s.Err
 }
+
+func (s *StubLaunchService) LaunchItemTree(_ context.Context, _ string) ([]*domain.ItemTreeNode, error) {
+	return nil, s.Err
+}

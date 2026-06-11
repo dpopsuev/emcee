@@ -913,6 +913,18 @@ func (s *Service) AddWidget(ctx context.Context, backend, dashboardID string, in
 	return r.AddWidget(ctx, dashboardID, input)
 }
 
+// LaunchItemTree builds the item hierarchy tree for a cached launch.
+// If the launch is not in cache, it is pulled automatically.
+func (s *Service) LaunchItemTree(ctx context.Context, ref string) ([]*domain.ItemTreeNode, error) {
+	cacheRef := "reportportal:" + ref
+	if _, err := s.launchView.Get(cacheRef); err != nil {
+		if _, pullErr := s.ViewPull(ctx, cacheRef); pullErr != nil {
+			return nil, pullErr
+		}
+	}
+	return s.launchView.BuildTree(cacheRef)
+}
+
 // --- Issue link operations ---
 
 func (s *Service) LinkIssue(ctx context.Context, backend string, input domain.IssueLinkInput) error {

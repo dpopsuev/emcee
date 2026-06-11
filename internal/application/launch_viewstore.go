@@ -153,3 +153,42 @@ func (ls *LaunchViewStore) Reset() {
 	defer ls.mu.Unlock()
 	ls.records = make(map[string]*domain.LaunchView)
 }
+
+// BuildTree returns the launch item hierarchy rooted at the top-level suites.
+// The launch must have been pulled first; returns ErrRecordNotFound otherwise.
+func (ls *LaunchViewStore) BuildTree(ref string) ([]*domain.ItemTreeNode, error) {
+	ls.mu.RLock()
+	defer ls.mu.RUnlock()
+	lv, ok := ls.records[ref]
+	if !ok {
+		return nil, fmt.Errorf("%w: %s", domain.ErrRecordNotFound, ref)
+	}
+	return buildItemTree(lv.Items), nil
+}
+
+// buildItemTree constructs a tree from a flat item list using ParentID references.
+// Items whose ParentID is absent from the list (including "0" and "") are roots.
+func buildItemTree(items []domain.TestItem) []*domain.ItemTreeNode {
+	nodes := make(map[string]*domain.ItemTreeNode, len(items))
+	for i := range items {
+		it := &items[i]
+		nodes[it.ID] = &domain.ItemTreeNode{
+			ID:        it.ID,
+			Name:      it.Name,
+			Status:    it.Status,
+			Type:      it.Type,
+			IssueType: it.IssueType,
+		}
+	}
+	var roots []*domain.ItemTreeNode
+	for i := range items {
+		it := &items[i]
+		node := nodes[it.ID]
+		if parent, ok := nodes[it.ParentID]; ok {
+			parent.Children = append(parent.Children, node)
+		} else {
+			roots = append(roots, node)
+		}
+	}
+	return roots
+}

@@ -221,7 +221,7 @@ var viewSchema = json.RawMessage(`{
 var launchSchema = json.RawMessage(`{
 	"type": "object",
 	"properties": {
-		"action":       {"type": "string", "enum": ["pull","list","get","items","search_items","item_get","bulk_item_get","defect_update","dashboards","dashboard_get","dashboard_create","widget_add"], "description": "Action. pull caches launch+items locally; subsequent items calls are cache-first."},
+		"action":       {"type": "string", "enum": ["pull","list","get","items","search_items","item_get","bulk_item_get","defect_update","dashboards","dashboard_get","dashboard_create","widget_add","tree"], "description": "Action. pull caches launch+items locally; subsequent items calls are cache-first."},
 		"backend":      {"type": "string", "description": "Backend name (reportportal)"},
 		"ref":          {"type": "string", "description": "Launch ID (pull/list/get/items) or item ID (item_get) or dashboard ID"},
 		"query":        {"type": "string", "description": "Name filter (list) or dashboard description (dashboard_create)"},
@@ -1015,6 +1015,16 @@ func launchHandler(svc EmceeService) server.Handler {
 				return "", err
 			}
 			return server.JSONResult(items)
+
+		case "tree":
+			if args.Ref == "" {
+				return "", errRefRequired
+			}
+			tree, err := svc.LaunchItemTree(ctx, args.Ref)
+			if err != nil {
+				return "", err
+			}
+			return server.JSONResult(tree)
 
 		case "defect_update":
 			if args.Issues == "" {

@@ -65,6 +65,7 @@ type LaunchService interface {
 	GetDashboard(ctx context.Context, backend, id string) (*domain.Dashboard, error)
 	CreateDashboard(ctx context.Context, backend string, input domain.DashboardCreateInput) (*domain.Dashboard, error)
 	AddWidget(ctx context.Context, backend, dashboardID string, input domain.WidgetAddInput) (*domain.Widget, error)
+	LaunchItemTree(ctx context.Context, ref string) ([]*domain.ItemTreeNode, error)
 }
 
 // PRReviewService is the inbound port for PR review operations.

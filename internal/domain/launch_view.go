@@ -20,6 +20,17 @@ type LaunchViewSummary struct {
 	PulledAt    time.Time `json:"pulled_at"`
 }
 
+// ItemTreeNode is a node in the launch item hierarchy tree.
+// Children are ordered by their position in the original item list.
+type ItemTreeNode struct {
+	ID        string          `json:"id"`
+	Name      string          `json:"name"`
+	Status    string          `json:"status"`
+	Type      string          `json:"type,omitempty"`
+	IssueType string          `json:"issue_type,omitempty"`
+	Children  []*ItemTreeNode `json:"children,omitempty"`
+}
+
 // Summary returns a lean view of the LaunchView for listing.
 func (lv *LaunchView) Summary() LaunchViewSummary {
 	return LaunchViewSummary{
