@@ -65,6 +65,7 @@ type EmceeService interface {
 	service.PRReviewService
 	service.ChangelogService
 	service.FieldService
+	service.TemplateService
 	service.JQLService
 	service.PRService
 	service.LedgerService
@@ -257,7 +258,7 @@ var docSchema = json.RawMessage(`{
 var adminSchema = json.RawMessage(`{
 	"type": "object",
 	"properties": {
-		"action":      {"type": "string", "enum": ["help","triage","triage_config","triage_config_set","changelog","fields_discover","ledger_list","ledger_get","ledger_search","ledger_similar","ledger_ingest","ledger_stats"], "description": "Action. Start with help."},
+		"action":      {"type": "string", "enum": ["help","triage","triage_config","triage_config_set","changelog","fields_discover","template_discover","ledger_list","ledger_get","ledger_search","ledger_similar","ledger_ingest","ledger_stats"], "description": "Action. Start with help."},
 		"ref":         {"type": "string", "description": "Seed ref (triage/ledger_get/ledger_similar/ledger_ingest/changelog)"},
 		"backend":     {"type": "string", "description": "Backend name (fields_discover/ledger_list/ledger_ingest)"},
 		"query":       {"type": "string", "description": "Search query (ledger_search)"},
@@ -737,6 +738,31 @@ func issueHandler(svc EmceeService) server.Handler {
 				"manifest": config.DefaultPath(args.Backend),
 				"mappings": mappings,
 			})
+
+		case "template_discover":
+			if args.Backend == "" {
+				return "", errBackendRequired
+			}
+			project := args.Ref
+			if project == "" {
+				return "", errRefRequired
+			}
+			issueType := args.IssueType
+			if issueType == "" {
+				issueType = "Bug"
+			}
+			limit := args.Limit
+			if limit <= 0 {
+				limit = 5
+			}
+			tmpl, err := svc.DiscoverTemplate(ctx, args.Backend, project, issueType, int(limit))
+			if err != nil {
+				return "", err
+			}
+			if tmpl == nil {
+				return server.JSONString(map[string]any{"message": "no template found"})
+			}
+			return server.JSONString(tmpl)
 
 		case "jql":
 			if args.Query == "" {

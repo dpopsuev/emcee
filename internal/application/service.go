@@ -29,6 +29,7 @@ var (
 	ErrNotSupported        = errors.New("operation not supported by backend")
 	ErrBackendRequired     = errors.New("backend not specified")
 	ErrTriageNotConfigured = errors.New("triage not configured: missing graph store")
+	errJQLRequired         = errors.New("JQL search not supported (needed for template discovery)")
 )
 
 // Service implements all driver port interfaces by routing to the appropriate repository.
@@ -387,6 +388,40 @@ func (s *Service) Search(ctx context.Context, backend, query string, limit int) 
 		}
 	}
 	return issues, err
+}
+
+// DiscoverTemplate samples recent issues from a project+issueType and
+// extracts the common description template by finding section headers
+// that appear in all sampled descriptions.
+func (s *Service) DiscoverTemplate(ctx context.Context, backend, project, issueType string, sampleSize int) (*domain.Template, error) {
+	jr, ok := s.jqlRepos[backend]
+	if !ok {
+		return nil, fmt.Errorf("backend %q: %w", backend, errJQLRequired)
+	}
+	if sampleSize <= 0 {
+		sampleSize = 5
+	}
+	jql := fmt.Sprintf("project = %s AND issuetype = %s ORDER BY created DESC", project, issueType)
+	issues, err := jr.SearchJQL(ctx, jql, sampleSize)
+	if err != nil {
+		return nil, err
+	}
+	var descs []string
+	for _, issue := range issues {
+		if issue.Description != "" {
+			descs = append(descs, issue.Description)
+		}
+	}
+	sections := domain.ExtractTemplateSections(descs)
+	if len(sections) == 0 {
+		return nil, nil
+	}
+	return &domain.Template{
+		Project:   project,
+		IssueType: issueType,
+		Sections:  sections,
+		Body:      domain.BuildTemplateBody(sections),
+	}, nil
 }
 
 func (s *Service) ListChildren(ctx context.Context, ref string) ([]domain.Issue, error) {

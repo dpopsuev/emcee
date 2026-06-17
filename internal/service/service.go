@@ -100,6 +100,11 @@ type FieldService interface {
 	DiscoverFields(ctx context.Context, backend, configDir string) (map[string]string, error)
 }
 
+// TemplateService is the inbound port for issue description template discovery.
+type TemplateService interface {
+	DiscoverTemplate(ctx context.Context, backend, project, issueType string, sampleSize int) (*domain.Template, error)
+}
+
 // JQLService is the inbound port for raw JQL query passthrough.
 type JQLService interface {
 	SearchJQL(ctx context.Context, backend, jql string, limit int) ([]domain.Issue, error)
