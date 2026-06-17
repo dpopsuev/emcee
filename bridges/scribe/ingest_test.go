@@ -63,14 +63,14 @@ func TestIngestTriageGraph_PostsEdges(t *testing.T) {
 	}
 }
 
-func TestIngestIssues_ServerError(t *testing.T) {
+func TestIngestIssues_ServerErrorReturnsError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer srv.Close()
 
 	err := bridge.IngestIssues(context.Background(), testdata.SampleIssues(), srv.URL)
-	if err != nil {
-		t.Errorf("should not error on 500 (fire-and-forget); got %v", err)
+	if err == nil {
+		t.Error("expected error on 500")
 	}
 }
