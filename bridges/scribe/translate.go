@@ -20,9 +20,7 @@ func TranslateIssues(issues []domain.Issue) translate.Result {
 		}
 		labels = append(labels, issue.Labels...)
 
-		sections := []translate.Section{
-			{Name: "description", Text: issue.Description},
-		}
+		var sections []translate.Section
 		if len(issue.Components) > 0 {
 			sections = append(sections, translate.Section{
 				Name: "components",
@@ -37,10 +35,12 @@ func TranslateIssues(issues []domain.Issue) translate.Result {
 			Labels:   labels,
 			Sections: sections,
 			Extra: map[string]any{
-				"status":    string(issue.Status),
-				"priority":  issue.Priority.String(),
-				"assignee":  issue.Assignee,
-				"issue_type": issue.IssueType,
+				"ref_backend": "emcee",
+				"ref_id":      issue.Ref,
+				"status":      string(issue.Status),
+				"priority":    issue.Priority.String(),
+				"assignee":    issue.Assignee,
+				"issue_type":  issue.IssueType,
 			},
 		}
 		result.Records = append(result.Records, r)
