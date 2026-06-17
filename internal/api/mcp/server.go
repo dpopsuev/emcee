@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dpopsuev/battery/mcpserver"
+	batterymcp "github.com/dpopsuev/battery/mcp"
 	"github.com/dpopsuev/battery/server"
 	"github.com/dpopsuev/emcee/internal/config"
 	"github.com/dpopsuev/emcee/internal/docparse"
@@ -79,7 +79,7 @@ const serverInstructions = "Emcee — issue tracking, test analytics, and knowle
 
 // Serve starts the MCP server over stdio, exposing issue management tools.
 func Serve(svc EmceeService) error {
-	srv := mcpserver.NewServer(serverName, serverVersion).
+	srv := batterymcp.NewServer(serverName, serverVersion).
 		WithInstructions(serverInstructions)
 	RegisterTools(srv, svc)
 	return srv.Serve(context.Background(), &sdkmcp.StdioTransport{})
@@ -89,7 +89,7 @@ func Serve(svc EmceeService) error {
 // POST /mcp — stateless StreamableHTTP transport (MCP 2025-03-26)
 // GET  /health — backend health as JSON
 func ServeHTTP(addr string, svc EmceeService) error {
-	srv := mcpserver.NewServer(serverName, serverVersion).
+	srv := batterymcp.NewServer(serverName, serverVersion).
 		WithInstructions(serverInstructions).
 		WithInitTimeout(0)
 	RegisterTools(srv, svc)
@@ -121,50 +121,50 @@ func ServeHTTP(addr string, svc EmceeService) error {
 }
 
 // RegisterTools registers all emcee MCP tools on the given server.
-func RegisterTools(srv *mcpserver.Server, svc EmceeService) {
-	srv.ToolWithSchema(server.ToolMeta{
+func RegisterTools(srv *batterymcp.Server, svc EmceeService) {
+	srv.ToolStringHandler(server.ToolMeta{
 		Name:        "issue",
 		Description: "Issue CRUD across all backends. list | get | create | update | search | children | bulk_create | bulk_update | comments | comment_add | link | unlink | link_types | stage | stage_list | stage_show | stage_patch | stage_drop | push | push_all | fields | jql | prs | pr_reviews | pr_comments | changelog",
 		Keywords:    []string{"issue", "ticket", "bug", "task", "jira", "linear", "github", "gitlab", "comment", "stage", "push", "jql", "pr"},
 		Categories:  []string{"issue-management"},
 	}, issueSchema, issueHandler(svc))
 
-	srv.ToolWithSchema(server.ToolMeta{
+	srv.ToolStringHandler(server.ToolMeta{
 		Name:        "view",
 		Description: "Local materialized view (Identity Map + Unit of Work). pull | get | mutate | diff | push | push_all | list | dirty | drop | reset. Works for issue refs (jira:KEY) and launch refs (reportportal:ID).",
 		Keywords:    []string{"view", "pull", "local", "cache", "mutate", "diff", "push"},
 		Categories:  []string{"issue-management"},
 	}, viewSchema, viewHandler(svc))
 
-	srv.ToolWithSchema(server.ToolMeta{
+	srv.ToolStringHandler(server.ToolMeta{
 		Name:        "launch",
 		Description: "Report Portal launches, test items, defects, dashboards. pull | list | get | items | search_items | item_get | bulk_item_get | defect_update | dashboards | dashboard_get | dashboard_create | widget_add",
 		Keywords:    []string{"launch", "test", "reportportal", "defect", "ci", "dashboard"},
 		Categories:  []string{"test-analytics"},
 	}, launchSchema, launchHandler(svc))
 
-	srv.ToolWithSchema(server.ToolMeta{
+	srv.ToolStringHandler(server.ToolMeta{
 		Name:        "doc",
 		Description: "Document operations. parse | links | diff | audit | terms | validate | declarations | sync_gist | sync_jira",
 		Keywords:    []string{"doc", "markdown", "parse", "gist", "sync", "validate"},
 		Categories:  []string{"knowledge"},
 	}, docSchema, docHandler(svc))
 
-	srv.ToolWithSchema(server.ToolMeta{
+	srv.ToolStringHandler(server.ToolMeta{
 		Name:        "admin",
 		Description: "Meta: help | triage | triage_config | triage_config_set | changelog | fields_discover | ledger_list | ledger_get | ledger_search | ledger_similar | ledger_ingest | ledger_stats. Start here.",
 		Keywords:    []string{"help", "triage", "ledger", "discover", "admin"},
 		Categories:  []string{"operations"},
 	}, adminSchema, adminHandler(svc))
 
-	srv.ToolWithSchema(server.ToolMeta{
+	srv.ToolStringHandler(server.ToolMeta{
 		Name:        "emcee_manage",
 		Description: "Supporting entities: doc_list, doc_create, project_list, project_create, project_update, initiative_list, initiative_create, label_list, label_create, config_reload, backend_remove.",
 		Keywords:    []string{"document", "project", "initiative", "label"},
 		Categories:  []string{"project-management"},
 	}, manageSchema, manageHandler(svc))
 
-	srv.Tool(server.ToolMeta{
+	srv.ToolString(server.ToolMeta{
 		Name:        "emcee_health",
 		Description: "Check emcee backend health and configuration status",
 		Keywords:    []string{"health", "status"},

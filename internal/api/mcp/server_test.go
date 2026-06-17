@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dpopsuev/battery/mcpserver"
+	batterymcp "github.com/dpopsuev/battery/mcp"
 	"github.com/dpopsuev/emcee/internal/domain"
 	"github.com/dpopsuev/emcee/internal/service"
 	"github.com/dpopsuev/emcee/internal/service/stub"
@@ -16,7 +16,7 @@ import (
 	mcpdriver "github.com/dpopsuev/emcee/internal/api/mcp"
 )
 
-func connectClient(t *testing.T, srv *mcpserver.Server) *sdkmcp.ClientSession {
+func connectClient(t *testing.T, srv *batterymcp.Server) *sdkmcp.ClientSession {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	t.Cleanup(cancel)
@@ -162,7 +162,7 @@ func newTestServer(t *testing.T) (*sdkmcp.ClientSession, *stub.StubEmceeService)
 	svc.StubBackendManager.ReloadAdded = []string{"jenkins-ci"}
 	svc.StubBackendManager.ReloadRemoved = []string{"old-backend"}
 
-	srv := mcpserver.NewServer("emcee-test", "0.0.1").
+	srv := batterymcp.NewServer("emcee-test", "0.0.1").
 		WithInitTimeout(0)
 	mcpdriver.RegisterTools(srv, svc)
 

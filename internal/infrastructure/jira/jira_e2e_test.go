@@ -3,6 +3,7 @@ package jira_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -35,11 +36,11 @@ func fakeJira() *httptest.Server {
 				http.Error(w, "not found", http.StatusNotFound)
 				return
 			}
-			json.NewEncoder(w).Encode(jiraIssue(key, "Issue "+key, "New", "new", "Major", "Alice"))
+			_ = json.NewEncoder(w).Encode(jiraIssue(key, "Issue "+key, "New", "new", "Major", "Alice"))
 
 		// Get transitions
 		case r.Method == "GET" && strings.HasSuffix(path, "/transitions"):
-			json.NewEncoder(w).Encode(map[string]any{
+			_ = json.NewEncoder(w).Encode(map[string]any{
 				"transitions": []map[string]any{
 					{"id": "11", "name": "New"},
 					{"id": "21", "name": "IN_PROGRESS"},
@@ -60,8 +61,8 @@ func fakeJira() *httptest.Server {
 					Summary string `json:"summary"`
 				} `json:"fields"`
 			}
-			json.NewDecoder(r.Body).Decode(&body)
-			json.NewEncoder(w).Encode(map[string]string{
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			_ = json.NewEncoder(w).Encode(map[string]string{
 				"id":  "10001",
 				"key": "TEST-99",
 			})
@@ -71,8 +72,8 @@ func fakeJira() *httptest.Server {
 			w.WriteHeader(http.StatusNoContent)
 
 		// Search (v3 API with ADF description)
-		case r.Method == "GET" && strings.HasPrefix(path, "/rest/api/3/search/jql"):
-			json.NewEncoder(w).Encode(map[string]any{
+		case r.Method == "POST" && path == "/rest/api/3/search/jql":
+			_ = json.NewEncoder(w).Encode(map[string]any{
 				"issues": []map[string]any{
 					jiraIssueADF("TEST-1", "First result", "New", "new", "Critical", "Bob"),
 					jiraIssueADF("TEST-2", "Second result", "Done", "done", "Minor", ""),
@@ -81,14 +82,14 @@ func fakeJira() *httptest.Server {
 
 		// List projects
 		case r.Method == "GET" && path == "/rest/api/2/project":
-			json.NewEncoder(w).Encode([]map[string]string{
+			_ = json.NewEncoder(w).Encode([]map[string]string{
 				{"id": "10000", "key": "TEST", "name": "Test Project"},
 				{"id": "10001", "key": "OPS", "name": "Operations"},
 			})
 
 		// List labels
 		case r.Method == "GET" && path == "/rest/api/2/label":
-			json.NewEncoder(w).Encode([]string{"bug", "feature", "docs"})
+			_ = json.NewEncoder(w).Encode([]string{"bug", "feature", "docs"})
 
 		default:
 			http.Error(w, "not found: "+path, http.StatusNotFound)
@@ -361,6 +362,126 @@ func TestE2E_PriorityMapping(t *testing.T) {
 	}
 	if issue.Priority != domain.PriorityHigh {
 		t.Errorf("priority = %d, want %d (high)", issue.Priority, domain.PriorityHigh)
+	}
+}
+
+func makeLargeFieldManifest(n int) map[string]string {
+	cf := make(map[string]string, n)
+	for i := range n {
+		cf[fmt.Sprintf("Custom Field %d", i)] = fmt.Sprintf("customfield_%d", 10000+i)
+	}
+	return cf
+}
+
+func newTestRepoWithFields(t *testing.T, srv *httptest.Server, cf map[string]string) *jira.Repository {
+	t.Helper()
+	repo, err := jira.New("jira", srv.URL, "u@x.com", "tok", "TEST", nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	repo.SetCustomFields(cf)
+	return repo
+}
+
+func TestE2E_GetNoFieldsInURL(t *testing.T) {
+	var capturedURL string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/rest/api/2/issue/") {
+			capturedURL = r.URL.String()
+			_ = json.NewEncoder(w).Encode(jiraIssue("TEST-1", "Test", "New", "new", "Major", ""))
+			return
+		}
+		http.Error(w, "not found", http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	repo := newTestRepoWithFields(t, srv, makeLargeFieldManifest(600))
+
+	_, err := repo.Get(context.Background(), "TEST-1")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if strings.Contains(capturedURL, "fields=") {
+		t.Errorf("GET URL contains fields= param (len=%d), should not include fields to avoid 414", len(capturedURL))
+	}
+	if len(capturedURL) > 200 {
+		t.Errorf("GET URL unexpectedly long: %d chars", len(capturedURL))
+	}
+}
+
+func TestE2E_SearchUsesPostWithFields(t *testing.T) {
+	var (
+		capturedMethod string
+		capturedBody   struct {
+			JQL        string   `json:"jql"`
+			MaxResults int      `json:"maxResults"`
+			Fields     []string `json:"fields"`
+		}
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/rest/api/3/search/jql" {
+			capturedMethod = r.Method
+			_ = json.NewDecoder(r.Body).Decode(&capturedBody)
+			_ = json.NewEncoder(w).Encode(map[string]any{"issues": []any{}})
+			return
+		}
+		http.Error(w, "not found", http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	repo := newTestRepoWithFields(t, srv, makeLargeFieldManifest(600))
+
+	_, err := repo.Search(context.Background(), "test query", 10)
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if capturedMethod != "POST" {
+		t.Errorf("search method = %q, want POST", capturedMethod)
+	}
+	if capturedBody.JQL == "" {
+		t.Error("search body missing jql")
+	}
+	if capturedBody.MaxResults != 10 {
+		t.Errorf("search body maxResults = %d, want 10", capturedBody.MaxResults)
+	}
+	if len(capturedBody.Fields) < 600 {
+		t.Errorf("search body fields count = %d, want >= 600", len(capturedBody.Fields))
+	}
+}
+
+func TestE2E_GetWithCustomFieldExtraction(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/rest/api/2/issue/") {
+			issue := jiraIssue("TEST-1", "Test", "New", "new", "Major", "")
+			fields := issue["fields"].(map[string]any)
+			fields["customfield_10020"] = []map[string]any{
+				{"name": "Sprint 42", "state": "active"},
+			}
+			fields["customfield_10030"] = 5.0
+			_ = json.NewEncoder(w).Encode(issue)
+			return
+		}
+		http.Error(w, "not found", http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	repo := newTestRepoWithFields(t, srv, map[string]string{
+		"Sprint":       "customfield_10020",
+		"Story Points": "customfield_10030",
+	})
+
+	issue, err := repo.Get(context.Background(), "TEST-1")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if issue.Sprint != "Sprint 42 (active)" {
+		t.Errorf("sprint = %q, want %q", issue.Sprint, "Sprint 42 (active)")
+	}
+	if issue.StoryPoints == nil || *issue.StoryPoints != 5.0 {
+		t.Errorf("story points = %v, want 5.0", issue.StoryPoints)
 	}
 }
 

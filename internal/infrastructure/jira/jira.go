@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
-	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -68,9 +68,7 @@ type Repository struct {
 func New(name, baseURL, email, token, project string, configFields map[string]string) (*Repository, error) {
 	baseURL = strings.TrimRight(baseURL, "/")
 	cf := make(map[string]string, len(configFields))
-	for k, v := range configFields {
-		cf[k] = v
-	}
+	maps.Copy(cf, configFields)
 	return &Repository{
 		name:         name,
 		baseURL:      baseURL,
@@ -90,21 +88,7 @@ func (r *Repository) SetCustomFields(fields map[string]string) {
 	r.customFields = fields
 }
 
-// buildFieldList returns the comma-separated fields param for issue GET/search,
-// including standard fields plus all custom field IDs from the manifest.
-func (r *Repository) buildFieldList() string {
-	const standard = "summary,status,priority,assignee,reporter,description,labels,created,updated,project,issuetype,resolution,fixVersions,components,issuelinks,parent"
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	if len(r.customFields) == 0 {
-		return standard
-	}
-	ids := make([]string, 0, len(r.customFields))
-	for _, id := range r.customFields {
-		ids = append(ids, id)
-	}
-	return standard + "," + strings.Join(ids, ",")
-}
+var standardFields = strings.Split("summary,status,priority,assignee,reporter,description,labels,created,updated,project,issuetype,resolution,fixVersions,components,issuelinks,parent", ",")
 
 func (r *Repository) Name() string { return r.name }
 
@@ -232,7 +216,7 @@ func (r *Repository) List(ctx context.Context, filter domain.ListFilter) ([]doma
 func (r *Repository) Get(ctx context.Context, key string) (*domain.Issue, error) {
 	infra.LogOp(ctx, BackendName, "get", slog.String(infra.LogKeyIssueKey, key))
 	var raw jiraIssue
-	path := fmt.Sprintf("/rest/api/2/issue/%s?fields=%s", key, r.buildFieldList())
+	path := fmt.Sprintf("/rest/api/2/issue/%s", key)
 	if err := r.api(ctx, "GET", path, nil, &raw); err != nil {
 		return nil, err
 	}
@@ -451,19 +435,29 @@ func (r *Repository) CreateLabel(_ context.Context, _ domain.LabelCreateInput) (
 // --- Internal helpers ---
 
 func (r *Repository) searchJQL(ctx context.Context, jql string, limit int) ([]domain.Issue, error) {
-	path := fmt.Sprintf("/rest/api/3/search/jql?jql=%s&maxResults=%d&fields=%s",
-		url.QueryEscape(jql), limit, r.buildFieldList())
+	r.mu.RLock()
+	cf := r.customFields
+	r.mu.RUnlock()
+
+	fields := make([]string, 0, len(cf)+len(standardFields))
+	for _, id := range cf {
+		fields = append(fields, id)
+	}
+	fields = append(fields, standardFields...)
+
+	body := struct {
+		JQL        string   `json:"jql"`
+		MaxResults int      `json:"maxResults"`
+		Fields     []string `json:"fields"`
+	}{jql, limit, fields}
 
 	var result struct {
 		Issues []jiraIssue `json:"issues"`
 	}
-	if err := r.api(ctx, "GET", path, nil, &result); err != nil {
+	if err := r.api(ctx, "POST", "/rest/api/3/search/jql", body, &result); err != nil {
 		return nil, err
 	}
 
-	r.mu.RLock()
-	cf := r.customFields
-	r.mu.RUnlock()
 	issues := make([]domain.Issue, 0, len(result.Issues))
 	for i := range result.Issues {
 		issues = append(issues, result.Issues[i].toDomain(cf))
