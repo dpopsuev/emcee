@@ -62,6 +62,8 @@ type Repository struct {
 	bulk        repository.BulkIssueRepository
 	prs         repository.PRRepository
 	prReviews   repository.PRReviewRepository
+	extLinks    repository.ExternalLinkRepository
+	gists       repository.GistRepository
 	caps        []string
 
 	mu       sync.Mutex
@@ -143,6 +145,14 @@ func New(inner repository.IssueRepository, opts ...Option) *Repository {
 	if v, ok := inner.(repository.IssueLinkRepository); ok {
 		r.issueLinks = v
 		r.caps = append(r.caps, "issue_links")
+	}
+	if v, ok := inner.(repository.ExternalLinkRepository); ok {
+		r.extLinks = v
+		r.caps = append(r.caps, "external_links")
+	}
+	if v, ok := inner.(repository.GistRepository); ok {
+		r.gists = v
+		r.caps = append(r.caps, "gists")
 	}
 	if v, ok := inner.(repository.DeltaSyncer); ok {
 		r.delta = v
@@ -624,4 +634,29 @@ func (r *Repository) AddWidget(ctx context.Context, dashboardID string, input do
 		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
 	}
 	return r.launches.AddWidget(ctx, dashboardID, input)
+}
+
+// --- Passthrough: ExternalLinkRepository ---
+
+func (r *Repository) ListExternalLinks(ctx context.Context, key string) ([]domain.ExternalLink, error) {
+	if r.extLinks == nil {
+		return nil, fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.extLinks.ListExternalLinks(ctx, key)
+}
+
+// --- Passthrough: GistRepository ---
+
+func (r *Repository) CreateGist(ctx context.Context, filename, content string, public bool) (string, string, error) {
+	if r.gists == nil {
+		return "", "", fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.gists.CreateGist(ctx, filename, content, public)
+}
+
+func (r *Repository) UpdateGist(ctx context.Context, gistID, filename, content string) (string, error) {
+	if r.gists == nil {
+		return "", fmt.Errorf("%w by %s", ErrNotSupported, r.inner.Name())
+	}
+	return r.gists.UpdateGist(ctx, gistID, filename, content)
 }
