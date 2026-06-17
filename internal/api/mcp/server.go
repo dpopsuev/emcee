@@ -350,7 +350,7 @@ func issueHandler(svc EmceeService) server.Handler {
 			if err != nil {
 				return "", err
 			}
-			return server.JSONResult(issues)
+			return server.JSONString(issues)
 
 		case "get":
 			if args.Ref == "" {
@@ -360,7 +360,7 @@ func issueHandler(svc EmceeService) server.Handler {
 			if err != nil {
 				return "", err
 			}
-			return server.JSONResult(issue)
+			return server.JSONString(issue)
 
 		case "create":
 			if args.Title == "" {
@@ -385,14 +385,14 @@ func issueHandler(svc EmceeService) server.Handler {
 			if err != nil {
 				// Auto-stage on failure — preserve the payload for retry
 				id := svc.StageItem(args.Backend, input, err.Error())
-				return server.JSONResult(map[string]any{
+				return server.JSONString(map[string]any{
 					"error":    err.Error(),
 					"staged":   true,
 					"stage_id": id,
 					"message":  fmt.Sprintf("Create failed, auto-staged as %s. Use push to retry.", id),
 				})
 			}
-			return server.JSONResult(issue)
+			return server.JSONString(issue)
 
 		case "update":
 			if args.Ref == "" {
@@ -426,7 +426,7 @@ func issueHandler(svc EmceeService) server.Handler {
 			if err != nil {
 				return "", err
 			}
-			return server.JSONResult(issue)
+			return server.JSONString(issue)
 
 		case "search":
 			if args.Query == "" {
@@ -440,7 +440,7 @@ func issueHandler(svc EmceeService) server.Handler {
 			if err != nil {
 				return "", err
 			}
-			return server.JSONResult(issues)
+			return server.JSONString(issues)
 
 		case "children":
 			if args.Ref == "" {
@@ -450,7 +450,7 @@ func issueHandler(svc EmceeService) server.Handler {
 			if err != nil {
 				return "", err
 			}
-			return server.JSONResult(issues)
+			return server.JSONString(issues)
 
 		case "bulk_create":
 			if args.Issues == "" {
@@ -464,7 +464,7 @@ func issueHandler(svc EmceeService) server.Handler {
 			if err != nil {
 				return "", err
 			}
-			return server.JSONResult(result)
+			return server.JSONString(result)
 
 		case "bulk_update":
 			if args.Issues == "" {
@@ -478,7 +478,7 @@ func issueHandler(svc EmceeService) server.Handler {
 			if err != nil {
 				return "", err
 			}
-			return server.JSONResult(result)
+			return server.JSONString(result)
 
 		// --- Comment actions ---
 
@@ -490,7 +490,7 @@ func issueHandler(svc EmceeService) server.Handler {
 			if err != nil {
 				return "", err
 			}
-			return server.JSONResult(comments)
+			return server.JSONString(comments)
 
 		case "comment_add":
 			if args.Ref == "" {
@@ -503,7 +503,7 @@ func issueHandler(svc EmceeService) server.Handler {
 			if err != nil {
 				return "", err
 			}
-			return server.JSONResult(comment)
+			return server.JSONString(comment)
 
 		// --- Stage actions ---
 
@@ -527,11 +527,11 @@ func issueHandler(svc EmceeService) server.Handler {
 				input.Status = domain.Status(args.Status)
 			}
 			id := svc.StageItem(args.Backend, input, "")
-			return server.JSONResult(map[string]string{"stage_id": id, "backend": args.Backend})
+			return server.JSONString(map[string]string{"stage_id": id, "backend": args.Backend})
 
 		case "stage_list":
 			items := svc.StageList()
-			return server.JSONResult(items)
+			return server.JSONString(items)
 
 		case "stage_show":
 			if args.StageID == "" {
@@ -541,7 +541,7 @@ func issueHandler(svc EmceeService) server.Handler {
 			if err != nil {
 				return "", err
 			}
-			return server.JSONResult(item)
+			return server.JSONString(item)
 
 		case "stage_patch":
 			if args.StageID == "" {
@@ -569,7 +569,7 @@ func issueHandler(svc EmceeService) server.Handler {
 			if err != nil {
 				return "", err
 			}
-			return server.JSONResult(item)
+			return server.JSONString(item)
 
 		case "stage_drop":
 			if args.StageID == "" {
@@ -578,7 +578,7 @@ func issueHandler(svc EmceeService) server.Handler {
 			if err := svc.StageDrop(args.StageID); err != nil {
 				return "", err
 			}
-			return server.JSONResult(map[string]string{"status": "dropped", "id": args.StageID})
+			return server.JSONString(map[string]string{"status": "dropped", "id": args.StageID})
 
 		case "push":
 			if args.StageID == "" {
@@ -593,12 +593,12 @@ func issueHandler(svc EmceeService) server.Handler {
 				svc.StageItem(item.Backend, item.Input, err.Error())
 				return "", fmt.Errorf("push failed (re-staged): %w", err)
 			}
-			return server.JSONResult(issue)
+			return server.JSONString(issue)
 
 		case "push_all":
 			items := svc.StagePopAll()
 			if len(items) == 0 {
-				return server.JSONResult(map[string]any{"pushed": 0, "errors": []string{}})
+				return server.JSONString(map[string]any{"pushed": 0, "errors": []string{}})
 			}
 			var pushed []domain.Issue
 			var pushErrs []string
@@ -611,7 +611,7 @@ func issueHandler(svc EmceeService) server.Handler {
 				}
 				pushed = append(pushed, *issue)
 			}
-			return server.JSONResult(map[string]any{"pushed": len(pushed), "issues": pushed, "errors": pushErrs})
+			return server.JSONString(map[string]any{"pushed": len(pushed), "issues": pushed, "errors": pushErrs})
 
 		// --- Issue links ---
 
@@ -643,7 +643,7 @@ func issueHandler(svc EmceeService) server.Handler {
 			if err := svc.LinkIssue(ctx, backend, input); err != nil {
 				return "", err
 			}
-			return server.JSONResult(map[string]any{"linked": true, "type": input.Type, "inward": inwardKey, "outward": outwardKey})
+			return server.JSONString(map[string]any{"linked": true, "type": input.Type, "inward": inwardKey, "outward": outwardKey})
 
 		case "unlink":
 			if args.Ref == "" {
@@ -663,7 +663,7 @@ func issueHandler(svc EmceeService) server.Handler {
 			if err := svc.UnlinkIssue(ctx, backend, inwardKey, outwardKey, args.IssueType); err != nil {
 				return "", err
 			}
-			return server.JSONResult(map[string]any{"unlinked": true, "inward": inwardKey, "outward": outwardKey})
+			return server.JSONString(map[string]any{"unlinked": true, "inward": inwardKey, "outward": outwardKey})
 
 		case "link_types":
 			if args.Backend == "" {
@@ -673,7 +673,7 @@ func issueHandler(svc EmceeService) server.Handler {
 			if err != nil {
 				return "", err
 			}
-			return server.JSONResult(types)
+			return server.JSONString(types)
 
 		// --- Report Portal ---
 
@@ -689,7 +689,7 @@ func issueHandler(svc EmceeService) server.Handler {
 			if err != nil {
 				return "", err
 			}
-			return server.JSONResult(reviews)
+			return server.JSONString(reviews)
 
 		case "pr_comments":
 			if args.Ref == "" {
@@ -703,7 +703,7 @@ func issueHandler(svc EmceeService) server.Handler {
 			if err != nil {
 				return "", err
 			}
-			return server.JSONResult(comments)
+			return server.JSONString(comments)
 
 		// --- Doc sync ---
 
@@ -715,14 +715,14 @@ func issueHandler(svc EmceeService) server.Handler {
 			if err != nil {
 				return "", err
 			}
-			return server.JSONResult(entries)
+			return server.JSONString(entries)
 
 		case "fields":
 			fields, err := svc.ListFields(ctx, args.Backend)
 			if err != nil {
 				return "", err
 			}
-			return server.JSONResult(fields)
+			return server.JSONString(fields)
 
 		case "fields_discover":
 			if args.Backend == "" {
@@ -732,7 +732,7 @@ func issueHandler(svc EmceeService) server.Handler {
 			if err != nil {
 				return "", err
 			}
-			return server.JSONResult(map[string]any{
+			return server.JSONString(map[string]any{
 				"backend":  args.Backend,
 				"manifest": config.DefaultPath(args.Backend),
 				"mappings": mappings,
@@ -750,7 +750,7 @@ func issueHandler(svc EmceeService) server.Handler {
 			if err != nil {
 				return "", err
 			}
-			return server.JSONResult(issues)
+			return server.JSONString(issues)
 
 		case "prs":
 			filter := domain.PRFilter{
@@ -765,7 +765,7 @@ func issueHandler(svc EmceeService) server.Handler {
 			if err != nil {
 				return "", err
 			}
-			return server.JSONResult(prs)
+			return server.JSONString(prs)
 
 		// --- Ledger actions ---
 
@@ -793,7 +793,7 @@ func viewHandler(svc EmceeService) server.Handler {
 			if err != nil {
 				return "", err
 			}
-			return server.JSONResult(vr)
+			return server.JSONString(vr)
 
 		case "get":
 			if args.Ref == "" {
@@ -803,7 +803,7 @@ func viewHandler(svc EmceeService) server.Handler {
 			if err != nil {
 				return "", err
 			}
-			return server.JSONResult(vr)
+			return server.JSONString(vr)
 
 		case "mutate":
 			if args.Ref == "" {
@@ -828,7 +828,7 @@ func viewHandler(svc EmceeService) server.Handler {
 			if err != nil {
 				return "", err
 			}
-			return server.JSONResult(vr)
+			return server.JSONString(vr)
 
 		case "diff":
 			if args.Ref == "" {
@@ -838,7 +838,7 @@ func viewHandler(svc EmceeService) server.Handler {
 			if err != nil {
 				return "", err
 			}
-			return server.JSONResult(diff)
+			return server.JSONString(diff)
 
 		case "push":
 			if args.Ref == "" {
@@ -849,24 +849,24 @@ func viewHandler(svc EmceeService) server.Handler {
 				return "", err
 			}
 			if issue == nil {
-				return server.JSONResult(map[string]string{
+				return server.JSONString(map[string]string{
 					"ref":     args.Ref,
 					"message": "no dirty fields to push",
 				})
 			}
-			return server.JSONResult(issue)
+			return server.JSONString(issue)
 
 		case "list":
 			records := svc.ViewList()
-			return server.JSONResult(records)
+			return server.JSONString(records)
 
 		case "dirty":
 			changes := svc.ViewDirty()
-			return server.JSONResult(changes)
+			return server.JSONString(changes)
 
 		case "push_all":
 			pushed, errs := svc.ViewPushAll(ctx)
-			return server.JSONResult(map[string]any{
+			return server.JSONString(map[string]any{
 				"pushed": pushed,
 				"errors": errs,
 			})
@@ -876,14 +876,14 @@ func viewHandler(svc EmceeService) server.Handler {
 				return "", errRefRequired
 			}
 			svc.ViewDrop(args.Ref)
-			return server.JSONResult(map[string]string{
+			return server.JSONString(map[string]string{
 				"ref":     args.Ref,
 				"message": "dropped from view",
 			})
 
 		case "reset":
 			svc.ViewReset()
-			return server.JSONResult(map[string]string{
+			return server.JSONString(map[string]string{
 				"message": "view store reset",
 			})
 
@@ -912,7 +912,7 @@ func launchHandler(svc EmceeService) server.Handler {
 			if err != nil {
 				return "", err
 			}
-			return server.JSONResult(lv)
+			return server.JSONString(lv)
 
 		case "list":
 			filter := domain.LaunchFilter{
@@ -935,7 +935,7 @@ func launchHandler(svc EmceeService) server.Handler {
 			if err != nil {
 				return "", err
 			}
-			return server.JSONResult(launches)
+			return server.JSONString(launches)
 
 		case "get":
 			if args.Ref == "" {
@@ -945,7 +945,7 @@ func launchHandler(svc EmceeService) server.Handler {
 			if err != nil {
 				return "", err
 			}
-			return server.JSONResult(launch)
+			return server.JSONString(launch)
 
 		case "items":
 			if args.Ref == "" {
@@ -962,7 +962,7 @@ func launchHandler(svc EmceeService) server.Handler {
 			if err != nil {
 				return "", err
 			}
-			return server.JSONResult(items)
+			return server.JSONString(items)
 
 		case "search_items":
 			filter := domain.TestItemFilter{
@@ -990,7 +990,7 @@ func launchHandler(svc EmceeService) server.Handler {
 			if err != nil {
 				return "", err
 			}
-			return server.JSONResult(items)
+			return server.JSONString(items)
 
 		case "item_get":
 			if args.Ref == "" {
@@ -1000,7 +1000,7 @@ func launchHandler(svc EmceeService) server.Handler {
 			if err != nil {
 				return "", err
 			}
-			return server.JSONResult(item)
+			return server.JSONString(item)
 
 		case "bulk_item_get":
 			if args.Issues == "" {
@@ -1014,7 +1014,7 @@ func launchHandler(svc EmceeService) server.Handler {
 			if err != nil {
 				return "", err
 			}
-			return server.JSONResult(items)
+			return server.JSONString(items)
 
 		case "tree":
 			if args.Ref == "" {
@@ -1024,7 +1024,7 @@ func launchHandler(svc EmceeService) server.Handler {
 			if err != nil {
 				return "", err
 			}
-			return server.JSONResult(tree)
+			return server.JSONString(tree)
 
 		case "defect_update":
 			if args.Issues == "" {
@@ -1037,7 +1037,7 @@ func launchHandler(svc EmceeService) server.Handler {
 			if err := svc.UpdateDefects(ctx, args.Backend, updates); err != nil {
 				return "", err
 			}
-			return server.JSONResult(map[string]any{"updated": len(updates)})
+			return server.JSONString(map[string]any{"updated": len(updates)})
 
 		// --- Dashboard operations ---
 
@@ -1046,7 +1046,7 @@ func launchHandler(svc EmceeService) server.Handler {
 			if err != nil {
 				return "", err
 			}
-			return server.JSONResult(dashboards)
+			return server.JSONString(dashboards)
 
 		case "dashboard_get":
 			if args.Ref == "" {
@@ -1056,7 +1056,7 @@ func launchHandler(svc EmceeService) server.Handler {
 			if err != nil {
 				return "", err
 			}
-			return server.JSONResult(dashboard)
+			return server.JSONString(dashboard)
 
 		case "dashboard_create":
 			if args.Title == "" {
@@ -1067,7 +1067,7 @@ func launchHandler(svc EmceeService) server.Handler {
 			if err != nil {
 				return "", err
 			}
-			return server.JSONResult(dashboard)
+			return server.JSONString(dashboard)
 
 		case "widget_add":
 			if args.Ref == "" {
@@ -1086,7 +1086,7 @@ func launchHandler(svc EmceeService) server.Handler {
 			if err != nil {
 				return "", err
 			}
-			return server.JSONResult(widget)
+			return server.JSONString(widget)
 
 		// --- Doc operations ---
 
@@ -1111,7 +1111,7 @@ func docHandler(svc EmceeService) server.Handler {
 				return "", errQueryRequired
 			}
 			tree := docparse.Parse([]byte(args.Query))
-			return server.JSONResult(tree)
+			return server.JSONString(tree)
 
 		case "links":
 			if args.Query == "" {
@@ -1120,7 +1120,7 @@ func docHandler(svc EmceeService) server.Handler {
 			tree := docparse.Parse([]byte(args.Query))
 			docparse.CheckDeadLinks(tree)
 			edges := docparse.ExtractLinkEdges(tree)
-			return server.JSONResult(map[string]any{"links": tree.Links, "edges": edges})
+			return server.JSONString(map[string]any{"links": tree.Links, "edges": edges})
 
 		case "diff":
 			if args.Query == "" {
@@ -1132,14 +1132,14 @@ func docHandler(svc EmceeService) server.Handler {
 			oldTree := docparse.Parse([]byte(args.Query))
 			newTree := docparse.Parse([]byte(args.Body))
 			diffs := docparse.VersionDiff(oldTree, newTree)
-			return server.JSONResult(diffs)
+			return server.JSONString(diffs)
 
 		case "audit":
 			if args.Query == "" {
 				return "", errQueryRequired
 			}
 			tree := docparse.Parse([]byte(args.Query))
-			return server.JSONResult(map[string]any{
+			return server.JSONString(map[string]any{
 				"duplicates": docparse.FindDuplicateCodeBlocks(tree),
 				"weights":    docparse.AnalyzeBloat(tree),
 			})
@@ -1155,7 +1155,7 @@ func docHandler(svc EmceeService) server.Handler {
 				usages = append(usages, docparse.FindTermUsage(args.Query, tree, term))
 			}
 			inconsistencies := docparse.FindInconsistentTerms(args.Query, terms)
-			return server.JSONResult(map[string]any{"usage": usages, "inconsistencies": inconsistencies})
+			return server.JSONString(map[string]any{"usage": usages, "inconsistencies": inconsistencies})
 
 		case "validate":
 			if args.Query == "" {
@@ -1168,7 +1168,7 @@ func docHandler(svc EmceeService) server.Handler {
 				rules[i] = docparse.TemplateRule{Title: t, Required: true}
 			}
 			result := docparse.ValidateTemplate(tree, rules)
-			return server.JSONResult(result)
+			return server.JSONString(result)
 
 		case "declarations":
 			if args.Query == "" {
@@ -1176,7 +1176,7 @@ func docHandler(svc EmceeService) server.Handler {
 			}
 			tree := docparse.Parse([]byte(args.Query))
 			decls := docparse.ExtractGoDeclarations(tree)
-			return server.JSONResult(decls)
+			return server.JSONString(decls)
 
 		// --- PR reviews ---
 
@@ -1192,13 +1192,13 @@ func docHandler(svc EmceeService) server.Handler {
 				if err != nil {
 					return "", err
 				}
-				return server.JSONResult(map[string]string{"updated": args.Ref, "url": url})
+				return server.JSONString(map[string]string{"updated": args.Ref, "url": url})
 			}
 			id, url, err := svc.CreateGist(ctx, args.Backend, args.Title, args.Query, false)
 			if err != nil {
 				return "", err
 			}
-			return server.JSONResult(map[string]string{"id": id, "url": url})
+			return server.JSONString(map[string]string{"id": id, "url": url})
 
 		case "sync_jira":
 			if args.Ref == "" {
@@ -1212,7 +1212,7 @@ func docHandler(svc EmceeService) server.Handler {
 			if err != nil {
 				return "", err
 			}
-			return server.JSONResult(map[string]string{"updated": issue.Ref, "url": issue.URL})
+			return server.JSONString(map[string]string{"updated": issue.Ref, "url": issue.URL})
 
 		// --- Triage ---
 
@@ -1349,7 +1349,7 @@ func adminHandler(svc EmceeService) server.Handler {
 			sb.WriteString("  issue(search, backend=jira, query=\"bug in login\") — keyword or JQL\n")
 			sb.WriteString("  launch(pull, ref=37337) → launch(items, status=FAILED, include_logs=true) → launch(defect_update)\n")
 			sb.WriteString("  admin(triage, ref=jira:PROJ-42) — graph traversal for root-cause analysis\n")
-			return server.JSONResult(map[string]string{"help": sb.String()})
+			return server.JSONString(map[string]string{"help": sb.String()})
 
 		case "triage":
 			if args.Ref == "" {
@@ -1363,11 +1363,11 @@ func adminHandler(svc EmceeService) server.Handler {
 			if err != nil {
 				return "", err
 			}
-			return server.JSONResult(graph)
+			return server.JSONString(graph)
 
 		case "triage_config":
 			cfg := svc.GetTriageConfig()
-			return server.JSONResult(cfg)
+			return server.JSONString(cfg)
 
 		case "triage_config_set":
 			var cfg service.TriageConfig
@@ -1378,7 +1378,7 @@ func adminHandler(svc EmceeService) server.Handler {
 				}
 			}
 			svc.SetTriageConfig(cfg)
-			return server.JSONResult(cfg)
+			return server.JSONString(cfg)
 
 		// --- Field discovery + JQL ---
 
@@ -1390,7 +1390,7 @@ func adminHandler(svc EmceeService) server.Handler {
 			if err != nil {
 				return "", err
 			}
-			return server.JSONResult(map[string]any{
+			return server.JSONString(map[string]any{
 				"backend":  args.Backend,
 				"manifest": config.DefaultPath(args.Backend),
 				"mappings": mappings,
@@ -1408,7 +1408,7 @@ func adminHandler(svc EmceeService) server.Handler {
 			if err != nil {
 				return "", err
 			}
-			return server.JSONResult(records)
+			return server.JSONString(records)
 
 		case "ledger_get":
 			if args.Ref == "" {
@@ -1418,7 +1418,7 @@ func adminHandler(svc EmceeService) server.Handler {
 			if err != nil {
 				return "", err
 			}
-			return server.JSONResult(record)
+			return server.JSONString(record)
 
 		case "ledger_search":
 			if args.Query == "" {
@@ -1432,7 +1432,7 @@ func adminHandler(svc EmceeService) server.Handler {
 			if err != nil {
 				return "", err
 			}
-			return server.JSONResult(records)
+			return server.JSONString(records)
 
 		case "ledger_similar":
 			if args.Ref == "" {
@@ -1446,7 +1446,7 @@ func adminHandler(svc EmceeService) server.Handler {
 			if err != nil {
 				return "", err
 			}
-			return server.JSONResult(records)
+			return server.JSONString(records)
 
 		case "ledger_ingest":
 			if args.Ref == "" {
@@ -1466,14 +1466,14 @@ func adminHandler(svc EmceeService) server.Handler {
 			if err := svc.LedgerIngest(ctx, record); err != nil {
 				return "", err
 			}
-			return server.JSONResult(map[string]string{"ingested": args.Ref})
+			return server.JSONString(map[string]string{"ingested": args.Ref})
 
 		case "ledger_stats":
 			stats, err := svc.LedgerStats(ctx)
 			if err != nil {
 				return "", err
 			}
-			return server.JSONResult(stats)
+			return server.JSONString(stats)
 
 		// --- View (Local Materialized View) ---
 
@@ -1515,7 +1515,7 @@ func manageHandler(svc EmceeService) server.Handler {
 			if err != nil {
 				return "", err
 			}
-			return server.JSONResult(docs)
+			return server.JSONString(docs)
 
 		case "doc_create":
 			if args.Title == "" {
@@ -1530,7 +1530,7 @@ func manageHandler(svc EmceeService) server.Handler {
 			if err != nil {
 				return "", err
 			}
-			return server.JSONResult(doc)
+			return server.JSONString(doc)
 
 		case "project_list":
 			filter := domain.ProjectListFilter{Limit: limit}
@@ -1538,7 +1538,7 @@ func manageHandler(svc EmceeService) server.Handler {
 			if err != nil {
 				return "", err
 			}
-			return server.JSONResult(projects)
+			return server.JSONString(projects)
 
 		case "project_create":
 			if args.Name == "" {
@@ -1552,7 +1552,7 @@ func manageHandler(svc EmceeService) server.Handler {
 			if err != nil {
 				return "", err
 			}
-			return server.JSONResult(proj)
+			return server.JSONString(proj)
 
 		case "project_update":
 			if args.ID == "" {
@@ -1569,7 +1569,7 @@ func manageHandler(svc EmceeService) server.Handler {
 			if err != nil {
 				return "", err
 			}
-			return server.JSONResult(proj)
+			return server.JSONString(proj)
 
 		case "initiative_list":
 			filter := domain.InitiativeListFilter{Limit: limit}
@@ -1577,7 +1577,7 @@ func manageHandler(svc EmceeService) server.Handler {
 			if err != nil {
 				return "", err
 			}
-			return server.JSONResult(inits)
+			return server.JSONString(inits)
 
 		case "initiative_create":
 			if args.Name == "" {
@@ -1591,14 +1591,14 @@ func manageHandler(svc EmceeService) server.Handler {
 			if err != nil {
 				return "", err
 			}
-			return server.JSONResult(init)
+			return server.JSONString(init)
 
 		case "label_list":
 			labels, err := svc.ListLabels(ctx, args.Backend)
 			if err != nil {
 				return "", err
 			}
-			return server.JSONResult(labels)
+			return server.JSONString(labels)
 
 		case "label_create":
 			if args.Name == "" {
@@ -1612,14 +1612,14 @@ func manageHandler(svc EmceeService) server.Handler {
 			if err != nil {
 				return "", err
 			}
-			return server.JSONResult(label)
+			return server.JSONString(label)
 
 		case "config_reload":
 			added, removed, err := svc.ReloadConfig("")
 			if err != nil {
 				return "", err
 			}
-			return server.JSONResult(map[string]any{"added": added, "removed": removed})
+			return server.JSONString(map[string]any{"added": added, "removed": removed})
 
 		case "backend_remove":
 			if args.Name == "" {
@@ -1629,7 +1629,7 @@ func manageHandler(svc EmceeService) server.Handler {
 			if !ok {
 				return "", fmt.Errorf("%w: %s", errBackendNotFound, args.Name)
 			}
-			return server.JSONResult(map[string]string{"removed": args.Name})
+			return server.JSONString(map[string]string{"removed": args.Name})
 
 		default:
 			return "", fmt.Errorf("%w %q (valid: doc_list, doc_create, project_list, project_create, project_update, initiative_list, initiative_create, label_list, label_create, config_reload, backend_remove)", errUnknownAction, args.Action)
@@ -1640,7 +1640,7 @@ func manageHandler(svc EmceeService) server.Handler {
 func healthHandler(svc EmceeService) server.Handler {
 	return func(_ context.Context, _ json.RawMessage) (string, error) {
 		health := svc.Health()
-		return server.JSONResult(health)
+		return server.JSONString(health)
 	}
 }
 
