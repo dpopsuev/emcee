@@ -289,7 +289,12 @@ func (r *Repository) Create(ctx context.Context, input domain.CreateInput) (*dom
 		Key string `json:"key"`
 	}
 	if err := r.api(ctx, "POST", "/rest/api/2/issue", body, &result); err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrCreateFailed, err)
+		isDefault := input.ProjectID == ""
+		hint := ""
+		if isDefault {
+			hint = " (default from config — pass project_id to override)"
+		}
+		return nil, fmt.Errorf("%w in project %s%s: %w", ErrCreateFailed, project, hint, err)
 	}
 
 	return r.Get(ctx, result.Key)
