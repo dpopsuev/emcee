@@ -25,6 +25,9 @@ const (
 
 	defaultTimeout = 30 * time.Second
 	defaultLimit   = 50
+
+	jfKey  = "key"
+	jfName = "name"
 )
 
 var (
@@ -228,11 +231,11 @@ func (r *Repository) Get(ctx context.Context, key string) (*domain.Issue, error)
 }
 
 func (r *Repository) Create(ctx context.Context, input domain.CreateInput) (*domain.Issue, error) {
-	infra.LogWrite(ctx, BackendName, "create", slog.String(infra.LogKeyProject, r.project), slog.String(infra.LogKeyTitle, input.Title))
 	project := r.project
 	if input.ProjectID != "" {
 		project = input.ProjectID
 	}
+	infra.LogWrite(ctx, BackendName, "create", slog.String(infra.LogKeyProject, project), slog.String(infra.LogKeyTitle, input.Title))
 	if project == "" {
 		return nil, ErrProjectEmpty
 	}
@@ -241,41 +244,44 @@ func (r *Repository) Create(ctx context.Context, input domain.CreateInput) (*dom
 	if issueType == "" {
 		issueType = "Task"
 	}
-	body := map[string]any{
-		"fields": map[string]any{
-			"project":     map[string]string{"key": project},
-			"summary":     input.Title,
-			"description": input.Description,
-			"issuetype":   map[string]string{"name": issueType},
-			"labels":      input.Labels,
-		},
+	fields := map[string]any{
+		"project":   map[string]string{jfKey: project},
+		"summary":   input.Title,
+		"issuetype": map[string]string{jfName: issueType},
 	}
+	if input.Description != "" {
+		fields["description"] = input.Description
+	}
+	if len(input.Labels) > 0 {
+		fields["labels"] = input.Labels
+	}
+	body := map[string]any{"fields": fields}
 
 	if input.Priority != domain.PriorityNone {
-		body["fields"].(map[string]any)["priority"] = map[string]string{
+		fields["priority"] = map[string]string{
 			"name": mapPriorityToJira(input.Priority),
 		}
 	}
 	if len(input.Versions) > 0 {
 		versions := make([]map[string]string, len(input.Versions))
 		for i, v := range input.Versions {
-			versions[i] = map[string]string{"name": v}
+			versions[i] = map[string]string{jfName: v}
 		}
-		body["fields"].(map[string]any)["versions"] = versions
+		fields["versions"] = versions
 	}
 	if len(input.FixVersions) > 0 {
 		fv := make([]map[string]string, len(input.FixVersions))
 		for i, v := range input.FixVersions {
-			fv[i] = map[string]string{"name": v}
+			fv[i] = map[string]string{jfName: v}
 		}
-		body["fields"].(map[string]any)["fixVersions"] = fv
+		fields["fixVersions"] = fv
 	}
 	if len(input.Components) > 0 {
 		comps := make([]map[string]string, len(input.Components))
 		for i, c := range input.Components {
-			comps[i] = map[string]string{"name": c}
+			comps[i] = map[string]string{jfName: c}
 		}
-		body["fields"].(map[string]any)["components"] = comps
+		fields["components"] = comps
 	}
 
 	var result struct {
@@ -310,14 +316,14 @@ func (r *Repository) Update(ctx context.Context, key string, input domain.Update
 	if len(input.Components) > 0 {
 		comps := make([]map[string]string, len(input.Components))
 		for i, c := range input.Components {
-			comps[i] = map[string]string{"name": c}
+			comps[i] = map[string]string{jfName: c}
 		}
 		fields["components"] = comps
 	}
 	if len(input.FixVersions) > 0 {
 		fv := make([]map[string]string, len(input.FixVersions))
 		for i, v := range input.FixVersions {
-			fv[i] = map[string]string{"name": v}
+			fv[i] = map[string]string{jfName: v}
 		}
 		fields["fixVersions"] = fv
 	}
@@ -484,7 +490,7 @@ func (r *Repository) transitionTo(ctx context.Context, key string, status domain
 			}
 			if resolution != "" {
 				body["fields"] = map[string]any{
-					"resolution": map[string]string{"name": resolution},
+					"resolution": map[string]string{jfName: resolution},
 				}
 			}
 			return r.api(ctx, "POST", "/rest/api/2/issue/"+key+"/transitions", body, nil)
@@ -724,7 +730,7 @@ func coerceCustomFieldValue(displayName, value string) any {
 		versions := make([]map[string]string, 0, len(parts))
 		for _, p := range parts {
 			if t := strings.TrimSpace(p); t != "" {
-				versions = append(versions, map[string]string{"name": t})
+				versions = append(versions, map[string]string{jfName: t})
 			}
 		}
 		return versions
@@ -1055,9 +1061,9 @@ func (r *Repository) CreateIssueLink(ctx context.Context, input domain.IssueLink
 		slog.String("inward", input.InwardKey),
 		slog.String("outward", input.OutwardKey))
 	body := map[string]any{
-		"type":         map[string]string{"name": linkType},
-		"inwardIssue":  map[string]string{"key": input.InwardKey},
-		"outwardIssue": map[string]string{"key": input.OutwardKey},
+		"type":         map[string]string{jfName: linkType},
+		"inwardIssue":  map[string]string{jfKey: input.InwardKey},
+		"outwardIssue": map[string]string{jfKey: input.OutwardKey},
 	}
 	return r.api(ctx, "POST", "/rest/api/3/issueLink", body, nil)
 }
