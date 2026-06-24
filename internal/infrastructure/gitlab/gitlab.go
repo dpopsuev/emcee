@@ -103,6 +103,10 @@ func NewWithURL(name, token, projectID, baseURL string) (*Repository, error) {
 
 func (r *Repository) Name() string { return r.name }
 
+func (r *Repository) DefaultProject() string { return r.projectID }
+
+func (r *Repository) SetDefaultProject(project string) { r.projectID = project }
+
 func (r *Repository) requireAuth() error {
 	if r.readOnly {
 		return ErrAuthRequired

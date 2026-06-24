@@ -31,4 +31,5 @@ type StubEmceeService struct {
 	StubTriageService
 	StubLedgerService
 	StubViewService
+	StubProjectScopeService
 }

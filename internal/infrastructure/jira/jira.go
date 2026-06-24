@@ -230,6 +230,18 @@ func (r *Repository) Get(ctx context.Context, key string) (*domain.Issue, error)
 	return &issue, nil
 }
 
+func (r *Repository) DefaultProject() string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.project
+}
+
+func (r *Repository) SetDefaultProject(project string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.project = project
+}
+
 func (r *Repository) Create(ctx context.Context, input domain.CreateInput) (*domain.Issue, error) {
 	project := r.project
 	if input.ProjectID != "" {

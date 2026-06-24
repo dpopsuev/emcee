@@ -170,6 +170,12 @@ type ViewService interface {
 	ViewReset()
 }
 
+// ProjectScopeService is the inbound port for querying and switching the default project.
+type ProjectScopeService interface {
+	DefaultProject(backend string) string
+	SetDefaultProject(backend, project string) error
+}
+
 // BackendManager is the inbound port for runtime backend management.
 type BackendManager interface {
 	AddBackend(repo repository.IssueRepository)

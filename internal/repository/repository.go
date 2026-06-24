@@ -144,6 +144,12 @@ type PRRepository interface {
 	ListPRs(ctx context.Context, filter domain.PRFilter) ([]domain.PullRequest, error)
 }
 
+// ProjectScoper exposes and mutates the backend's default project at runtime.
+type ProjectScoper interface {
+	DefaultProject() string
+	SetDefaultProject(project string)
+}
+
 // UserResolver resolves human-readable names to backend-specific IDs.
 type UserResolver interface {
 	ResolveUser(ctx context.Context, name string) (string, error)

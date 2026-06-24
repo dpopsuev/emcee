@@ -86,6 +86,22 @@ func NewWithURL(name, token, owner, repo, url string) (*Repository, error) {
 
 func (r *Repository) Name() string { return r.name }
 
+func (r *Repository) DefaultProject() string {
+	if r.repo == "" {
+		return r.owner
+	}
+	return r.owner + "/" + r.repo
+}
+
+func (r *Repository) SetDefaultProject(project string) {
+	if owner, repo, ok := strings.Cut(project, "/"); ok {
+		r.owner = owner
+		r.repo = repo
+	} else {
+		r.repo = project
+	}
+}
+
 func (r *Repository) requireAuth() error {
 	if r.readOnly {
 		return ErrAuthRequired

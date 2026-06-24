@@ -311,6 +311,30 @@ func (s *Service) notSupportedErr(backend, op string) error {
 	return fmt.Errorf("%w: %q does not support %s", ErrNotSupported, backend, op)
 }
 
+func (s *Service) DefaultProject(backend string) string {
+	r, err := s.repo(backend)
+	if err != nil {
+		return ""
+	}
+	if ps, ok := r.(repository.ProjectScoper); ok {
+		return ps.DefaultProject()
+	}
+	return ""
+}
+
+func (s *Service) SetDefaultProject(backend, project string) error {
+	r, err := s.repo(backend)
+	if err != nil {
+		return err
+	}
+	ps, ok := r.(repository.ProjectScoper)
+	if !ok {
+		return s.notSupportedErr(backend, "set_default_project")
+	}
+	ps.SetDefaultProject(project)
+	return nil
+}
+
 // --- Issue operations ---
 
 func (s *Service) List(ctx context.Context, backend string, filter domain.ListFilter) ([]domain.Issue, error) {

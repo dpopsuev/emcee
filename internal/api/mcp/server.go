@@ -44,6 +44,7 @@ var (
 	errIDRequired        = errors.New("id is required")
 	errUnknownAction     = errors.New("unknown action")
 	errFieldRequired     = errors.New("field is required for view_mutate")
+	errProjectIDRequired = errors.New("project_id is required")
 )
 
 // EmceeService combines all driver port interfaces.
@@ -70,6 +71,7 @@ type EmceeService interface {
 	service.PRService
 	service.LedgerService
 	service.ViewService
+	service.ProjectScopeService
 }
 
 const serverInstructions = "Emcee — issue tracking, test analytics, and knowledge management. " +
@@ -178,7 +180,7 @@ func RegisterTools(srv *batterymcp.Server, svc EmceeService) {
 var issueSchema = json.RawMessage(`{
 	"type": "object",
 	"properties": {
-		"action":       {"type": "string", "enum": ["list","get","create","update","search","children","bulk_create","bulk_update","comments","comment_add","link","unlink","link_types","stage","stage_list","stage_show","stage_patch","stage_drop","push","push_all","fields","jql","prs","pr_reviews","pr_comments","changelog"], "description": "Action to perform"},
+		"action":       {"type": "string", "enum": ["list","get","create","update","search","children","bulk_create","bulk_update","comments","comment_add","link","unlink","link_types","stage","stage_list","stage_show","stage_patch","stage_drop","push","push_all","fields","jql","prs","pr_reviews","pr_comments","changelog","set_default_project"], "description": "Action to perform"},
 		"backend":      {"type": "string", "description": "Backend name (list/create/search/jql/prs/fields)"},
 		"ref":          {"type": "string", "description": "Issue ref e.g. jira:PROJ-42"},
 		"title":        {"type": "string", "description": "Issue title (create/stage)"},
@@ -384,7 +386,6 @@ func issueHandler(svc EmceeService) server.Handler {
 			}
 			issue, err := svc.Create(ctx, args.Backend, input)
 			if err != nil {
-				// Auto-stage on failure — preserve the payload for retry
 				id := svc.StageItem(args.Backend, input, err.Error())
 				return server.JSONString(map[string]any{
 					"error":    err.Error(),
@@ -393,7 +394,7 @@ func issueHandler(svc EmceeService) server.Handler {
 					"message":  fmt.Sprintf("Create failed, auto-staged as %s. Use push to retry.", id),
 				})
 			}
-			return server.JSONString(issue)
+			return server.JSONString(issueWithProjectNote(issue, args.ProjectID, svc.DefaultProject(args.Backend)))
 
 		case "update":
 			if args.Ref == "" {
@@ -594,7 +595,7 @@ func issueHandler(svc EmceeService) server.Handler {
 				svc.StageItem(item.Backend, item.Input, err.Error())
 				return "", fmt.Errorf("push failed (re-staged): %w", err)
 			}
-			return server.JSONString(issue)
+			return server.JSONString(issueWithProjectNote(issue, item.Input.ProjectID, svc.DefaultProject(item.Backend)))
 
 		case "push_all":
 			items := svc.StagePopAll()
@@ -792,6 +793,24 @@ func issueHandler(svc EmceeService) server.Handler {
 				return "", err
 			}
 			return server.JSONString(prs)
+
+		case "set_default_project":
+			if args.Backend == "" {
+				return "", errBackendRequired
+			}
+			if args.ProjectID == "" {
+				return "", errProjectIDRequired
+			}
+			old := svc.DefaultProject(args.Backend)
+			if err := svc.SetDefaultProject(args.Backend, args.ProjectID); err != nil {
+				return "", err
+			}
+			return server.JSONString(map[string]any{
+				"backend":  args.Backend,
+				"previous": old,
+				"current":  args.ProjectID,
+				"message":  fmt.Sprintf("Default project for %s changed: %s → %s", args.Backend, old, args.ProjectID),
+			})
 
 		// --- Ledger actions ---
 
@@ -1682,6 +1701,18 @@ func parseRef(ref string) (backend, key string, err error) {
 
 // splitCSV splits a comma-separated string into a trimmed slice.
 // Returns nil for empty input.
+func issueWithProjectNote(issue *domain.Issue, explicitProject, configDefault string) map[string]any {
+	b, _ := json.Marshal(issue)
+	var m map[string]any
+	_ = json.Unmarshal(b, &m)
+	if explicitProject != "" {
+		m["_project_source"] = "explicit"
+	} else {
+		m["_project_source"] = fmt.Sprintf("default from config (team: %s). Pass project_id to target a different project.", configDefault)
+	}
+	return m
+}
+
 func splitCSV(s string) []string {
 	if s == "" {
 		return nil
