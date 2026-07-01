@@ -2,6 +2,7 @@ package jira
 
 import (
 	"context"
+	"maps"
 	"os"
 
 	"github.com/dpopsuev/emcee/internal/config"
@@ -77,10 +78,11 @@ func init() {
 				if err != nil {
 					return nil, err
 				}
-				mappings := make(map[string]string, len(entries))
+				mappings := make(map[string]string, len(entries)+len(backend.Statuses))
 				for _, e := range entries {
 					mappings[e.Name] = defaultStatusMapping(e.CategoryKey)
 				}
+				maps.Copy(mappings, backend.Statuses)
 				return mappings, nil
 			},
 			repo.SetStatusMap,
