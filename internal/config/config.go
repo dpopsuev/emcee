@@ -38,7 +38,8 @@ type Backend struct {
 	//     sprint:        customfield_10020
 	//     story_points:  customfield_10028
 	//     target_version: customfield_10855
-	Fields map[string]string `yaml:"fields,omitempty"`
+	Fields   map[string]string `yaml:"fields,omitempty"`
+	Statuses map[string]string `yaml:"statuses,omitempty"`
 	// Watch controls delta sync polling for this backend.
 	// Nothing is polled unless at least one field is set.
 	Watch WatchConfig `yaml:"watch,omitempty"`

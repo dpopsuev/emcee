@@ -52,9 +52,40 @@ func init() {
 			return nil, err
 		}
 
-		// Register a poller so serveCmd can keep the manifest evergreen.
-		// The closure captures repo before cache.New() wraps it, so SetCustomFields
+		// Load status manifest and apply config overrides.
+		sm, err := manifest.Load("statuses", name, config.Dir())
+		if err != nil {
+			return nil, err
+		}
+		if len(backend.Statuses) > 0 {
+			sm = sm.Merge(backend.Statuses)
+		}
+		if len(sm.Mappings) > 0 {
+			repo.SetStatusMap(sm.Mappings)
+		}
+
+		// Register pollers so serveCmd can keep manifests evergreen.
+		// The closures capture repo before cache.New() wraps it, so Set*
 		// reaches the live Repository directly.
+		poller.Register("statuses:"+name, manifest.NewManifestPoller(
+			"statuses",
+			name,
+			config.Dir(),
+			manifest.DefaultTTL,
+			func(ctx context.Context) (map[string]string, error) {
+				entries, err := repo.ListStatuses(ctx)
+				if err != nil {
+					return nil, err
+				}
+				mappings := make(map[string]string, len(entries))
+				for _, e := range entries {
+					mappings[e.Name] = defaultStatusMapping(e.CategoryKey)
+				}
+				return mappings, nil
+			},
+			repo.SetStatusMap,
+		))
+
 		poller.Register("fields:"+name, manifest.NewManifestPoller(
 			manifest.DefaultKind,
 			name,

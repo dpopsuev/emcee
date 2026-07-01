@@ -66,6 +66,7 @@ type EmceeService interface {
 	service.PRReviewService
 	service.ChangelogService
 	service.FieldService
+	service.StatusService
 	service.TemplateService
 	service.JQLService
 	service.PRService
@@ -155,7 +156,7 @@ func RegisterTools(srv *batterymcp.Server, svc EmceeService) {
 
 	srv.ToolStringHandler(server.ToolMeta{
 		Name:        "admin",
-		Description: "Meta: help | triage | triage_config | triage_config_set | changelog | fields_discover | ledger_list | ledger_get | ledger_search | ledger_similar | ledger_ingest | ledger_stats. Start here.",
+		Description: "Meta: help | triage | triage_config | triage_config_set | changelog | fields_discover | status_discover | ledger_list | ledger_get | ledger_search | ledger_similar | ledger_ingest | ledger_stats. Start here.",
 		Keywords:    []string{"help", "triage", "ledger", "discover", "admin"},
 		Categories:  []string{"operations"},
 	}, adminSchema, adminHandler(svc))
@@ -260,7 +261,7 @@ var docSchema = json.RawMessage(`{
 var adminSchema = json.RawMessage(`{
 	"type": "object",
 	"properties": {
-		"action":      {"type": "string", "enum": ["help","triage","triage_config","triage_config_set","changelog","fields_discover","template_discover","ledger_list","ledger_get","ledger_search","ledger_similar","ledger_ingest","ledger_stats"], "description": "Action. Start with help."},
+		"action":      {"type": "string", "enum": ["help","triage","triage_config","triage_config_set","changelog","fields_discover","status_discover","template_discover","ledger_list","ledger_get","ledger_search","ledger_similar","ledger_ingest","ledger_stats"], "description": "Action. Start with help."},
 		"ref":         {"type": "string", "description": "Seed ref (triage/ledger_get/ledger_similar/ledger_ingest/changelog)"},
 		"backend":     {"type": "string", "description": "Backend name (fields_discover/ledger_list/ledger_ingest)"},
 		"query":       {"type": "string", "description": "Search query (ledger_search)"},
@@ -694,6 +695,20 @@ func issueHandler(svc EmceeService) server.Handler {
 			return server.JSONString(map[string]any{
 				"backend":  args.Backend,
 				"manifest": config.ManifestPath("fields", args.Backend),
+				"mappings": mappings,
+			})
+
+		case "status_discover":
+			if args.Backend == "" {
+				return "", errBackendRequired
+			}
+			mappings, err := svc.DiscoverStatuses(ctx, args.Backend, config.Dir())
+			if err != nil {
+				return "", err
+			}
+			return server.JSONString(map[string]any{
+				"backend":  args.Backend,
+				"manifest": config.ManifestPath("statuses", args.Backend),
 				"mappings": mappings,
 			})
 
@@ -1324,6 +1339,7 @@ func adminHandler(svc EmceeService) server.Handler {
 			sb.WriteString("  triage_config_set [limit] [issues=JSON]                   Set triage config. issues is JSON array of backend names.\n")
 			sb.WriteString("  changelog    ref                                           Field change history (alias of issue changelog).\n")
 			sb.WriteString("  fields_discover backend                                    Discover and cache field mappings for backend.\n")
+			sb.WriteString("  status_discover backend                                    Discover and cache status→domain mappings for backend.\n")
 			sb.WriteString("  ledger_list  [backend] [status] [issue_type] [components] [limit]  List ledger entries.\n")
 			sb.WriteString("  ledger_get   ref                                           Fetch one ledger entry.\n")
 			sb.WriteString("  ledger_search query [limit]                                Full-text search the ledger.\n")
@@ -1395,6 +1411,20 @@ func adminHandler(svc EmceeService) server.Handler {
 			return server.JSONString(map[string]any{
 				"backend":  args.Backend,
 				"manifest": config.ManifestPath("fields", args.Backend),
+				"mappings": mappings,
+			})
+
+		case "status_discover":
+			if args.Backend == "" {
+				return "", errBackendRequired
+			}
+			mappings, err := svc.DiscoverStatuses(ctx, args.Backend, config.Dir())
+			if err != nil {
+				return "", err
+			}
+			return server.JSONString(map[string]any{
+				"backend":  args.Backend,
+				"manifest": config.ManifestPath("statuses", args.Backend),
 				"mappings": mappings,
 			})
 

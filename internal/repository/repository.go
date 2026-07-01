@@ -117,6 +117,12 @@ type FieldRepository interface {
 	ListFields(ctx context.Context) ([]domain.Field, error)
 }
 
+// StatusRepository is the outbound port for status metadata discovery.
+type StatusRepository interface {
+	Name() string
+	ListStatuses(ctx context.Context) ([]domain.StatusEntry, error)
+}
+
 // ChangelogRepository is the outbound port for issue field-level history.
 type ChangelogRepository interface {
 	Name() string

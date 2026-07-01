@@ -96,6 +96,17 @@ func fakeJira() *httptest.Server {
 		case r.Method == "GET" && path == "/rest/api/2/label":
 			_ = json.NewEncoder(w).Encode([]string{"bug", "feature", "docs"})
 
+		// List all statuses
+		case r.Method == "GET" && path == "/rest/api/2/status":
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{"name": "New", "id": "1", "statusCategory": map[string]any{"key": "new"}},
+				{"name": "IN_PROGRESS", "id": "3", "statusCategory": map[string]any{"key": "indeterminate"}},
+				{"name": "ON_QA", "id": "4", "statusCategory": map[string]any{"key": "indeterminate"}},
+				{"name": "MODIFIED", "id": "5", "statusCategory": map[string]any{"key": "indeterminate"}},
+				{"name": "Verified", "id": "6", "statusCategory": map[string]any{"key": "done"}},
+				{"name": "Closed", "id": "7", "statusCategory": map[string]any{"key": "done"}},
+			})
+
 		default:
 			http.Error(w, "not found: "+path, http.StatusNotFound)
 		}
@@ -550,5 +561,92 @@ func TestE2E_UnsupportedOps(t *testing.T) {
 	_, err = repo.CreateLabel(context.Background(), domain.LabelCreateInput{Name: "test"})
 	if err == nil {
 		t.Error("CreateLabel should return error")
+	}
+}
+
+func TestE2E_StatusMapOverridesCategory(t *testing.T) {
+	srv := fakeJira()
+	defer srv.Close()
+	repo, err := jira.New("jira", srv.URL, "test@example.com", "test-token", "TEST", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo.SetStatusMap(map[string]string{
+		"ON_QA":    "in_review",
+		"MODIFIED": "in_review",
+	})
+
+	// fakeJira returns issues with status name="New", category="new"
+	// but let's test with a modified fake that returns ON_QA
+	srv2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		user, _, ok := r.BasicAuth()
+		if !ok || user == "" {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(jiraIssue("TEST-1", "On QA Issue", "ON_QA", "indeterminate", "Major", ""))
+	}))
+	defer srv2.Close()
+	repo2, _ := jira.New("jira", srv2.URL, "test@example.com", "test-token", "TEST", nil)
+	repo2.SetStatusMap(map[string]string{
+		"ON_QA":    "in_review",
+		"MODIFIED": "in_review",
+	})
+
+	issue, err := repo2.Get(context.Background(), "TEST-1")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if issue.Status != domain.StatusInReview {
+		t.Errorf("status = %q, want in_review", issue.Status)
+	}
+}
+
+func TestE2E_StatusMapFallsBackToCategory(t *testing.T) {
+	srv := fakeJira()
+	defer srv.Close()
+	repo, _ := jira.New("jira", srv.URL, "test@example.com", "test-token", "TEST", nil)
+	repo.SetStatusMap(map[string]string{
+		"ON_QA": "in_review",
+	})
+
+	// fakeJira returns status name="New", category="new"
+	// "New" is not in the status map, so it falls back to category-based mapping
+	issue, err := repo.Get(context.Background(), "TEST-1")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if issue.Status != domain.StatusTodo {
+		t.Errorf("status = %q, want todo (fallback from category 'new')", issue.Status)
+	}
+}
+
+func TestE2E_ListStatuses(t *testing.T) {
+	repo, srv := newTestRepo(t)
+	defer srv.Close()
+
+	statuses, err := repo.ListStatuses(context.Background())
+	if err != nil {
+		t.Fatalf("ListStatuses: %v", err)
+	}
+	if len(statuses) != 6 {
+		t.Fatalf("got %d statuses, want 6", len(statuses))
+	}
+
+	want := map[string]string{
+		"New":         "new",
+		"IN_PROGRESS": "indeterminate",
+		"ON_QA":       "indeterminate",
+		"MODIFIED":    "indeterminate",
+		"Verified":    "done",
+		"Closed":      "done",
+	}
+	for _, s := range statuses {
+		if cat, ok := want[s.Name]; !ok {
+			t.Errorf("unexpected status %q", s.Name)
+		} else if s.CategoryKey != cat {
+			t.Errorf("status %q: category = %q, want %q", s.Name, s.CategoryKey, cat)
+		}
 	}
 }

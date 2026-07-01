@@ -43,6 +43,7 @@ type Service struct {
 	commentRepos   map[string]repository.CommentRepository
 	launchRepos    map[string]repository.LaunchRepository
 	fieldRepos     map[string]repository.FieldRepository
+	statusRepos    map[string]repository.StatusRepository
 	jqlRepos       map[string]repository.JQLRepository
 	prRepos        map[string]repository.PRRepository
 	extLinkRepos   map[string]repository.ExternalLinkRepository
@@ -80,6 +81,7 @@ func NewService(repos ...repository.IssueRepository) *Service {
 		commentRepos:   make(map[string]repository.CommentRepository),
 		launchRepos:    make(map[string]repository.LaunchRepository),
 		fieldRepos:     make(map[string]repository.FieldRepository),
+		statusRepos:    make(map[string]repository.StatusRepository),
 		jqlRepos:       make(map[string]repository.JQLRepository),
 		deltaRepos:     make(map[string]repository.DeltaSyncer),
 		watchScopes:    make(map[string]domain.WatchScope),
@@ -119,6 +121,9 @@ func NewService(repos ...repository.IssueRepository) *Service {
 		}
 		if fr, ok := r.(repository.FieldRepository); ok {
 			s.fieldRepos[name] = fr
+		}
+		if sr, ok := r.(repository.StatusRepository); ok {
+			s.statusRepos[name] = sr
 		}
 		if jr, ok := r.(repository.JQLRepository); ok {
 			s.jqlRepos[name] = jr
@@ -178,6 +183,9 @@ func (s *Service) AddBackend(r repository.IssueRepository) {
 	if fr, ok := r.(repository.FieldRepository); ok {
 		s.fieldRepos[name] = fr
 	}
+	if sr, ok := r.(repository.StatusRepository); ok {
+		s.statusRepos[name] = sr
+	}
 	if jr, ok := r.(repository.JQLRepository); ok {
 		s.jqlRepos[name] = jr
 	}
@@ -220,6 +228,7 @@ func (s *Service) RemoveBackend(name string) bool {
 	delete(s.commentRepos, name)
 	delete(s.launchRepos, name)
 	delete(s.fieldRepos, name)
+	delete(s.statusRepos, name)
 	delete(s.jqlRepos, name)
 	delete(s.deltaRepos, name)
 	delete(s.watchScopes, name)
@@ -753,6 +762,39 @@ func (s *Service) DiscoverFields(ctx context.Context, backend, configDir string)
 		return nil, fmt.Errorf("save field manifest: %w", err)
 	}
 	return m.Mappings, nil
+}
+
+func (s *Service) DiscoverStatuses(ctx context.Context, backend, configDir string) (map[string]string, error) {
+	r, ok := s.statusRepos[backend]
+	if !ok {
+		return nil, s.notSupportedErr(backend, "statuses")
+	}
+	entries, err := r.ListStatuses(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list statuses for discovery: %w", err)
+	}
+	mappings := make(map[string]string, len(entries))
+	for _, e := range entries {
+		mappings[e.Name] = mapCategoryToStatus(e.CategoryKey)
+	}
+	m := manifest.Discover(backend, mappings)
+	if err := manifest.Save("statuses", backend, configDir, m); err != nil {
+		return nil, fmt.Errorf("save status manifest: %w", err)
+	}
+	return m.Mappings, nil
+}
+
+func mapCategoryToStatus(categoryKey string) string {
+	switch categoryKey {
+	case "new":
+		return string(domain.StatusTodo)
+	case "indeterminate":
+		return string(domain.StatusInProgress)
+	case "done":
+		return string(domain.StatusDone)
+	default:
+		return string(domain.StatusBacklog)
+	}
 }
 
 // --- JQL passthrough ---

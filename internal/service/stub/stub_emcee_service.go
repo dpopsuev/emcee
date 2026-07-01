@@ -20,6 +20,7 @@ type StubEmceeService struct {
 	StubStageService
 	StubChangelogService
 	StubFieldService
+	StubStatusService
 	StubTemplateService
 	StubJQLService
 	StubPRService

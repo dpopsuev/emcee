@@ -100,6 +100,11 @@ type FieldService interface {
 	DiscoverFields(ctx context.Context, backend, configDir string) (map[string]string, error)
 }
 
+// StatusService is the inbound port for status metadata discovery.
+type StatusService interface {
+	DiscoverStatuses(ctx context.Context, backend, configDir string) (map[string]string, error)
+}
+
 // TemplateService is the inbound port for issue description template discovery.
 type TemplateService interface {
 	DiscoverTemplate(ctx context.Context, backend, project, issueType string, sampleSize int) (*domain.Template, error)

@@ -64,6 +64,7 @@ type Repository struct {
 	client       *http.Client
 	mu           sync.RWMutex
 	customFields map[string]string // display_name → field_id, populated from manifest + config
+	statusMap    map[string]string // jira_status_name → domain_status, populated from manifest + config
 }
 
 // New creates a Jira repository. configFields is the optional user-supplied mapping
@@ -89,6 +90,14 @@ func (r *Repository) SetCustomFields(fields map[string]string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.customFields = fields
+}
+
+// SetStatusMap hot-swaps the status manifest mapping on the live repository.
+// Safe to call concurrently with ongoing requests.
+func (r *Repository) SetStatusMap(m map[string]string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.statusMap = m
 }
 
 var standardFields = strings.Split("summary,status,priority,assignee,reporter,description,labels,created,updated,project,issuetype,resolution,fixVersions,components,issuelinks,parent", ",")
@@ -225,8 +234,9 @@ func (r *Repository) Get(ctx context.Context, key string) (*domain.Issue, error)
 	}
 	r.mu.RLock()
 	cf := r.customFields
+	sm := r.statusMap
 	r.mu.RUnlock()
-	issue := raw.toDomain(cf)
+	issue := raw.toDomain(cf, sm)
 	return &issue, nil
 }
 
@@ -466,6 +476,7 @@ func (r *Repository) CreateLabel(_ context.Context, _ domain.LabelCreateInput) (
 func (r *Repository) searchJQL(ctx context.Context, jql string, limit int) ([]domain.Issue, error) {
 	r.mu.RLock()
 	cf := r.customFields
+	sm := r.statusMap
 	r.mu.RUnlock()
 
 	fields := make([]string, 0, len(cf)+len(standardFields))
@@ -489,7 +500,7 @@ func (r *Repository) searchJQL(ctx context.Context, jql string, limit int) ([]do
 
 	issues := make([]domain.Issue, 0, len(result.Issues))
 	for i := range result.Issues {
-		issues = append(issues, result.Issues[i].toDomain(cf))
+		issues = append(issues, result.Issues[i].toDomain(cf, sm))
 	}
 	return issues, nil
 }
@@ -761,13 +772,13 @@ func coerceCustomFieldValue(displayName, value string) any {
 	return value
 }
 
-func (j *jiraIssue) toDomain(customFields map[string]string) domain.Issue {
+func (j *jiraIssue) toDomain(customFields, statusMap map[string]string) domain.Issue {
 	issue := domain.Issue{
 		Ref:         BackendName + ":" + j.Key,
 		ID:          j.ID,
 		Key:         j.Key,
 		Title:       j.Fields.Summary,
-		Status:      mapStatusFromJira(j.Fields.Status.StatusCategory.Key, j.Fields.Status.Name),
+		Status:      mapStatusFromJira(j.Fields.Status.StatusCategory.Key, j.Fields.Status.Name, statusMap),
 		Labels:      j.Fields.Labels,
 		Description: extractDescription(j.Fields.Description),
 	}
@@ -884,21 +895,32 @@ func extractADFText(node *adfNode, b *strings.Builder) {
 // --- Status mapping ---
 // Jira statusCategory keys: "new", "indeterminate", "done", "undefined"
 
-func mapStatusFromJira(categoryKey, statusName string) domain.Status {
+func mapStatusFromJira(categoryKey, statusName string, statusMap map[string]string) domain.Status {
+	if v, ok := statusMap[statusName]; ok {
+		return domain.Status(v)
+	}
 	switch categoryKey {
 	case "new":
 		return domain.StatusTodo
 	case "indeterminate":
-		switch statusName {
-		case "ON_QA", "MODIFIED":
-			return domain.StatusInReview
-		default:
-			return domain.StatusInProgress
-		}
+		return domain.StatusInProgress
 	case "done":
 		return domain.StatusDone
 	default:
 		return domain.StatusBacklog
+	}
+}
+
+func defaultStatusMapping(categoryKey string) string {
+	switch categoryKey {
+	case "new":
+		return string(domain.StatusTodo)
+	case "indeterminate":
+		return string(domain.StatusInProgress)
+	case "done":
+		return string(domain.StatusDone)
+	default:
+		return string(domain.StatusBacklog)
 	}
 }
 
@@ -1032,6 +1054,27 @@ func (r *Repository) ListFields(ctx context.Context) ([]domain.Field, error) {
 		fields = append(fields, f)
 	}
 	return fields, nil
+}
+
+func (r *Repository) ListStatuses(ctx context.Context) ([]domain.StatusEntry, error) {
+	infra.LogOp(ctx, BackendName, "list_statuses")
+	var raw []struct {
+		Name           string `json:"name"`
+		StatusCategory struct {
+			Key string `json:"key"`
+		} `json:"statusCategory"`
+	}
+	if err := r.api(ctx, "GET", "/rest/api/2/status", nil, &raw); err != nil {
+		return nil, err
+	}
+	entries := make([]domain.StatusEntry, len(raw))
+	for i := range raw {
+		entries[i] = domain.StatusEntry{
+			Name:        raw[i].Name,
+			CategoryKey: raw[i].StatusCategory.Key,
+		}
+	}
+	return entries, nil
 }
 
 // --- JQL passthrough ---
