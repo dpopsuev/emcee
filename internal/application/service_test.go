@@ -456,6 +456,43 @@ func TestServiceCreatePassesInput(t *testing.T) {
 	}
 }
 
+func TestServiceCreateInfersProjectFromParent(t *testing.T) {
+	s := &stub.StubCompositeRepository{}
+	s.StubIssueRepository.NameVal = "jira"
+	s.Issue = &domain.Issue{Key: "PROJ-99", Title: "Child"}
+	svc := application.NewService(s)
+
+	input := domain.CreateInput{Title: "Child task", ParentID: "jira:PROJ-42"}
+	_, err := svc.Create(context.Background(), "jira", input)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if len(s.CreateCalls) != 1 {
+		t.Fatalf("CreateCalls = %d, want 1", len(s.CreateCalls))
+	}
+	got := s.CreateCalls[0].Input
+	if got.ProjectID != "PROJ" {
+		t.Errorf("ProjectID = %q, want %q (inferred from parent ref)", got.ProjectID, "PROJ")
+	}
+}
+
+func TestServiceCreateDoesNotOverrideExplicitProject(t *testing.T) {
+	s := &stub.StubCompositeRepository{}
+	s.StubIssueRepository.NameVal = "jira"
+	s.Issue = &domain.Issue{Key: "OTHER-1", Title: "Child"}
+	svc := application.NewService(s)
+
+	input := domain.CreateInput{Title: "Child task", ParentID: "jira:PROJ-42", ProjectID: "OTHER"}
+	_, err := svc.Create(context.Background(), "jira", input)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	got := s.CreateCalls[0].Input
+	if got.ProjectID != "OTHER" {
+		t.Errorf("ProjectID = %q, want %q (explicit should not be overridden)", got.ProjectID, "OTHER")
+	}
+}
+
 func TestServiceGetIncludesComments(t *testing.T) {
 	stub := &stub.StubCompositeRepository{}
 	stub.StubIssueRepository.NameVal = "test"

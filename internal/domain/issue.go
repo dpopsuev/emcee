@@ -153,6 +153,16 @@ type UpdateInput struct {
 	CustomFields map[string]string `json:"custom_fields,omitempty"`
 }
 
+// StagePatchInput extends UpdateInput with create-only fields so that
+// failed staged drafts can be fully corrected in place.
+type StagePatchInput struct {
+	UpdateInput
+	ProjectID *string  `json:"project_id,omitempty"`
+	ParentID  *string  `json:"parent_id,omitempty"`
+	IssueType *string  `json:"issue_type,omitempty"`
+	Versions  []string `json:"versions,omitempty"`
+}
+
 // IssueLink represents a link between two Jira issues.
 type IssueLink struct {
 	Type         string `json:"type"`

@@ -283,6 +283,26 @@ func ParseRef(ref string) (backend, key string, err error) {
 	return parts[0], parts[1], nil
 }
 
+// ProjectKeyFromRef extracts the Jira-style project key from a ref like
+// "jira:PROJ-42" → "PROJ". Returns "" if the ref is not in backend:KEY-N format.
+func ProjectKeyFromRef(ref string) string {
+	_, key, err := ParseRef(ref)
+	if err != nil {
+		return ""
+	}
+	idx := strings.LastIndex(key, "-")
+	if idx <= 0 {
+		return ""
+	}
+	suffix := key[idx+1:]
+	for _, c := range suffix {
+		if c < '0' || c > '9' {
+			return ""
+		}
+	}
+	return key[:idx]
+}
+
 func (s *Service) repo(name string) (repository.IssueRepository, error) {
 	s.mu.RLock()
 	r, ok := s.repos[name]
@@ -381,6 +401,11 @@ func (s *Service) Get(ctx context.Context, ref string) (*domain.Issue, error) {
 }
 
 func (s *Service) Create(ctx context.Context, backend string, input domain.CreateInput) (*domain.Issue, error) {
+	if input.ProjectID == "" && input.ParentID != "" {
+		if pk := ProjectKeyFromRef(input.ParentID); pk != "" {
+			input.ProjectID = pk
+		}
+	}
 	r, err := s.repo(backend)
 	if err != nil {
 		return nil, err
@@ -1024,7 +1049,7 @@ func (s *Service) StageGet(id string) (*domain.StagedItem, error) {
 	return s.stage.StageGet(id)
 }
 
-func (s *Service) StagePatch(id string, input domain.UpdateInput) (*domain.StagedItem, error) {
+func (s *Service) StagePatch(id string, input domain.StagePatchInput) (*domain.StagedItem, error) {
 	return s.stage.StagePatch(id, input)
 }
 
