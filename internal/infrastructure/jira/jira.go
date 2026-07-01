@@ -330,6 +330,9 @@ func (r *Repository) Update(ctx context.Context, key string, input domain.Update
 			"name": mapPriorityToJira(*input.Priority),
 		}
 	}
+	if input.ParentID != nil {
+		fields["parent"] = map[string]string{jfKey: *input.ParentID}
+	}
 	if input.Labels != nil {
 		fields["labels"] = input.Labels
 	}

@@ -188,7 +188,7 @@ var issueSchema = json.RawMessage(`{
 		"status":       {"type": "string", "description": "backlog | todo | in_progress | in_review | done | canceled"},
 		"priority":     {"type": "string", "description": "urgent | high | medium | low"},
 		"assignee":     {"type": "string", "description": "Assignee name"},
-		"parent_id":    {"type": "string", "description": "Parent issue ID (create)"},
+		"parent_id":    {"type": "string", "description": "Parent issue key or ref (create/update)"},
 		"project_id":   {"type": "string", "description": "Project ID (create)"},
 		"issue_type":   {"type": "string", "description": "Issue type (Jira: Bug/Task/Story) or link type (link: Blocks/Relates)"},
 		"target_ref":   {"type": "string", "description": "Target ref for link (e.g. jira:PROJ-2)"},
@@ -409,6 +409,9 @@ func issueHandler(svc EmceeService) server.Handler {
 			}
 			if args.Resolution != "" {
 				updateInput.Resolution = &args.Resolution
+			}
+			if args.ParentID != "" {
+				updateInput.ParentID = &args.ParentID
 			}
 			issue, err := svc.Update(ctx, args.Ref, updateInput)
 			if err != nil {

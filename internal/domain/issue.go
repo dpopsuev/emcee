@@ -145,6 +145,7 @@ type UpdateInput struct {
 	Priority    *Priority `json:"priority,omitempty"`
 	Labels      []string  `json:"labels,omitempty"`
 	Assignee    *string   `json:"assignee,omitempty"`
+	ParentID    *string   `json:"parent_id,omitempty"`
 	Components  []string  `json:"components,omitempty"`
 	FixVersions []string  `json:"fix_versions,omitempty"`
 	Resolution  *string   `json:"resolution,omitempty"`
@@ -158,7 +159,6 @@ type UpdateInput struct {
 type StagePatchInput struct {
 	UpdateInput
 	ProjectID *string  `json:"project_id,omitempty"`
-	ParentID  *string  `json:"parent_id,omitempty"`
 	IssueType *string  `json:"issue_type,omitempty"`
 	Versions  []string `json:"versions,omitempty"`
 }

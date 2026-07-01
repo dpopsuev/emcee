@@ -493,6 +493,60 @@ func TestServiceCreateDoesNotOverrideExplicitProject(t *testing.T) {
 	}
 }
 
+func TestServiceCreateStripsRefPrefixFromParentID(t *testing.T) {
+	s := &stub.StubCompositeRepository{}
+	s.StubIssueRepository.NameVal = "jira"
+	s.Issue = &domain.Issue{Key: "PROJ-99", Title: "Child"}
+	svc := application.NewService(s)
+
+	input := domain.CreateInput{Title: "Child task", ParentID: "jira:PROJ-42"}
+	_, err := svc.Create(context.Background(), "jira", input)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	got := s.CreateCalls[0].Input
+	if got.ParentID != "PROJ-42" {
+		t.Errorf("ParentID = %q, want %q (ref prefix should be stripped)", got.ParentID, "PROJ-42")
+	}
+}
+
+func TestServiceCreateKeepsBareParentID(t *testing.T) {
+	s := &stub.StubCompositeRepository{}
+	s.StubIssueRepository.NameVal = "jira"
+	s.Issue = &domain.Issue{Key: "PROJ-99", Title: "Child"}
+	svc := application.NewService(s)
+
+	input := domain.CreateInput{Title: "Child task", ParentID: "PROJ-42", ProjectID: "PROJ"}
+	_, err := svc.Create(context.Background(), "jira", input)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	got := s.CreateCalls[0].Input
+	if got.ParentID != "PROJ-42" {
+		t.Errorf("ParentID = %q, want %q (bare key should pass through)", got.ParentID, "PROJ-42")
+	}
+}
+
+func TestServiceUpdateStripsRefPrefixFromParentID(t *testing.T) {
+	s := &stub.StubCompositeRepository{}
+	s.StubIssueRepository.NameVal = "jira"
+	s.Issue = &domain.Issue{Key: "PROJ-99", Title: "Existing"}
+	svc := application.NewService(s)
+
+	parentID := "jira:PROJ-10"
+	_, err := svc.Update(context.Background(), "jira:PROJ-99", domain.UpdateInput{ParentID: &parentID})
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	if len(s.UpdateCalls) != 1 {
+		t.Fatalf("UpdateCalls = %d, want 1", len(s.UpdateCalls))
+	}
+	got := s.UpdateCalls[0].Input
+	if *got.ParentID != "PROJ-10" {
+		t.Errorf("ParentID = %q, want %q (ref prefix should be stripped)", *got.ParentID, "PROJ-10")
+	}
+}
+
 func TestServiceGetIncludesComments(t *testing.T) {
 	stub := &stub.StubCompositeRepository{}
 	stub.StubIssueRepository.NameVal = "test"

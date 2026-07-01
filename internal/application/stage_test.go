@@ -29,7 +29,7 @@ func TestStagePatch_ParentID(t *testing.T) {
 
 	parentID := "PROJ-42"
 	item, err := store.StagePatch(id, domain.StagePatchInput{
-		ParentID: &parentID,
+		UpdateInput: domain.UpdateInput{ParentID: &parentID},
 	})
 	if err != nil {
 		t.Fatalf("StagePatch: %v", err)
@@ -119,11 +119,11 @@ func TestStagePatch_AllCreateFields(t *testing.T) {
 			Title:       &title,
 			Description: &desc,
 			Assignee:    &assignee,
+			ParentID:    &parentID,
 			Components:  []string{"ptp"},
 			FixVersions: []string{"4.20"},
 		},
 		ProjectID: &projectID,
-		ParentID:  &parentID,
 		IssueType: &issueType,
 		Versions:  []string{"4.18"},
 	})

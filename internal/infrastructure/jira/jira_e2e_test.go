@@ -14,6 +14,7 @@ import (
 )
 
 var lastCreateBody map[string]any //nolint:gochecknoglobals // test spy
+var lastUpdateBody map[string]any //nolint:gochecknoglobals // test spy
 
 // fakeJira serves a mock Jira REST API.
 //
@@ -69,6 +70,10 @@ func fakeJira() *httptest.Server {
 
 		// Update issue
 		case r.Method == "PUT" && strings.HasPrefix(path, "/rest/api/2/issue/"):
+			lastUpdateBody = nil
+			var body map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			lastUpdateBody = body
 			w.WriteHeader(http.StatusNoContent)
 
 		// Search (v3 API with ADF description)
@@ -253,6 +258,30 @@ func TestE2E_Update(t *testing.T) {
 	}
 	if issue.Ref != "jira:TEST-1" {
 		t.Errorf("ref = %q, want jira:TEST-1", issue.Ref)
+	}
+}
+
+func TestE2E_UpdateParent(t *testing.T) {
+	repo, srv := newTestRepo(t)
+	defer srv.Close()
+
+	parentKey := "PROJ-10"
+	_, err := repo.Update(context.Background(), "TEST-1", domain.UpdateInput{
+		ParentID: &parentKey,
+	})
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	if lastUpdateBody == nil {
+		t.Fatal("update body not captured")
+	}
+	fields, _ := lastUpdateBody["fields"].(map[string]any)
+	parent, ok := fields["parent"].(map[string]any)
+	if !ok {
+		t.Fatal("fields.parent not set in API request")
+	}
+	if parent["key"] != "PROJ-10" {
+		t.Errorf("parent.key = %v, want PROJ-10", parent["key"])
 	}
 }
 

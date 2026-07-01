@@ -401,10 +401,8 @@ func (s *Service) Get(ctx context.Context, ref string) (*domain.Issue, error) {
 }
 
 func (s *Service) Create(ctx context.Context, backend string, input domain.CreateInput) (*domain.Issue, error) {
-	if input.ProjectID == "" && input.ParentID != "" {
-		if pk := ProjectKeyFromRef(input.ParentID); pk != "" {
-			input.ProjectID = pk
-		}
+	if input.ParentID != "" {
+		input.ParentID = s.normalizeParentID(input.ParentID, &input.ProjectID)
 	}
 	r, err := s.repo(backend)
 	if err != nil {
@@ -413,10 +411,30 @@ func (s *Service) Create(ctx context.Context, backend string, input domain.Creat
 	return r.Create(ctx, input)
 }
 
+// normalizeParentID strips a ref prefix (jira:PROJ-42 → PROJ-42) and infers
+// the project key into projectID when it is empty.
+func (s *Service) normalizeParentID(parentID string, projectID *string) string {
+	_, key, err := ParseRef(parentID)
+	if err != nil {
+		return parentID
+	}
+	if *projectID == "" {
+		if pk := ProjectKeyFromRef(parentID); pk != "" {
+			*projectID = pk
+		}
+	}
+	return key
+}
+
 func (s *Service) Update(ctx context.Context, ref string, input domain.UpdateInput) (*domain.Issue, error) {
 	backend, key, err := ParseRef(ref)
 	if err != nil {
 		return nil, err
+	}
+	if input.ParentID != nil {
+		if _, pkey, perr := ParseRef(*input.ParentID); perr == nil {
+			input.ParentID = &pkey
+		}
 	}
 	r, err := s.repo(backend)
 	if err != nil {
