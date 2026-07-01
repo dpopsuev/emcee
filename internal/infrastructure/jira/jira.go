@@ -778,10 +778,11 @@ func (j *jiraIssue) toDomain(customFields, statusMap map[string]string) domain.I
 		ID:          j.ID,
 		Key:         j.Key,
 		Title:       j.Fields.Summary,
-		Status:      mapStatusFromJira(j.Fields.Status.StatusCategory.Key, j.Fields.Status.Name, statusMap),
+		RawStatus:   j.Fields.Status.Name,
 		Labels:      j.Fields.Labels,
 		Description: extractDescription(j.Fields.Description),
 	}
+	issue.Status, issue.Substatus = mapStatusFromJira(j.Fields.Status.StatusCategory.Key, j.Fields.Status.Name, statusMap)
 	j.applyStandardFields(&issue)
 	j.applyCustomFields(&issue, customFields)
 	j.applyIssueLinks(&issue)
@@ -895,20 +896,24 @@ func extractADFText(node *adfNode, b *strings.Builder) {
 // --- Status mapping ---
 // Jira statusCategory keys: "new", "indeterminate", "done", "undefined"
 
-func mapStatusFromJira(categoryKey, statusName string, statusMap map[string]string) domain.Status {
+func mapStatusFromJira(categoryKey, statusName string, statusMap map[string]string) (status domain.Status, substatus string) {
 	if v, ok := statusMap[statusName]; ok {
-		return domain.Status(v)
+		return domain.Status(v), normalizeSubstatus(statusName)
 	}
 	switch categoryKey {
 	case "new":
-		return domain.StatusTodo
+		return domain.StatusTodo, ""
 	case "indeterminate":
-		return domain.StatusInProgress
+		return domain.StatusInProgress, ""
 	case "done":
-		return domain.StatusDone
+		return domain.StatusDone, ""
 	default:
-		return domain.StatusBacklog
+		return domain.StatusBacklog, ""
 	}
+}
+
+func normalizeSubstatus(name string) string {
+	return strings.ToLower(strings.ReplaceAll(strings.TrimSpace(name), " ", "_"))
 }
 
 func defaultStatusMapping(categoryKey string) string {

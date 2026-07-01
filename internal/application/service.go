@@ -372,12 +372,33 @@ func (s *Service) List(ctx context.Context, backend string, filter domain.ListFi
 		return nil, err
 	}
 	issues, err := r.List(ctx, filter)
-	if err == nil && s.ledger != nil {
+	if err != nil {
+		return nil, err
+	}
+	issues = applyPostFilters(issues, filter)
+	if s.ledger != nil {
 		for i := range issues {
 			_ = s.ledger.Put(ctx, issueToRecord(backend, &issues[i]))
 		}
 	}
-	return issues, err
+	return issues, nil
+}
+
+func applyPostFilters(issues []domain.Issue, filter domain.ListFilter) []domain.Issue {
+	if filter.RawStatus == "" && filter.Substatus == "" {
+		return issues
+	}
+	filtered := make([]domain.Issue, 0, len(issues))
+	for i := range issues {
+		if filter.RawStatus != "" && !strings.EqualFold(issues[i].RawStatus, filter.RawStatus) {
+			continue
+		}
+		if filter.Substatus != "" && issues[i].Substatus != filter.Substatus {
+			continue
+		}
+		filtered = append(filtered, issues[i])
+	}
+	return filtered
 }
 
 func (s *Service) Get(ctx context.Context, ref string) (*domain.Issue, error) {

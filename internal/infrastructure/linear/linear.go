@@ -217,6 +217,7 @@ func (li *linearIssue) toDomain() domain.Issue {
 		Title:       li.Title,
 		Description: li.Desc,
 		Status:      mapStatus(li.State.Type),
+		RawStatus:   li.State.Name,
 		Priority:    domain.Priority(li.Priority),
 		URL:         li.URL,
 	}

@@ -509,6 +509,7 @@ func (gl gitlabIssue) toDomain() domain.Issue {
 		Title:       gl.Title,
 		Description: gl.Description,
 		Status:      mapStatusFromGitLab(gl.State),
+		RawStatus:   gl.State,
 		URL:         gl.WebURL,
 	}
 

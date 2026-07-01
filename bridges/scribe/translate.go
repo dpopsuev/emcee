@@ -38,6 +38,8 @@ func TranslateIssues(issues []domain.Issue) translate.Result {
 				"ref_backend": "emcee",
 				"ref_id":      issue.Ref,
 				"status":      string(issue.Status),
+				"raw_status":  issue.RawStatus,
+				"substatus":   issue.Substatus,
 				"priority":    issue.Priority.String(),
 				"assignee":    issue.Assignee,
 				"issue_type":  issue.IssueType,

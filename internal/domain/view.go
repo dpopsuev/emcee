@@ -111,6 +111,8 @@ func IssueToViewRecord(ref string, issue *Issue) ViewRecord {
 		"title":           issue.Title,
 		"description":     issue.Description,
 		"status":          string(issue.Status),
+		"raw_status":      issue.RawStatus,
+		"substatus":       issue.Substatus,
 		"priority":        issue.Priority.String(),
 		"assignee":        issue.Assignee,
 		"reporter":        issue.Reporter,
@@ -149,6 +151,10 @@ func FieldValueFromIssue(field string, issue *Issue) string {
 		return issue.Description
 	case "status":
 		return string(issue.Status)
+	case "raw_status":
+		return issue.RawStatus
+	case "substatus":
+		return issue.Substatus
 	case "priority":
 		return issue.Priority.String()
 	case "assignee":

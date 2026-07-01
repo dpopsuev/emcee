@@ -187,6 +187,8 @@ var issueSchema = json.RawMessage(`{
 		"title":        {"type": "string", "description": "Issue title (create/stage)"},
 		"description":  {"type": "string", "description": "Issue description"},
 		"status":       {"type": "string", "description": "backlog | todo | in_progress | in_review | done | canceled"},
+		"raw_status":   {"type": "string", "description": "Backend-specific status name filter (e.g. ON_QA, MODIFIED)"},
+		"substatus":    {"type": "string", "description": "Substatus filter within canonical status (e.g. on_qa, modified)"},
 		"priority":     {"type": "string", "description": "urgent | high | medium | low"},
 		"assignee":     {"type": "string", "description": "Assignee name"},
 		"parent_id":    {"type": "string", "description": "Parent issue key or ref (create/update)"},
@@ -302,6 +304,8 @@ type emceeArgs struct {
 	Title          string  `json:"title"`
 	Description    string  `json:"description"`
 	Status         string  `json:"status"`
+	RawStatus      string  `json:"raw_status"`
+	Substatus      string  `json:"substatus"`
 	Priority       string  `json:"priority"`
 	Assignee       string  `json:"assignee"`
 	ParentID       string  `json:"parent_id"`
@@ -346,9 +350,11 @@ func issueHandler(svc EmceeService) server.Handler {
 		switch args.Action {
 		case "list":
 			filter := domain.ListFilter{
-				Status:   domain.Status(args.Status),
-				Assignee: args.Assignee,
-				Limit:    limit,
+				Status:    domain.Status(args.Status),
+				RawStatus: args.RawStatus,
+				Substatus: args.Substatus,
+				Assignee:  args.Assignee,
+				Limit:     limit,
 			}
 			issues, err := svc.List(ctx, args.Backend, filter)
 			if err != nil {

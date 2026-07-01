@@ -183,6 +183,9 @@ func TestE2E_Get(t *testing.T) {
 	if issue.Assignee != "Alice" {
 		t.Errorf("assignee = %q, want Alice", issue.Assignee)
 	}
+	if issue.RawStatus != "New" {
+		t.Errorf("raw_status = %q, want New", issue.RawStatus)
+	}
 	if issue.Project != "TEST" {
 		t.Errorf("project = %q, want TEST", issue.Project)
 	}
@@ -601,6 +604,12 @@ func TestE2E_StatusMapOverridesCategory(t *testing.T) {
 	if issue.Status != domain.StatusInReview {
 		t.Errorf("status = %q, want in_review", issue.Status)
 	}
+	if issue.RawStatus != "ON_QA" {
+		t.Errorf("raw_status = %q, want ON_QA", issue.RawStatus)
+	}
+	if issue.Substatus != "on_qa" {
+		t.Errorf("substatus = %q, want on_qa", issue.Substatus)
+	}
 }
 
 func TestE2E_StatusMapFallsBackToCategory(t *testing.T) {
@@ -619,6 +628,9 @@ func TestE2E_StatusMapFallsBackToCategory(t *testing.T) {
 	}
 	if issue.Status != domain.StatusTodo {
 		t.Errorf("status = %q, want todo (fallback from category 'new')", issue.Status)
+	}
+	if issue.Substatus != "" {
+		t.Errorf("substatus = %q, want empty (category fallback)", issue.Substatus)
 	}
 }
 

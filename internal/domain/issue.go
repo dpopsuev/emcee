@@ -100,6 +100,8 @@ type Issue struct {
 	Title          string            `json:"title"`
 	Description    string            `json:"description,omitempty"`
 	Status         Status            `json:"status"`
+	RawStatus      string            `json:"raw_status,omitempty"`
+	Substatus      string            `json:"substatus,omitempty"`
 	Priority       Priority          `json:"priority"`
 	Labels         []string          `json:"labels,omitempty"`
 	Assignee       string            `json:"assignee,omitempty"`
@@ -214,10 +216,12 @@ type PRComment struct {
 }
 
 type ListFilter struct {
-	Project  string   `json:"project,omitempty"`
-	Status   Status   `json:"status,omitempty"`
-	Labels   []string `json:"labels,omitempty"`
-	Assignee string   `json:"assignee,omitempty"`
-	Query    string   `json:"query,omitempty"`
-	Limit    int      `json:"limit,omitempty"`
+	Project   string   `json:"project,omitempty"`
+	Status    Status   `json:"status,omitempty"`
+	RawStatus string   `json:"raw_status,omitempty"`
+	Substatus string   `json:"substatus,omitempty"`
+	Labels    []string `json:"labels,omitempty"`
+	Assignee  string   `json:"assignee,omitempty"`
+	Query     string   `json:"query,omitempty"`
+	Limit     int      `json:"limit,omitempty"`
 }

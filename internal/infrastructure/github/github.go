@@ -503,6 +503,7 @@ func (gh githubIssue) toDomain() domain.Issue {
 		Title:       gh.Title,
 		Description: gh.Body,
 		Status:      mapStatusFromGitHub(gh.State),
+		RawStatus:   gh.State,
 		URL:         gh.HTMLURL,
 	}
 
