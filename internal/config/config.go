@@ -120,9 +120,10 @@ func defaultPath() string {
 	return filepath.Join(Dir(), configFile)
 }
 
-// DefaultPath returns the default manifest path for a backend (for display purposes).
-func DefaultPath(backend string) string {
-	return filepath.Join(Dir(), "fields", backend+".yaml")
+// ManifestPath returns the manifest path for a backend (for display purposes).
+// kind selects the subdirectory (e.g. "fields", "statuses").
+func ManifestPath(kind, backend string) string {
+	return filepath.Join(Dir(), kind, backend+".yaml")
 }
 
 // Dir returns the emcee config directory ($XDG_CONFIG_HOME/emcee or ~/.config/emcee).

@@ -14,8 +14,8 @@ import (
 
 	"github.com/dpopsuev/emcee/internal/config"
 	"github.com/dpopsuev/emcee/internal/domain"
-	"github.com/dpopsuev/emcee/internal/fieldmanifest"
 	infra "github.com/dpopsuev/emcee/internal/infrastructure"
+	"github.com/dpopsuev/emcee/internal/manifest"
 	"github.com/dpopsuev/emcee/internal/poller"
 	"github.com/dpopsuev/emcee/internal/repository"
 	"github.com/dpopsuev/emcee/internal/service"
@@ -742,15 +742,17 @@ func (s *Service) DiscoverFields(ctx context.Context, backend, configDir string)
 	if err != nil {
 		return nil, fmt.Errorf("list fields for discovery: %w", err)
 	}
-	named := make([]fieldmanifest.NamedField, len(domainFields))
-	for i, f := range domainFields {
-		named[i] = fieldmanifest.NamedField{ID: f.ID, Name: f.Name, Custom: f.Custom}
+	mappings := make(map[string]string, len(domainFields))
+	for _, f := range domainFields {
+		if f.Custom {
+			mappings[f.Name] = f.ID
+		}
 	}
-	manifest := fieldmanifest.Discover(backend, named)
-	if err := fieldmanifest.Save(backend, configDir, manifest); err != nil {
+	m := manifest.Discover(backend, mappings)
+	if err := manifest.Save(manifest.DefaultKind, backend, configDir, m); err != nil {
 		return nil, fmt.Errorf("save field manifest: %w", err)
 	}
-	return manifest.Mappings, nil
+	return m.Mappings, nil
 }
 
 // --- JQL passthrough ---

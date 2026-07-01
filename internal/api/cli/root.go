@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"text/tabwriter"
 
@@ -1058,7 +1059,7 @@ func init() {
 // poller tracks its mtime. The interval passed to Run should be short (≤30s).
 func newConfigPoller(configPath string, svc *application.Service) *poller.Poller {
 	if configPath == "" {
-		configPath = config.DefaultPath("")
+		configPath = filepath.Join(config.Dir(), "config.yaml")
 	}
 	var lastMtime time.Time
 	if fi, err := os.Stat(configPath); err == nil {

@@ -1,15 +1,15 @@
-// Package fieldmanifest manages per-backend field manifests — YAML files that map
-// semantic field names (e.g. "sprint") to backend-specific field IDs
-// (e.g. "customfield_10020" on Jira). This decouples the application from
-// hardcoded field IDs and lets each Jira instance (or other backend) have its own mapping.
+// Package manifest manages per-backend manifests — YAML files that map
+// semantic names to backend-specific values. Used for both field ID discovery
+// (e.g. "sprint" → "customfield_10020") and status mapping
+// (e.g. "ON_QA" → "in_review").
 //
-// File location: ~/.config/emcee/fields/<backend-name>.yaml
+// File location: ~/.config/emcee/<kind>/<backend-name>.yaml
 //
 // Workflow:
-//  1. Run the fields_discover MCP action once per backend to populate the manifest.
+//  1. Run the <kind>_discover MCP action once per backend to populate the manifest.
 //  2. The manifest is loaded at startup and passed into the adapter.
-//  3. Entries in config.yaml backend.fields override individual manifest entries.
-package fieldmanifest
+//  3. Config entries override individual manifest entries.
+package manifest
 
 import (
 	"fmt"
@@ -20,7 +20,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const manifestDir = "fields"
+const DefaultKind = "fields"
 
 // Manifest holds the mapping from semantic field names to backend field IDs.
 type Manifest struct {
@@ -59,9 +59,10 @@ func (m *Manifest) Merge(overrides map[string]string) *Manifest {
 }
 
 // Load reads the manifest for the given backend from the config directory.
+// kind selects the subdirectory (e.g. "fields", "statuses").
 // Returns an empty manifest (not an error) if the file does not exist yet.
-func Load(backend, configDir string) (*Manifest, error) {
-	path := DefaultPath(backend, configDir)
+func Load(kind, backend, configDir string) (*Manifest, error) {
+	path := DefaultPath(kind, backend, configDir)
 	// #nosec G304 — path is constructed from config.Dir() + backend name, not user input
 	data, err := os.ReadFile(path) //nolint:gosec
 	if os.IsNotExist(err) {
@@ -80,10 +81,10 @@ func Load(backend, configDir string) (*Manifest, error) {
 	return &m, nil
 }
 
-// Save writes the manifest to the config directory, creating the fields/ subdirectory
+// Save writes the manifest to the config directory, creating the subdirectory
 // if it does not exist. It overwrites any existing manifest for the same backend.
-func Save(backend, configDir string, m *Manifest) error {
-	dir := filepath.Join(configDir, manifestDir)
+func Save(kind, backend, configDir string, m *Manifest) error {
+	dir := filepath.Join(configDir, kind)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("create fields dir %s: %w", dir, err)
 	}
@@ -92,10 +93,10 @@ func Save(backend, configDir string, m *Manifest) error {
 	if err != nil {
 		return fmt.Errorf("marshal field manifest: %w", err)
 	}
-	header := []byte("# Emcee field manifest — " + backend + "\n" +
-		"# Run `fields_discover --backend " + backend + "` to regenerate.\n" +
-		"# Entries in config.yaml backend.fields override individual mappings.\n\n")
-	path := DefaultPath(backend, configDir)
+	header := []byte("# Emcee " + kind + " manifest — " + backend + "\n" +
+		"# Run `" + kind + "_discover --backend " + backend + "` to regenerate.\n" +
+		"# Entries in config.yaml override individual mappings.\n\n")
+	path := DefaultPath(kind, backend, configDir)
 	if err := os.WriteFile(path, append(header, data...), 0o600); err != nil {
 		return fmt.Errorf("write field manifest %s: %w", path, err)
 	}
@@ -103,34 +104,21 @@ func Save(backend, configDir string, m *Manifest) error {
 }
 
 // DefaultPath returns the filesystem path for a backend's manifest file.
-func DefaultPath(backend, configDir string) string {
-	return filepath.Join(configDir, manifestDir, backend+".yaml")
+func DefaultPath(kind, backend, configDir string) string {
+	return filepath.Join(configDir, kind, backend+".yaml")
 }
 
-// Discover builds a Manifest from all custom fields returned by the backend.
-// allFields is the raw list returned by the backend's ListFields call.
-// Only custom fields (field.Custom == true) are stored; standard fields are
-// always requested by name and need no manifest entry.
-// Keys are display names (e.g. "Sprint", "Target Backport Versions") so the
-// manifest remains readable and backend-agnostic.
-func Discover(backend string, allFields []NamedField) *Manifest {
-	mappings := make(map[string]string, len(allFields))
-	for _, f := range allFields {
-		if f.Custom {
-			mappings[f.Name] = f.ID
-		}
+// Discover builds a Manifest from pre-mapped key→value pairs.
+// Callers are responsible for filtering and transforming raw backend data
+// into the desired mappings before calling Discover.
+func Discover(backend string, mappings map[string]string) *Manifest {
+	m := make(map[string]string, len(mappings))
+	for k, v := range mappings {
+		m[k] = v
 	}
 	return &Manifest{
 		Backend:      backend,
 		DiscoveredAt: time.Now().UTC(),
-		Mappings:     mappings,
+		Mappings:     m,
 	}
-}
-
-// NamedField is a minimal field descriptor used by Discover.
-// It is intentionally backend-agnostic; adapters map their types to this.
-type NamedField struct {
-	ID     string
-	Name   string
-	Custom bool // true for custom fields; false for standard system fields
 }

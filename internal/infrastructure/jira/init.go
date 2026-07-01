@@ -5,8 +5,8 @@ import (
 	"os"
 
 	"github.com/dpopsuev/emcee/internal/config"
-	"github.com/dpopsuev/emcee/internal/fieldmanifest"
 	infra "github.com/dpopsuev/emcee/internal/infrastructure"
+	"github.com/dpopsuev/emcee/internal/manifest"
 	"github.com/dpopsuev/emcee/internal/poller"
 	"github.com/dpopsuev/emcee/internal/repository"
 )
@@ -40,14 +40,14 @@ func init() {
 		}
 		// Load the field manifest for this backend, then apply any explicit
 		// overrides from config.yaml backend.fields on top.
-		manifest, err := fieldmanifest.Load(name, config.Dir())
+		fm, err := manifest.Load(manifest.DefaultKind, name, config.Dir())
 		if err != nil {
 			return nil, err
 		}
 		if len(backend.Fields) > 0 {
-			manifest = manifest.Merge(backend.Fields)
+			fm = fm.Merge(backend.Fields)
 		}
-		repo, err := New(name, url, email, token, project, manifest.Mappings)
+		repo, err := New(name, url, email, token, project, fm.Mappings)
 		if err != nil {
 			return nil, err
 		}
@@ -55,20 +55,23 @@ func init() {
 		// Register a poller so serveCmd can keep the manifest evergreen.
 		// The closure captures repo before cache.New() wraps it, so SetCustomFields
 		// reaches the live Repository directly.
-		poller.Register("fields:"+name, fieldmanifest.NewManifestPoller(
+		poller.Register("fields:"+name, manifest.NewManifestPoller(
+			manifest.DefaultKind,
 			name,
 			config.Dir(),
-			fieldmanifest.DefaultTTL,
-			func(ctx context.Context) ([]fieldmanifest.NamedField, error) {
+			manifest.DefaultTTL,
+			func(ctx context.Context) (map[string]string, error) {
 				domainFields, err := repo.ListFields(ctx)
 				if err != nil {
 					return nil, err
 				}
-				named := make([]fieldmanifest.NamedField, len(domainFields))
-				for i, f := range domainFields {
-					named[i] = fieldmanifest.NamedField{ID: f.ID, Name: f.Name, Custom: f.Custom}
+				mappings := make(map[string]string, len(domainFields))
+				for _, f := range domainFields {
+					if f.Custom {
+						mappings[f.Name] = f.ID
+					}
 				}
-				return named, nil
+				return mappings, nil
 			},
 			repo.SetCustomFields,
 		))

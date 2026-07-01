@@ -693,7 +693,7 @@ func issueHandler(svc EmceeService) server.Handler {
 			}
 			return server.JSONString(map[string]any{
 				"backend":  args.Backend,
-				"manifest": config.DefaultPath(args.Backend),
+				"manifest": config.ManifestPath("fields", args.Backend),
 				"mappings": mappings,
 			})
 
@@ -1394,7 +1394,7 @@ func adminHandler(svc EmceeService) server.Handler {
 			}
 			return server.JSONString(map[string]any{
 				"backend":  args.Backend,
-				"manifest": config.DefaultPath(args.Backend),
+				"manifest": config.ManifestPath("fields", args.Backend),
 				"mappings": mappings,
 			})
 
