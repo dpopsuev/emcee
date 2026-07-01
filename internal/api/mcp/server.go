@@ -369,21 +369,7 @@ func issueHandler(svc EmceeService) server.Handler {
 			if args.Title == "" {
 				return "", errTitleRequired
 			}
-			input := domain.CreateInput{
-				Title:       args.Title,
-				Description: args.Description,
-				Priority:    domain.ParsePriority(args.Priority),
-				Assignee:    args.Assignee,
-				ParentID:    args.ParentID,
-				ProjectID:   args.ProjectID,
-				IssueType:   args.IssueType,
-				Versions:    splitCSV(args.Versions),
-				FixVersions: splitCSV(args.FixVersionsStr),
-				Components:  splitCSV(args.ComponentsStr),
-			}
-			if args.Status != "" {
-				input.Status = domain.Status(args.Status)
-			}
+			input := args.createInput()
 			issue, err := svc.Create(ctx, args.Backend, input)
 			if err != nil {
 				id := svc.StageItem(args.Backend, input, err.Error())
@@ -513,21 +499,7 @@ func issueHandler(svc EmceeService) server.Handler {
 			if args.Title == "" {
 				return "", errTitleRequired
 			}
-			input := domain.CreateInput{
-				Title:       args.Title,
-				Description: args.Description,
-				Priority:    domain.ParsePriority(args.Priority),
-				Assignee:    args.Assignee,
-				ParentID:    args.ParentID,
-				ProjectID:   args.ProjectID,
-				IssueType:   args.IssueType,
-				Versions:    splitCSV(args.Versions),
-				FixVersions: splitCSV(args.FixVersionsStr),
-				Components:  splitCSV(args.ComponentsStr),
-			}
-			if args.Status != "" {
-				input.Status = domain.Status(args.Status)
-			}
+			input := args.createInput()
 			id := svc.StageItem(args.Backend, input, "")
 			return server.JSONString(map[string]string{"stage_id": id, "backend": args.Backend})
 
@@ -549,43 +521,7 @@ func issueHandler(svc EmceeService) server.Handler {
 			if args.StageID == "" {
 				return "", errStageIDRequired
 			}
-			var patchInput domain.StagePatchInput
-			if args.Title != "" {
-				patchInput.Title = &args.Title
-			}
-			if args.Description != "" {
-				patchInput.Description = &args.Description
-			}
-			if args.Status != "" {
-				s := domain.Status(args.Status)
-				patchInput.Status = &s
-			}
-			if args.Priority != "" {
-				p := domain.ParsePriority(args.Priority)
-				patchInput.Priority = &p
-			}
-			if args.Assignee != "" {
-				patchInput.Assignee = &args.Assignee
-			}
-			if args.ComponentsStr != "" {
-				patchInput.Components = splitCSV(args.ComponentsStr)
-			}
-			if args.FixVersionsStr != "" {
-				patchInput.FixVersions = splitCSV(args.FixVersionsStr)
-			}
-			if args.ProjectID != "" {
-				patchInput.ProjectID = &args.ProjectID
-			}
-			if args.ParentID != "" {
-				patchInput.ParentID = &args.ParentID
-			}
-			if args.IssueType != "" {
-				patchInput.IssueType = &args.IssueType
-			}
-			if args.Versions != "" {
-				patchInput.Versions = splitCSV(args.Versions)
-			}
-			item, err := svc.StagePatch(args.StageID, patchInput)
+			item, err := svc.StagePatch(args.StageID, args.stagePatchInput())
 			if err != nil {
 				return "", err
 			}
@@ -1729,6 +1665,65 @@ func issueWithProjectNote(issue *domain.Issue, explicitProject, configDefault st
 		m["_project_source"] = fmt.Sprintf("default from config (team: %s). Pass project_id to target a different project.", configDefault)
 	}
 	return m
+}
+
+func (a *emceeArgs) createInput() domain.CreateInput {
+	input := domain.CreateInput{
+		Title:       a.Title,
+		Description: a.Description,
+		Priority:    domain.ParsePriority(a.Priority),
+		Assignee:    a.Assignee,
+		ParentID:    a.ParentID,
+		ProjectID:   a.ProjectID,
+		IssueType:   a.IssueType,
+		Versions:    splitCSV(a.Versions),
+		FixVersions: splitCSV(a.FixVersionsStr),
+		Components:  splitCSV(a.ComponentsStr),
+	}
+	if a.Status != "" {
+		input.Status = domain.Status(a.Status)
+	}
+	return input
+}
+
+func (a *emceeArgs) stagePatchInput() domain.StagePatchInput {
+	var p domain.StagePatchInput
+	if a.Title != "" {
+		p.Title = &a.Title
+	}
+	if a.Description != "" {
+		p.Description = &a.Description
+	}
+	if a.Status != "" {
+		s := domain.Status(a.Status)
+		p.Status = &s
+	}
+	if a.Priority != "" {
+		v := domain.ParsePriority(a.Priority)
+		p.Priority = &v
+	}
+	if a.Assignee != "" {
+		p.Assignee = &a.Assignee
+	}
+	if a.ComponentsStr != "" {
+		p.Components = splitCSV(a.ComponentsStr)
+	}
+	if a.FixVersionsStr != "" {
+		p.FixVersions = splitCSV(a.FixVersionsStr)
+	}
+	if a.ProjectID != "" {
+		p.ProjectID = &a.ProjectID
+	}
+	if a.ParentID != "" {
+		p.ParentID = &a.ParentID
+	}
+	if a.IssueType != "" {
+		p.IssueType = &a.IssueType
+	}
+	if a.Versions != "" {
+		p.Versions = splitCSV(a.Versions)
+	}
+	return p
 }
 
 func splitCSV(s string) []string {
