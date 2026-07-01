@@ -767,7 +767,7 @@ func (j *jiraIssue) toDomain(customFields map[string]string) domain.Issue {
 		ID:          j.ID,
 		Key:         j.Key,
 		Title:       j.Fields.Summary,
-		Status:      mapStatusFromJira(j.Fields.Status.StatusCategory.Key),
+		Status:      mapStatusFromJira(j.Fields.Status.StatusCategory.Key, j.Fields.Status.Name),
 		Labels:      j.Fields.Labels,
 		Description: extractDescription(j.Fields.Description),
 	}
@@ -884,12 +884,17 @@ func extractADFText(node *adfNode, b *strings.Builder) {
 // --- Status mapping ---
 // Jira statusCategory keys: "new", "indeterminate", "done", "undefined"
 
-func mapStatusFromJira(categoryKey string) domain.Status {
+func mapStatusFromJira(categoryKey, statusName string) domain.Status {
 	switch categoryKey {
 	case "new":
 		return domain.StatusTodo
 	case "indeterminate":
-		return domain.StatusInProgress
+		switch statusName {
+		case "ON_QA", "MODIFIED":
+			return domain.StatusInReview
+		default:
+			return domain.StatusInProgress
+		}
 	case "done":
 		return domain.StatusDone
 	default:
