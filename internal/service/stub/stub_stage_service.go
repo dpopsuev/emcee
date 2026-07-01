@@ -31,7 +31,7 @@ func (s *StubStageService) StageGet(id string) (*domain.StagedItem, error) {
 	return s.store.StageGet(id)
 }
 
-func (s *StubStageService) StagePatch(id string, input domain.UpdateInput) (*domain.StagedItem, error) {
+func (s *StubStageService) StagePatch(id string, input domain.StagePatchInput) (*domain.StagedItem, error) {
 	return s.store.StagePatch(id, input)
 }
 

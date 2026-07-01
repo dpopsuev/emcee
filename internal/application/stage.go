@@ -78,7 +78,7 @@ func (s *StageStore) StageGet(id string) (*domain.StagedItem, error) {
 }
 
 // StagePatch updates fields on a staged item. Non-empty/non-nil fields override.
-func (s *StageStore) StagePatch(id string, input domain.UpdateInput) (*domain.StagedItem, error) {
+func (s *StageStore) StagePatch(id string, input domain.StagePatchInput) (*domain.StagedItem, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.evictExpired()
@@ -104,6 +104,24 @@ func (s *StageStore) StagePatch(id string, input domain.UpdateInput) (*domain.St
 	}
 	if input.Labels != nil {
 		item.Input.Labels = input.Labels
+	}
+	if input.Components != nil {
+		item.Input.Components = input.Components
+	}
+	if input.FixVersions != nil {
+		item.Input.FixVersions = input.FixVersions
+	}
+	if input.ProjectID != nil {
+		item.Input.ProjectID = *input.ProjectID
+	}
+	if input.ParentID != nil {
+		item.Input.ParentID = *input.ParentID
+	}
+	if input.IssueType != nil {
+		item.Input.IssueType = *input.IssueType
+	}
+	if input.Versions != nil {
+		item.Input.Versions = input.Versions
 	}
 	return item, nil
 }

@@ -549,7 +549,7 @@ func issueHandler(svc EmceeService) server.Handler {
 			if args.StageID == "" {
 				return "", errStageIDRequired
 			}
-			var patchInput domain.UpdateInput
+			var patchInput domain.StagePatchInput
 			if args.Title != "" {
 				patchInput.Title = &args.Title
 			}
@@ -566,6 +566,24 @@ func issueHandler(svc EmceeService) server.Handler {
 			}
 			if args.Assignee != "" {
 				patchInput.Assignee = &args.Assignee
+			}
+			if args.ComponentsStr != "" {
+				patchInput.Components = splitCSV(args.ComponentsStr)
+			}
+			if args.FixVersionsStr != "" {
+				patchInput.FixVersions = splitCSV(args.FixVersionsStr)
+			}
+			if args.ProjectID != "" {
+				patchInput.ProjectID = &args.ProjectID
+			}
+			if args.ParentID != "" {
+				patchInput.ParentID = &args.ParentID
+			}
+			if args.IssueType != "" {
+				patchInput.IssueType = &args.IssueType
+			}
+			if args.Versions != "" {
+				patchInput.Versions = splitCSV(args.Versions)
 			}
 			item, err := svc.StagePatch(args.StageID, patchInput)
 			if err != nil {

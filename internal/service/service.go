@@ -126,7 +126,7 @@ type StageService interface {
 	StageItem(backend string, input domain.CreateInput, reason string) string
 	StageList() []domain.StagedItem
 	StageGet(id string) (*domain.StagedItem, error)
-	StagePatch(id string, input domain.UpdateInput) (*domain.StagedItem, error)
+	StagePatch(id string, input domain.StagePatchInput) (*domain.StagedItem, error)
 	StageDrop(id string) error
 	StagePop(id string) (*domain.StagedItem, error)
 	StagePopAll() []domain.StagedItem
