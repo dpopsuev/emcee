@@ -13,6 +13,8 @@ import (
 	"github.com/dpopsuev/emcee/internal/infrastructure/jira"
 )
 
+var lastCreateBody map[string]any //nolint:gochecknoglobals // test spy
+
 // fakeJira serves a mock Jira REST API.
 //
 //nolint:gocyclo // mock server handling many endpoints
@@ -56,12 +58,10 @@ func fakeJira() *httptest.Server {
 
 		// Create issue
 		case r.Method == "POST" && path == "/rest/api/2/issue":
-			var body struct {
-				Fields struct {
-					Summary string `json:"summary"`
-				} `json:"fields"`
-			}
+			lastCreateBody = nil
+			var body map[string]any
 			_ = json.NewDecoder(r.Body).Decode(&body)
+			lastCreateBody = body
 			_ = json.NewEncoder(w).Encode(map[string]string{
 				"id":  "10001",
 				"key": "TEST-99",
@@ -202,6 +202,30 @@ func TestE2E_Create(t *testing.T) {
 	// After create, it fetches the issue via Get
 	if issue.Key != "TEST-99" {
 		t.Errorf("key = %q, want TEST-99", issue.Key)
+	}
+}
+
+func TestE2E_CreateWithParent(t *testing.T) {
+	repo, srv := newTestRepo(t)
+	defer srv.Close()
+
+	_, err := repo.Create(context.Background(), domain.CreateInput{
+		Title:    "Child task",
+		ParentID: "PROJ-42",
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if lastCreateBody == nil {
+		t.Fatal("create body not captured")
+	}
+	fields, _ := lastCreateBody["fields"].(map[string]any)
+	parent, ok := fields["parent"].(map[string]any)
+	if !ok {
+		t.Fatal("fields.parent not set in API request")
+	}
+	if parent["key"] != "PROJ-42" {
+		t.Errorf("parent.key = %v, want PROJ-42", parent["key"])
 	}
 }
 

@@ -261,6 +261,9 @@ func (r *Repository) Create(ctx context.Context, input domain.CreateInput) (*dom
 		"summary":   input.Title,
 		"issuetype": map[string]string{jfName: issueType},
 	}
+	if input.ParentID != "" {
+		fields["parent"] = map[string]string{jfKey: input.ParentID}
+	}
 	if input.Description != "" {
 		fields["description"] = input.Description
 	}
